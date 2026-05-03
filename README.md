@@ -1,12 +1,13 @@
 # PDF Check
 
-保險 EDM / PDF 差異比對系統。專案由 `FastAPI + Docling + React + react-pdf + SQLite` 組成，目標是把「新舊 PDF 的文字與數字差異」轉成可審核、可搜尋、可匯出的工作流，而不是做像素級美術比對。
+保險 EDM / PDF 差異比對系統。專案由 `FastAPI + MinerU + Docling + React + react-pdf + SQLite` 組成，目標是把「新舊 PDF 的文字與數字差異」轉成可審核、可搜尋、可匯出的工作流，而不是做像素級美術比對。
 
 ## 專案目標
 
 - 上傳舊版與新版 PDF，建立一筆比較任務
-- 以 Docling 解析文字區塊與表格位置，產生結構化中介資料
+- 以 MinerU（主）或 Docling（備援）解析文字區塊與表格位置，產生結構化中介資料
 - 用段落級 diff 比對出新增、刪除、文字修改、數值修改
+- 表格支援 **cell-level diff**：精確標記到單一儲存格，整表大幅變動時自動聚合為一筆整表替換
 - 在前端灰階 PDF 上疊加彩色標記，協助審核
 - 提供 Markdown、標註 PDF、Excel 等匯出能力
 - 透過 WebSocket 回報背景任務進度
@@ -32,11 +33,14 @@ FastAPI
   └─ websocket.py: 即時進度推播
         │
 Services
-  ├─ parser_service.py: Docling / PyMuPDF / pdftotext 解析
-  ├─ diff_service.py: 段落 diff 與結果合併
+  ├─ parser_service.py: MinerU（主）/ Docling / PyMuPDF / pdftotext fallback 鏈
+  ├─ diff_service.py: 段落 diff、cell-level 表格 diff（含70%聚合策略）
   ├─ checklist_service.py: CSV/Excel 匯入與自動匹配
   ├─ export_service.py: PDF / Excel 匯出
   └─ coord_transformer.py: PDF 座標轉換工具
+        │
+MinerU API (獨立容器)
+  └─ mineru-api:18080  pipeline backend（100% 地端，繁體中文優化）
         │
 Persistence
   ├─ SQLite: projects / comparisons / review_logs / users
@@ -51,11 +55,19 @@ Persistence
 
 - `FastAPI`: API 與靜態檔服務
 - `uvicorn`: ASGI server
-- `docling`: PDF 結構化解析與 OCR
+- **`MinerU 3.x`**: 高精度 PDF 結構化解析（主要解析器，cell-level 表格、繁體中文優化）
+- `docling`: PDF 解析備援（MinerU 不可用時自動切換）
 - `pandas` / `openpyxl`: 表格與 checklist 匯入 / 匯出
 - `PyMuPDF`: PDF fallback 解析與標註匯出
 - `sqlite3`: 比較結果與審核紀錄
 - `pytest`: 單元測試
+
+### MinerU 服務
+
+- 獨立 Docker 容器（`mineru-api:pipeline`），透過 REST API 提供服務
+- 使用 `pipeline` backend，100% 離線，模型存於 Docker volume
+- 設定 `lang_list=chinese_cht` 確保繁體中文輸出正確
+- Backend 透過環境變數 `MINERU_API_URL` 連接，未設定時自動回退至 Docling
 
 ### Frontend
 
@@ -93,10 +105,10 @@ Persistence
 
 ### 目前限制
 
-- `diff_tables()` 已提供基礎版 table-level / cell-level 文字比對，但 bbox 目前仍以整張表為主
 - checklist 會持久化到 SQLite，但 `CHECKLIST_STORE` 仍保留作為執行中快取
 - 審核 summary 以每個 `diff_item_id` 最新一筆 `review_logs` 為準
 - 若本機開發未指定 `DATA_DIR`，建議明確設定 runtime 路徑
+- MinerU cell bbox 目前由整表 bbox 推算（MinerU API 不提供單格座標），前端標記精確到整格欄位而非像素
 
 ## 目錄結構
 
@@ -151,17 +163,29 @@ cd /path/to/PDF_check
 docker compose up --build -d
 ```
 
+首次 build 時 MinerU image 會自動下載 pipeline 模型（約 5-8GB），之後模型快取在 `mineru_model_cache` volume，重建不需重複下載。
+
 啟動後：
 
 - 前端入口: `http://localhost:8000`
 - API 基底: `http://localhost:8000/api`
 - 健康檢查: `http://localhost:8000/health`
+- MinerU API（內網）: `http://mineru-api:18080`（僅 backend 可存取）
 
 停止：
 
 ```bash
 docker compose down
 ```
+
+### 環境變數
+
+| 變數 | 預設值 | 說明 |
+|------|--------|------|
+| `MINERU_API_URL` | `http://mineru-api:18080` | MinerU REST API 位址；空值 = 停用 MinerU，回退至 Docling |
+| `DATA_DIR` | `/app/runtime` | Runtime 資料目錄 |
+| `OCR_LANGS` | `chi_tra+chi_sim+eng` | Docling OCR 語言（備援用） |
+| `DEBUG` | `false` | 開啟 debug 模式 |
 
 ## 本機開發
 
@@ -173,8 +197,12 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 export DATA_DIR=/path/to/PDF_check/runtime
+# 可選：指向本機執行中的 MinerU，留空則退回 Docling
+export MINERU_API_URL=http://localhost:18080
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+若不啟動 MinerU 容器，省略 `MINERU_API_URL` 即可，解析器自動退回 Docling。
 
 ### Frontend
 
@@ -192,23 +220,29 @@ Vite 已設定 proxy：
 
 ## 推薦硬體規格
 
-本專案主要是 `CPU + RAM` 工作負載（Docling 解析 + OCR + Python 差異計算），一般情境不需要 GPU。
+導入 MinerU 後，解析精度顯著提升（cell-level 表格），但對記憶體需求也相應增加。
 
-參考 `backend/benchmarks/` 的本機量測（`10-core CPU / 24GB RAM`）：
+### MinerU POC 實測（macOS M 系列 CPU）
 
-- 4-8 頁 PDF 解析約 `25-31 秒/份`
-- 峰值記憶體約 `2.2-2.9 GB`
+| 檔案 | 大小 | 耗時 | 記憶體增量 | 表格數 |
+|------|------|------|-----------|--------|
+| 金利樂.pdf | 3.1MB | ~17s | +2.2GB | 5 |
+| 臻鑽旺旺.pdf | 6.5MB | ~15s | +0.3GB（已快取）| 4 |
 
-建議分級：
+### 建議規格（3–5 人共用）
 
-- 最低可用：`4 核心 CPU / 8GB RAM / SSD`
-- 建議規格：`8 核心以上 CPU / 16GB RAM / SSD`
-- 團隊共用或多任務：`12 核心以上 CPU / 32GB RAM / SSD`
+| 等級 | 規格 | 適用情境 |
+|------|------|----------|
+| 最低可用 | 8 核心 CPU / **16GB RAM** / SSD | 1-2 人輕度使用 |
+| **建議（3–5 人）** | **12 核心以上 CPU / 32GB RAM / SSD** | 日常並發 2-3 任務 |
+| 高效部署 | 16 核心 / 64GB RAM / NVMe SSD | 4-5 人並發 + 大型 DM |
 
-補充：
+### 補充
 
-- 第一次執行通常較慢（模型快取初始化）
-- Docker 需預留 runtime 與模型快取空間（建議至少 20GB 可用磁碟）
+- MinerU 首次啟動需載入 pipeline 模型（約 3-5GB），之後保持常駐
+- Docker volume `mineru_model_cache` 儲存模型，避免每次重建重複下載
+- 磁碟需求：建議預留 **30GB 以上**（含模型快取 ~5-8GB + runtime）
+- GPU 非必要，但若配備 CUDA GPU（8GB+ VRAM）可顯著加速大型 PDF 解析
 
 ## 核心資料流
 
@@ -234,33 +268,35 @@ Vite 已設定 proxy：
 
 ### 2. 解析流程
 
-`backend/services/parser_service.py` 採多層 fallback：
+`backend/services/parser_service.py` 採多層 fallback 鏈：
 
-1. `Docling`
-2. `PyMuPDF`
-3. `pdftotext`
+1. **MinerU**（預設，若 `MINERU_API_URL` 已設定）— REST API 呼叫，`pipeline` backend，`lang_list=chinese_cht`
+2. `Docling`（MinerU 不可用時自動切換）
+3. `PyMuPDF`
+4. `pdftotext`
 
-Docling 解析時會啟用 OCR，語言來自 `OCR_LANGS`，預設為 `eng`，Docker compose 內設為 `eng,chi_tra`。
+MinerU 輸出 `content_list`（JSON）包含每個文字區塊與表格的座標（top-left origin）；系統自動轉換為底部原點座標以統一後續處理。表格輸出含完整 rowspan/colspan HTML，解析為 DataFrame 後存入 `ParsedTable`。
 
 輸出中介資料型別：
 
 - `ParsedDocument`
 - `ParsedParagraph`
-- `ParsedTable`
+- `ParsedTable`（含 `cell_bboxes` 若 Docling 路徑）
 - `BBox`
 
 所有 bbox 會標準化為 PDF bottom-left 座標系，方便後端匯出與前端疊圖共用。
 
 ### 3. Diff 流程
 
-`backend/services/diff_service.py` 目前包含段落 diff 與基礎表格 diff：
+`backend/services/diff_service.py` 包含段落 diff 與 **cell-level 表格 diff**：
 
-- 先正規化段落文字
+- 先正規化段落文字（NFKC + 去除零寬字元）
 - 用 `SequenceMatcher` 比較 old/new 段落序列
 - `replace` 時再做逐段配對
 - 透過 regex 判斷是否含數值，分成 `number_modified` 與 `text_modified`
 - `insert/delete` 轉成 `added/deleted`
-- 表格會以 DataFrame 欄列內容做逐格比較，並先以整張表 bbox 回報位置
+- **Cell-level 表格 diff**：逐格比較 DataFrame，產生精確到儲存格的 `DiffItem`
+- **70% 聚合策略**：若變更格數 ≥ 70% 則合併為一筆「整表替換」diff，避免 UI 被百筆小 diff 淹沒
 - **嵌入圖片比對**：利用 PyMuPDF 提取圖片並計算 pHash (感知哈希)，偵測圖片替換、尺寸變更或內容微調
 - 最後依頁碼與座標排序並編成 `d001`, `d002`, ...
 - **聯集策略**：文字 diff + 表格 diff + 像素 diff + 圖片 diff 取聯集，確保無遺漏任何變更

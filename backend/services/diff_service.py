@@ -256,6 +256,78 @@ def _table_dataframe_rows(table: ParsedTable) -> list[list[str]]:
     return rows
 
 
+# When ≥70% of cells in a table differ, collapse to a single whole-table diff
+# item instead of flooding the UI with hundreds of individual cell markers.
+_CELL_DIFF_AGGREGATE_THRESHOLD = 0.70
+
+
+def _diff_table_cells(
+    old_table: ParsedTable,
+    new_table: ParsedTable,
+    context: str,
+) -> list[DiffItem]:
+    """Return cell-level DiffItems for a matched old/new table pair."""
+    old_rows = _table_dataframe_rows(old_table)
+    new_rows = _table_dataframe_rows(new_table)
+
+    old_col_count = max(len(r) for r in old_rows) if old_rows else 0
+    new_col_count = max(len(r) for r in new_rows) if new_rows else 0
+    total_cells = max(
+        len(old_rows) * old_col_count,
+        len(new_rows) * new_col_count,
+    )
+    changed_cells = 0
+    pending: list[DiffItem] = []
+
+    for row_index, (old_row, new_row) in enumerate(
+        zip_longest(old_rows, new_rows, fillvalue=[]),
+        start=1,
+    ):
+        for col_index, (old_cell, new_cell) in enumerate(
+            zip_longest(old_row, new_row, fillvalue=""),
+            start=1,
+        ):
+            if old_cell == new_cell:
+                continue
+
+            old_val = old_cell or None
+            new_val = new_cell or None
+            if not is_meaningful_diff(old_val, new_val):
+                continue
+            changed_cells += 1
+            o_cell_bbox = old_table.cell_bboxes.get((row_index - 1, col_index - 1))
+            n_cell_bbox = new_table.cell_bboxes.get((row_index - 1, col_index - 1))
+            pending.append(DiffItem(
+                id="",
+                diff_type=_guess_diff_type(old_val, new_val),
+                old_value=old_val,
+                new_value=new_val,
+                old_bbox=o_cell_bbox,
+                new_bbox=n_cell_bbox,
+                context=f"{context} / row {row_index} col {col_index}",
+                confidence=0.72,
+            ))
+
+    if not pending:
+        return []
+
+    # Aggregation: if most cells changed, one whole-table marker is clearer.
+    change_ratio = changed_cells / max(total_cells, 1)
+    if change_ratio >= _CELL_DIFF_AGGREGATE_THRESHOLD:
+        return [DiffItem(
+            id="",
+            diff_type=DiffType.TEXT_MODIFIED,
+            old_value=f"{context} 整表替換（{changed_cells}/{total_cells} 格變更）",
+            new_value=f"{context} 整表替換（{changed_cells}/{total_cells} 格變更）",
+            old_bbox=old_table.bbox,
+            new_bbox=new_table.bbox,
+            context=f"{context} — 整表替換",
+            confidence=0.80,
+        )]
+
+    return pending
+
+
 def diff_tables(old_tables: list[ParsedTable], new_tables: list[ParsedTable]) -> list[DiffItem]:
     diff_items: list[DiffItem] = []
 
@@ -265,103 +337,37 @@ def diff_tables(old_tables: list[ParsedTable], new_tables: list[ParsedTable]) ->
     ):
         if old_table and not new_table:
             context = _table_context(old_table, table_index)
-            diff_items.append(
-                DiffItem(
-                    id="",
-                    diff_type=DiffType.DELETED,
-                    old_value=f"{context} removed",
-                    new_value=None,
-                    old_bbox=old_table.bbox,
-                    new_bbox=None,
-                    context=context,
-                    confidence=0.8,
-                )
-            )
+            diff_items.append(DiffItem(
+                id="",
+                diff_type=DiffType.DELETED,
+                old_value=f"{context} removed",
+                new_value=None,
+                old_bbox=old_table.bbox,
+                new_bbox=None,
+                context=context,
+                confidence=0.8,
+            ))
             continue
 
         if new_table and not old_table:
             context = _table_context(new_table, table_index)
-            diff_items.append(
-                DiffItem(
-                    id="",
-                    diff_type=DiffType.ADDED,
-                    old_value=None,
-                    new_value=f"{context} added",
-                    old_bbox=None,
-                    new_bbox=new_table.bbox,
-                    context=context,
-                    confidence=0.8,
-                )
-            )
+            diff_items.append(DiffItem(
+                id="",
+                diff_type=DiffType.ADDED,
+                old_value=None,
+                new_value=f"{context} added",
+                old_bbox=None,
+                new_bbox=new_table.bbox,
+                context=context,
+                confidence=0.8,
+            ))
             continue
 
         if not old_table or not new_table:
             continue
 
         context = _table_context(new_table, table_index)
-        old_rows = _table_dataframe_rows(old_table)
-        new_rows = _table_dataframe_rows(new_table)
-
-        for row_index, (old_row, new_row) in enumerate(
-            zip_longest(old_rows, new_rows, fillvalue=[]),
-            start=1,
-        ):
-            for col_index, (old_cell, new_cell) in enumerate(
-                zip_longest(old_row, new_row, fillvalue=""),
-                start=1,
-            ):
-                if old_cell == new_cell:
-                    continue
-
-                if old_cell and new_cell:
-                    char_matcher = SequenceMatcher(a=old_cell, b=new_cell)
-                    for c_tag, c_i1, c_i2, c_j1, c_j2 in char_matcher.get_opcodes():
-                        if c_tag == "equal":
-                            continue
-                        
-                        old_sub = old_cell[c_i1:c_i2] if c_i1 < c_i2 else None
-                        new_sub = new_cell[c_j1:c_j2] if c_j1 < c_j2 else None
-                        if not is_meaningful_diff(old_sub, new_sub):
-                            continue
-                        
-                        # Use 0-based indexing to find cell bboxes
-                        o_cell_bbox = old_table.cell_bboxes.get((row_index - 1, col_index - 1))
-                        n_cell_bbox = new_table.cell_bboxes.get((row_index - 1, col_index - 1))
-
-                        old_sub_bbox = refine_bbox_for_text(old_cell, o_cell_bbox, c_i1, c_i2) if o_cell_bbox and old_sub else None
-                        new_sub_bbox = refine_bbox_for_text(new_cell, n_cell_bbox, c_j1, c_j2) if n_cell_bbox and new_sub else None
-
-                        diff_items.append(
-                            DiffItem(
-                                id="",
-                                diff_type=_guess_diff_type(old_sub, new_sub),
-                                old_value=old_sub,
-                                new_value=new_sub,
-                                old_bbox=old_sub_bbox,
-                                new_bbox=new_sub_bbox,
-                                context=f"{context} / row {row_index} col {col_index}",
-                                confidence=0.72,
-                            )
-                        )
-                else:
-                    if not is_meaningful_diff(old_cell, new_cell):
-                        continue
-
-                    o_cell_bbox = old_table.cell_bboxes.get((row_index - 1, col_index - 1))
-                    n_cell_bbox = new_table.cell_bboxes.get((row_index - 1, col_index - 1))
-
-                    diff_items.append(
-                        DiffItem(
-                            id="",
-                            diff_type=_guess_diff_type(old_cell or None, new_cell or None),
-                            old_value=old_cell or None,
-                            new_value=new_cell or None,
-                            old_bbox=o_cell_bbox,
-                            new_bbox=n_cell_bbox,
-                            context=f"{context} / row {row_index} col {col_index}",
-                            confidence=0.72,
-                        )
-                    )
+        diff_items.extend(_diff_table_cells(old_table, new_table, context))
 
     return diff_items
 

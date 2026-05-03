@@ -27,6 +27,10 @@ class Settings(BaseSettings):
 
     allowed_origins: list[str] = ["*"]
 
+    # MinerU REST API endpoint (empty = disabled, falls back to Docling)
+    # Example: "http://mineru-api:18080" (docker-compose internal) or "http://localhost:18080"
+    mineru_api_url: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @model_validator(mode="after")

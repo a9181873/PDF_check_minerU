@@ -1,22 +1,55 @@
 services:
+  mineru-api:
+    image: mineru-api:pipeline
+    build:
+      context: .
+      dockerfile: mineru/Dockerfile
+    container_name: mineru-api
+    environment:
+      MINERU_MODEL_SOURCE: local
+    volumes:
+      - mineru_model_cache:/root/.cache/modelscope
+    networks:
+      - internal
+    expose:
+      - '18080'
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:18080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
   backend:
     image: pdf-check-backend:latest
     build:
       context: .
       dockerfile: backend/Dockerfile
     container_name: pdf-check-backend
-    ports:
-      - "8000:8000"
     environment:
       DATA_DIR: /app/runtime
       HF_HOME: /app/.cache/huggingface
       OCR_LANGS: chi_tra+chi_sim+eng
-      DEBUG: "false"
+      DEBUG: 'false'
+      MINERU_API_URL: 'http://mineru-api:18080'
     volumes:
       - backend_runtime:/app/runtime
       - backend_hf_cache:/app/.cache/huggingface
+    networks:
+      - internal
+    expose:
+      - '8000'
+    depends_on:
+      mineru-api:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   backend_runtime:
   backend_hf_cache:
+  mineru_model_cache:
+
+networks:
+  internal:
+    external: true

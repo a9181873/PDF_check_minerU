@@ -1,0 +1,1270 @@
+[
+    {
+        "type": "text",
+        "text": "台灣人壽金利樂利率變動型養老保險",
+        "text_level": 1,
+        "bbox": [
+            137,
+            27,
+            722,
+            195
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "商品名稱：台灣人壽金利樂利率變動型養老保險",
+        "bbox": [
+            137,
+            233,
+            467,
+            252
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "商品文號：中華民國114年519台壽字第1142320057號函備查",
+        "bbox": [
+            137,
+            250,
+            589,
+            268
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "主要給付項目：1.增值回饋分享 2.身故保險金或喪葬費用保險金 3.完全失能保險金 4.滿期保險金",
+        "bbox": [
+            137,
+            267,
+            836,
+            285
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "(本保險為不分紅保險單，不參加紅利分配，並無紅利給付項目。）",
+        "bbox": [
+            137,
+            285,
+            653,
+            305
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "image",
+        "img_path": "images/ba9386c32f2473a9204e91e92ddc0f6457a0f15ef65ab4132c6fe53eff18334a.jpg",
+        "image_caption": [],
+        "image_footnote": [],
+        "bbox": [
+            45,
+            357,
+            946,
+            870
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "台灣人壽資訊公開說明文件已登載於公司網站（www.taiwanlife.com）並於台灣人壽提供電腦設備供公開查閱下載。公司地址：台北市11568南港區經貿二路188號8樓·免費申訴電話：0800-213-269。",
+        "bbox": [
+            31,
+            862,
+            959,
+            898
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "header",
+        "text": "養老 保险",
+        "bbox": [
+            895,
+            22,
+            968,
+            72
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "footer",
+        "text": "Wee 中國信託金控Jamily 台灣人壽",
+        "bbox": [
+            714,
+            928,
+            963,
+            976
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "保障内容",
+        "text_level": 2,
+        "bbox": [
+            85,
+            59,
+            208,
+            82
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "★身故保險金或喪葬費用保險金",
+        "text_level": 2,
+        "bbox": [
+            77,
+            109,
+            326,
+            124
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "被保險於本保險契約有效期間內身故者，台灣壽按下列三款取其最大值給付身故保險金：",
+        "bbox": [
+            80,
+            135,
+            521,
+            165
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "、身故之當年度保險額。",
+        "bbox": [
+            82,
+            166,
+            292,
+            181
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "二、身故日之保單價值準備金乘以保單價值準備金比率所得之金額。  \n三、身故日之應繳保險費總和。",
+        "bbox": [
+            82,
+            181,
+            515,
+            210
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "訂立本保險契約時，以未滿15足歲之未成年人為被保險人，除喪葬費用之給付外，其餘死亡給付之約定於被保險人滿15足歲之日起發生效力；被保險人滿15足歲前死亡者，其身故保險金變更為喪葬費用保險金。",
+        "bbox": [
+            80,
+            211,
+            522,
+            269
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "訂立本保險契約時，以受監護宣告尚未撤銷者為被保險人，其身故保險金變更為喪葬費用保險金。",
+        "bbox": [
+            80,
+            271,
+            521,
+            300
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "台灣人壽依保單條款第十三條約定給付身故保險金或喪葬費用保險金，本保險契約之效力即行終止。若要保人有指定分期方式給付身故保險金，則按保單條款第十六條約定給付辦理且不因本保險契約之效力終止而影響分期定期保險金之給付。",
+        "bbox": [
+            80,
+            302,
+            522,
+            360
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "★完全失能保險金",
+        "text_level": 2,
+        "bbox": [
+            78,
+            376,
+            221,
+            393
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "被保險人於本保險契約有效期間內致成保單條款附表一所列完全失能程度之一者，台灣人壽按下列三款取其最大值给付完全失能保險金：",
+        "bbox": [
+            80,
+            403,
+            519,
+            434
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "、完全失能診斷確定之當年度保險額。",
+        "bbox": [
+            82,
+            435,
+            379,
+            449
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "二、完全失能診斷確定之保單價值準備金乘以保單價值準備金比率所得之金额。",
+        "bbox": [
+            82,
+            449,
+            521,
+            476
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "三、完全失能診斷確定日之應繳保險費總和。",
+        "text_level": 2,
+        "bbox": [
+            82,
+            478,
+            379,
+            492
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "被保險人同時有保單條款附表一所列二種以上完全失能程度時，台灣人壽僅給付一次完全失能保險金。",
+        "bbox": [
+            80,
+            494,
+            521,
+            524
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "台灣人壽依保單條款第十四條約定給付完全失能保險金，本保險契約之效即終。若要保有指定分期式給付完全失能保險金，則按保單條款第十六條約定給付辦理且不因本保險契約之效力終止而影響分期定期保險金之給付。",
+        "bbox": [
+            80,
+            525,
+            521,
+            583
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "★分期定期保險金",
+        "text_level": 2,
+        "bbox": [
+            78,
+            600,
+            221,
+            615
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "台灣人壽於分期定期給付開始日及分期定期給付開始日之每一週年日，依分期定期保險金給付期間及保單條款第二條約定之分期定期保險金預定利率將指定保險金換算成每年年初應給付之金額，按約定將每期分期定期保險金給付予受益人。",
+        "bbox": [
+            80,
+            626,
+            521,
+            684
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "台灣人壽依保單條款第十三條約定計算之身故保險金（不包括變更為喪葬費用保險金者），將各受益人應得之身故保險金扣除各該受益人之指定保險金後，倘有餘額時，應將該餘額一次給付予各該受益人。",
+        "bbox": [
+            80,
+            686,
+            521,
+            744
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "台灣人壽依保單條款第十四條約定計算之完全失能保險金扣除被保險人之指定保險金後，倘有餘額時，應將該餘額一次給付予被保險人。",
+        "bbox": [
+            82,
+            745,
+            519,
+            775
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "名詞解釋",
+        "text_level": 2,
+        "bbox": [
+            68,
+            802,
+            141,
+            819
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "基本保險金額：係指保險單面頁所載本保險契約之保險金額，如該金額有所變更時，以變更後之金額為準。",
+        "bbox": [
+            159,
+            803,
+            527,
+            828
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "累計增加保險金額：係指就每一保單週年日依保單條款第十條約定計算所得增額繳清保險金額逐次累計之值。",
+        "bbox": [
+            159,
+            828,
+            527,
+            853
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "當年度保險金額：係指以下列方式計算所得之金額，但被保險人為未滿15足歲之未成年人，或受監護宣告尚未撤銷者，應依保單條款第十三條約定辦理。",
+        "bbox": [
+            159,
+            853,
+            526,
+            890
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "(一)於前二保單年度內，係指應繳保險費總和。",
+        "bbox": [
+            171,
+            890,
+            447,
+            903
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "(二)於第三保單年度(含)以後，係指基本保險金額與累計增加保險金額二者加總之值，乘以保單條款附表二所列之當年度保險金額係數所得之值。",
+        "bbox": [
+            171,
+            903,
+            527,
+            941
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "保單價值準備金：係指基本保險金額對應之保單價值準備金與累計增加保險金額對應之保單價值準備金加總之值。",
+        "bbox": [
+            159,
+            940,
+            527,
+            966
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "★滿期保險金",
+        "text_level": 2,
+        "bbox": [
+            541,
+            109,
+            650,
+            124
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "被保險人於本保險契約有效期間內且於保險期間屆滿時仍生存者，台灣人壽按當時之當年度保險金額給付滿期保險金。",
+        "bbox": [
+            544,
+            135,
+            915,
+            179
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "台灣人壽依約定給付滿期保險金後，本保險契約效力即行終止。",
+        "bbox": [
+            544,
+            180,
+            915,
+            210
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "★增值回饋分享金(非保證給付)",
+        "text_level": 2,
+        "bbox": [
+            542,
+            227,
+            781,
+            243
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "台灣人壽於本保險契約有效期間內之每一保單年度屆滿後，除被保險人保險年齡達16歲前者，按保單條款第十條第三項約定辦理外，將依要保人於投保時所選擇下列方式之一給付增值回饋分享金：",
+        "bbox": [
+            544,
+            254,
+            917,
+            311
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "一、購買增額繳清保險金額(註1）",
+        "text_level": 2,
+        "bbox": [
+            544,
+            313,
+            759,
+            328
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "二、現金給付(註2）",
+        "bbox": [
+            546,
+            328,
+            672,
+            342
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "三、儲存生息(註3)",
+        "bbox": [
+            546,
+            342,
+            672,
+            356
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "要保人若未選擇者，則視為選擇購買增額繳清保險金額，並得於本保險契約有效期間內，以書面通知台灣人壽變更前項給付方式，惟第六保單年度屆滿前，增值回饋分享金限以購買增額繳清保險金額辦理。",
+        "bbox": [
+            544,
+            359,
+            915,
+            417
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "被保險人保險年齡到達16歲前，其增值回饋分享金於繳費期間應採抵繳保險費之方式辦理。但因繳費期間已屆滿而無法抵繳保險費者，台灣人壽改按各保單週年日當月之宣告利率，以年複利式儲存生息至被保險保險年齡到達16歲時，以累計儲存生息之金額一次計算增額繳清保險金額，其後保單年度適用保單條款第十條第一項規定。",
+        "bbox": [
+            544,
+            418,
+            917,
+            519
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "要保人終止本保險契約，或被保險人於保險年齡達16歲前死亡或致成完全失能程度者，台灣壽應退還歷年累計儲存生息之金額予要保人。",
+        "bbox": [
+            544,
+            520,
+            915,
+            564
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "台灣人壽於每一保單年度屆滿後，應將該增值回饋分享金之金額，以書面或電子郵件方式通知要保人。",
+        "bbox": [
+            544,
+            565,
+            917,
+            595
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "註1：選擇購買增額繳清保險金額者，以增值回饋分享金為繳純保險費，計算自該保單週年日當日起生效之增額繳清保險金額，但被保險人為受監護宣告尚未撤銷者，應依保單條款第十三條約定辦理。",
+        "bbox": [
+            544,
+            601,
+            917,
+            651
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "註2：選擇現金給付者，依本保險契約約定以現金給付增值回饋分享金予要保人，惟須於第六保單年度屆滿後之每一保單週年日起，始得依本方式給付。",
+        "bbox": [
+            544,
+            652,
+            917,
+            689
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "注3：選擇儲存生息者，各年度之增值回饋分享金將按各保單週年日當月之宣告利率依據年複利方式，累積至要保人請求時給付，或至被保險人身故、完全失能或本保險契約終止時，由台灣人壽主動一併給付·但在台灣人壽給付受益人保險金而終止保險契約的情形，要保人未請求之增值回饋分享金及其孳息，由該保險金受益人受領。惟須於第六保單年度屆滿後之每一保單週年日起，始得依本方式給付。",
+        "bbox": [
+            544,
+            689,
+            917,
+            776
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "應繳保險費總和：",
+        "text_level": 2,
+        "bbox": [
+            546,
+            803,
+            667,
+            815
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "(一)繳費期間為躉繳者，係指依照本保險契約之基本保險金額與累計增加保險金額二者加總之值，對照所適用之表定標準體應繳保險費。",
+        "bbox": [
+            557,
+            816,
+            931,
+            853
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "(二)繳費期間為2年期者，係指以下列方式計算所得之金額：",
+        "bbox": [
+            557,
+            853,
+            905,
+            866
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "1.於繳費期間內，係指依照本保險契約之基本保險金額與累計增加保險金額二者加總之值，對照所適用之表定標準體年繳應繳保險費，並乘以事故發生當時之保單年度數所得之金額。",
+        "bbox": [
+            581,
+            865,
+            931,
+            916
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "2.於繳費期滿後，係指依照本保險契約前述之表定標準體年繳應繳保險費乘以本保險契約之繳費期間所得之金額。",
+        "bbox": [
+            579,
+            916,
+            931,
+            941
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "保單價值準備金比率：係指保單條款附表三所列依被保險人事故發生時之保險年齡所對應之比率。",
+        "bbox": [
+            546,
+            941,
+            931,
+            966
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "header",
+        "text": "詳細給付內容請參閱保單條款",
+        "bbox": [
+            704,
+            67,
+            931,
+            83
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "範例說明",
+        "text_level": 2,
+        "bbox": [
+            75,
+            59,
+            196,
+            80
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "繳",
+        "text_level": 2,
+        "bbox": [
+            70,
+            129,
+            122,
+            149
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "40歲男性投保「台灣壽金利樂利率變動型養保險」保險金額3728,329元，表定繳保費3,719,008元，享3.2%高保費折扣後，實繳保費為3,600,000元。",
+        "bbox": [
+            151,
+            116,
+            778,
+            149
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "(幣別/單位：新臺幣/元)",
+        "bbox": [
+            788,
+            152,
+            944,
+            164
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "table",
+        "img_path": "images/3013e4f6bf2cad35b2442b6b73bc8dd07ebaa77ead3b33210973f5fad57e2ded.jpg",
+        "table_caption": [
+            "假設每年宣告利率為2.62%不變情況下，且投保時選擇每年增值回饋分享(保證給付)給付式皆為「購買增額繳清保險額」"
+        ],
+        "table_footnote": [],
+        "table_body": "<table><tr><td rowspan=2 colspan=1>保單年度末</td><td rowspan=2 colspan=1>保險年齡</td><td></td><td rowspan=2 colspan=5>累計實際總繳保費</td><td rowspan=1 colspan=2>基本保險金額</td><td rowspan=1 colspan=2>增值回饋分享金(預估值)</td><td rowspan=1 colspan=2>合計</td><td rowspan=1 colspan=1>當年度保險</td><td rowspan=2 colspan=1>身故/完全失能保險金【含累计增加保險金額】</td><td rowspan=2 colspan=1>分期定期保險金(年)(付10年)(预估值)</td></tr><tr><td></td><td rowspan=1 colspan=1>基本保險金額對應之保單價值準備金(A)</td><td rowspan=1 colspan=1>基本保險金額對應之保單現金價值(解約金)(B)</td><td rowspan=1 colspan=1>累計增加保險金額</td><td rowspan=1 colspan=1>累計增加保險金額對應之保單價值準備金(C)</td><td rowspan=1 colspan=1>保單價值準備金(A)+(C)</td><td rowspan=1 colspan=1>保單現金價值(解約金)(B)+(C)</td><td rowspan=1 colspan=1>金額【含累計增加保險金额】</td></tr><tr><td rowspan=1 colspan=1>1</td><td rowspan=1 colspan=1>40</td><td></td><td rowspan=2 colspan=5></td><td rowspan=1 colspan=1>3,604,623</td><td rowspan=1 colspan=1>2,703,486</td><td rowspan=1 colspan=1>51,078</td><td rowspan=1 colspan=1>49,383</td><td rowspan=1 colspan=1>3,654,006</td><td rowspan=1 colspan=1>2,752,869</td><td rowspan=1 colspan=1>3,769,958</td><td rowspan=1 colspan=1>5,846,410</td><td rowspan=1 colspan=1>637,843</td></tr><tr><td rowspan=1 colspan=1>2</td><td rowspan=1 colspan=1>41</td><td></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1>3,647,238</td><td rowspan=1 colspan=1>2,735,438</td><td rowspan=1 colspan=1>102,856</td><td rowspan=1 colspan=1>100,619</td><td rowspan=1 colspan=1>3,747,857</td><td rowspan=1 colspan=1>2,836,057</td><td rowspan=1 colspan=1>3,821,607</td><td rowspan=1 colspan=1>5,247,000</td><td rowspan=1 colspan=1>572,448</td></tr><tr><td rowspan=3 colspan=1>3</td><td rowspan=3 colspan=1>42</td><td></td><td rowspan=3 colspan=2></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td></td><td rowspan=2 colspan=3></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td></td><td rowspan=1 colspan=3></td><td rowspan=1 colspan=1>3,690,151</td><td rowspan=1 colspan=1>3,653,240</td><td rowspan=1 colspan=1>155,343</td><td rowspan=1 colspan=1>153,752</td><td rowspan=1 colspan=1>3,843,903</td><td rowspan=1 colspan=1>3,806,992</td><td rowspan=1 colspan=1>3,883,672</td><td rowspan=1 colspan=1>5,381,465</td><td rowspan=1 colspan=1>587,118</td></tr><tr><td rowspan=1 colspan=1>4</td><td rowspan=1 colspan=1>43</td><td></td><td rowspan=1 colspan=1></td><td></td><td rowspan=1 colspan=3></td><td rowspan=1 colspan=1>3,733,325</td><td rowspan=1 colspan=1>3,696,004</td><td rowspan=1 colspan=1>208,549</td><td rowspan=1 colspan=1>208,828</td><td rowspan=1 colspan=1>3,942,153</td><td rowspan=1 colspan=1>3,904,832</td><td rowspan=1 colspan=1>3,980,184</td><td rowspan=1 colspan=1>5,519,015</td><td rowspan=1 colspan=1>602,125</td></tr><tr><td rowspan=1 colspan=1>5</td><td rowspan=1 colspan=1>44</td><td></td><td rowspan=1 colspan=1></td><td></td><td></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1>3,776,760</td><td rowspan=1 colspan=1>3,738,992</td><td rowspan=1 colspan=1>262,484</td><td rowspan=1 colspan=1>265,894</td><td rowspan=1 colspan=1>4,042,654</td><td rowspan=1 colspan=1>4,004,886</td><td rowspan=1 colspan=1>4,079,010</td><td rowspan=1 colspan=1>5,659,716</td><td rowspan=1 colspan=1>617,475</td></tr><tr><td rowspan=1 colspan=1>6</td><td rowspan=1 colspan=1>45</td><td></td><td rowspan=1 colspan=2></td><td></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1>3,820,270</td><td rowspan=1 colspan=1>3,782,054</td><td rowspan=1 colspan=1>317,158</td><td rowspan=1 colspan=1>324,979</td><td rowspan=1 colspan=1>4,145,249</td><td rowspan=1 colspan=1>4,107,033</td><td rowspan=1 colspan=1>4,180,606</td><td rowspan=1 colspan=1>5,803,349</td><td rowspan=1 colspan=1>633,145</td></tr><tr><td rowspan=1 colspan=1>7</td><td rowspan=1 colspan=1>46</td><td></td><td rowspan=1 colspan=3></td><td></td><td></td><td rowspan=1 colspan=1>3,864,003</td><td rowspan=1 colspan=1>3,864,003</td><td rowspan=1 colspan=1>372,581</td><td rowspan=1 colspan=1>386,139</td><td rowspan=1 colspan=1>4,250,142</td><td rowspan=1 colspan=1>4,250,142</td><td rowspan=1 colspan=1>4,284,221</td><td rowspan=1 colspan=1>5,950,199</td><td rowspan=1 colspan=1>649,167</td></tr><tr><td rowspan=1 colspan=1>8</td><td rowspan=1 colspan=1>47</td><td></td><td></td><td></td><td></td><td></td><td></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>3,907,885</td><td rowspan=1 colspan=1>3,907,885</td><td rowspan=1 colspan=1>428,763</td><td rowspan=1 colspan=1>449,412</td><td rowspan=1 colspan=1>4,357,297</td><td rowspan=1 colspan=1>4,357,297</td><td rowspan=1 colspan=1>4,390,721</td></tr><tr><td rowspan=1 colspan=1>9</td><td rowspan=1 colspan=1>48</td><td></td><td rowspan=1 colspan=2></td><td></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1>3,951,954</td><td rowspan=1 colspan=1>3,951,954</td><td rowspan=1 colspan=1>485,715</td><td rowspan=1 colspan=1>514,848</td><td rowspan=1 colspan=1>4,466,802</td><td rowspan=1 colspan=1>4,466,802</td><td rowspan=1 colspan=1>4,499,756</td><td rowspan=1 colspan=1>6,253,523</td><td rowspan=1 colspan=1>682,259</td></tr><tr><td rowspan=3 colspan=1>10</td><td rowspan=3 colspan=1>49</td><td></td><td rowspan=3 colspan=2></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td></td><td rowspan=1 colspan=3></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td></td><td rowspan=1 colspan=3></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>3,996,135</td><td rowspan=1 colspan=1>3,996,135</td><td rowspan=1 colspan=1>543,447</td><td rowspan=1 colspan=1>582,483</td><td rowspan=1 colspan=1>4,578,618</td><td rowspan=1 colspan=1>4,578,618</td><td rowspan=1 colspan=1>4,611,809</td><td rowspan=1 colspan=1>6,410,066</td><td rowspan=1 colspan=1>699,338</td></tr><tr><td rowspan=1 colspan=1>15</td><td rowspan=1 colspan=1>54</td><td></td><td rowspan=1 colspan=2></td><td></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1>4,232,250</td><td rowspan=1 colspan=1>4,232,250</td><td rowspan=1 colspan=1>844,192</td><td rowspan=1 colspan=1>958,293</td><td rowspan=1 colspan=1>5,190,543</td><td rowspan=1 colspan=1>5,190,543</td><td rowspan=1 colspan=1>5,214,046</td><td rowspan=1 colspan=1>6,228,652</td><td rowspan=1 colspan=1>679,546</td></tr><tr><td rowspan=1 colspan=1>20</td><td rowspan=1 colspan=1>59</td><td></td><td rowspan=1 colspan=2></td><td></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1>4,477,164</td><td rowspan=1 colspan=1>4,477,164</td><td rowspan=1 colspan=1>1,166,112</td><td rowspan=1 colspan=1>1,400,326</td><td rowspan=1 colspan=1>5,877,490</td><td rowspan=1 colspan=1>5,877,490</td><td rowspan=1 colspan=1>5,894,865</td><td rowspan=1 colspan=1>7,052,988</td><td rowspan=1 colspan=1>769,481</td></tr><tr><td rowspan=2 colspan=1>25</td><td rowspan=2 colspan=1>64</td><td></td><td rowspan=2 colspan=2></td><td></td><td></td><td rowspan=2 colspan=1></td><td rowspan=2 colspan=1>4,739,825</td><td rowspan=2 colspan=1>4,739,825</td><td rowspan=2 colspan=1>1,510,695</td><td rowspan=2 colspan=1>1,920,547</td><td rowspan=2 colspan=1>6,660,372</td><td rowspan=2 colspan=1>6,660,372</td><td rowspan=2 colspan=1>6,664,562</td><td rowspan=2 colspan=1>7,326,410</td><td rowspan=2 colspan=1>799,311</td></tr><tr><td></td><td rowspan=2 colspan=5></td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td></td><td rowspan=1 colspan=1>0</td><td rowspan=1 colspan=1>0</td><td rowspan=1 colspan=1>1,879,537</td><td rowspan=1 colspan=1>0.00</td><td rowspan=1 colspan=1>0.00</td><td rowspan=1 colspan=1>0.00</td><td rowspan=1 colspan=1>7,534,729</td><td rowspan=1 colspan=1>8,288,202</td><td rowspan=1 colspan=1>904,243</td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>69</td><td rowspan=1 colspan=15>給付滿期保險金7,534729元(預估值)</td></tr></table>",
+        "bbox": [
+            55,
+            187,
+            946,
+            489
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "image",
+        "img_path": "images/2e0e0c3a49d9d7c7d6e98061c0b1a7cd8878f83ae8ef415c8f7c54ebcc1beb85.jpg",
+        "image_caption": [],
+        "image_footnote": [],
+        "bbox": [
+            53,
+            506,
+            141,
+            563
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "40歲男性投保「台灣人壽金利樂利率變動型養老保險」保險金額3，655，476元，繳費2年，表定年繳保費1,878,915元，期保險費採匯款及續期保險費採金融轉帳享1.0%折扣及高保費折扣3.2%，合計4.2%，折扣後年繳實繳保費為1，800，000元。 （整别/單位：新",
+        "bbox": [
+            151,
+            507,
+            889,
+            557
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "(幣別/單位：新幣/元)",
+        "bbox": [
+            788,
+            548,
+            942,
+            561
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "table",
+        "img_path": "images/4491fd7a13ae4b45a71d5097c42c48d4ddd2a1e70cee434b2323376b0e32f1ea.jpg",
+        "table_caption": [
+            "假設每年宣告利率為2.62%不變情況下，且投保時選擇每年增值回饋分享(非保證給付) 給付式皆為「購買增額繳清保險金額」"
+        ],
+        "table_footnote": [
+            "註1：上表與「累計增加保險金額」之相關數值為假設每年宣告利率2.62%下計算，且為工試算容有四捨五入之誤差，實際金額以給付當時系統計算為主。",
+            "註2：上表各項累計增加保險金額之年度末相關數值，係已包含次保單週年日始生效之增額繳清保險金額，各項實際給付金額須以計算當時之實際累計增加保險金額為準。",
+            "註3：身故/完全失能保險金」給付，可選擇分期定期給付，假設選擇分期定期保險金給付期間為10年，指定保險金（比例)100%，分期定期保險金預定利率為2.00%。",
+            "註4：解約金及保單價值準備金係為領取滿期保險金後之數額。",
+            "本範例數值僅供參考，可能存在數點四捨五進位之差異，實際數值詳閱保單為準，各項給付條件之詳細內容請參閱保單條款。"
+        ],
+        "table_body": "<table><tr><td rowspan=2 colspan=1>保單年度末</td><td rowspan=2 colspan=1>保險年龄</td><td rowspan=2 colspan=5>累計實際總繳保費</td><td rowspan=1 colspan=2>基本保險金額</td><td rowspan=1 colspan=2>增值回饋分享金(预估值)</td><td rowspan=1 colspan=2>合計</td><td rowspan=1 colspan=1>當年度保險</td><td rowspan=2 colspan=1>身故/完全失能保險金【含累計增加保險金額】</td><td rowspan=2 colspan=1>分期定期保險金(年)(給付10年)(預估值)</td></tr><tr><td rowspan=1 colspan=1>基本保險金額對應之保單價值準備金(A)</td><td rowspan=1 colspan=1>基本保險金額對應之保單現金價值(解約金)(B)</td><td rowspan=1 colspan=1>累計增加保險金額</td><td rowspan=1 colspan=1>累計增加保險金額對應之保單價值準備金(C)</td><td rowspan=1 colspan=1>保單價值準備金(A)+(C)</td><td rowspan=1 colspan=1>保單現金價值(解約金)(B)+(C)</td><td rowspan=1 colspan=1>金額【含累計增加保險金額】</td></tr><tr><td rowspan=1 colspan=1>1</td><td rowspan=1 colspan=1>40</td><td rowspan=1 colspan=5>1,800,000</td><td rowspan=1 colspan=1>1,601,976</td><td rowspan=1 colspan=1>1,201,482</td><td rowspan=1 colspan=1>22,700</td><td rowspan=1 colspan=1>21,947</td><td rowspan=1 colspan=1>1,623,923</td><td rowspan=1 colspan=1>1,223,429</td><td rowspan=1 colspan=1>1,890,582</td><td rowspan=1 colspan=1>2,598,277</td><td rowspan=1 colspan=1>283,472</td></tr><tr><td rowspan=1 colspan=1>2</td><td rowspan=1 colspan=1>41</td><td rowspan=3 colspan=5></td><td rowspan=1 colspan=1>3,575,969</td><td rowspan=1 colspan=1>2,681,986</td><td rowspan=1 colspan=1>73,091</td><td rowspan=1 colspan=1>71,501</td><td rowspan=1 colspan=1>3,647,470</td><td rowspan=1 colspan=1>2,753,487</td><td rowspan=1 colspan=1>3,832,966</td><td rowspan=1 colspan=1>5,106,458</td><td rowspan=1 colspan=1>557,115</td></tr><tr><td rowspan=1 colspan=1>3</td><td rowspan=1 colspan=1>42</td><td rowspan=1 colspan=1>3,618,044</td><td rowspan=1 colspan=1>3,581,855</td><td rowspan=1 colspan=1>124,172</td><td rowspan=1 colspan=1>122,900</td><td rowspan=1 colspan=1>3,740,944</td><td rowspan=1 colspan=1>3,704,755</td><td rowspan=1 colspan=1>3,779,648</td><td rowspan=1 colspan=1>5,237,322</td><td rowspan=1 colspan=1>571,392</td></tr><tr><td rowspan=1 colspan=1>4</td><td rowspan=1 colspan=1>43</td><td rowspan=1 colspan=1>3,660,374</td><td rowspan=1 colspan=1>3,623,783</td><td rowspan=1 colspan=1>175,953</td><td rowspan=1 colspan=1>176,189</td><td rowspan=1 colspan=1>3,836,563</td><td rowspan=1 colspan=1>3,799,972</td><td rowspan=1 colspan=1>3,873,575</td><td rowspan=1 colspan=1>5,371,189</td><td rowspan=1 colspan=1>585,997</td></tr><tr><td rowspan=1 colspan=1>5</td><td rowspan=1 colspan=1>44</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=3></td><td rowspan=1 colspan=1>3,702,961</td><td rowspan=1 colspan=1>3,665,931</td><td rowspan=1 colspan=1>228,444</td><td rowspan=1 colspan=1>231,411</td><td rowspan=1 colspan=1>3,934,372</td><td rowspan=1 colspan=1>3,897,342</td><td rowspan=1 colspan=1>3,969,755</td><td rowspan=1 colspan=1>5,508,121</td><td rowspan=1 colspan=1>600,936</td></tr><tr><td rowspan=1 colspan=1>6</td><td rowspan=1 colspan=1>45</td><td rowspan=1 colspan=1></td><td></td><td></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1>3,745,620</td><td rowspan=1 colspan=1>3,708,151</td><td rowspan=1 colspan=1>281,654</td><td rowspan=1 colspan=1>288,600</td><td rowspan=1 colspan=1>4,034,220</td><td rowspan=1 colspan=1>3,996,751</td><td rowspan=1 colspan=1>4,068,630</td><td rowspan=1 colspan=1>5,647,908</td><td rowspan=1 colspan=1>616,187</td></tr><tr><td></td><td rowspan=3 colspan=1>7</td><td rowspan=3 colspan=1>46</td><td rowspan=3 colspan=2></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td></td><td rowspan=1 colspan=2></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1>3,788,499</td><td rowspan=1 colspan=1>3,788,499</td><td rowspan=1 colspan=1>335,593</td><td rowspan=1 colspan=1>347,805</td><td rowspan=1 colspan=1>4,136,304</td><td rowspan=1 colspan=1>4,136,304</td><td rowspan=1 colspan=1>4,169,470</td><td rowspan=1 colspan=1>5,790,826</td><td rowspan=1 colspan=1>631,779</td></tr><tr><td rowspan=1 colspan=1>8</td><td rowspan=1 colspan=1>47</td><td rowspan=1 colspan=4>3,600,000</td><td rowspan=1 colspan=1>0,000</td><td rowspan=1 colspan=1>3,831,524</td><td rowspan=1 colspan=1>3,831,524</td><td rowspan=1 colspan=1>390,271</td><td rowspan=1 colspan=1>409,066</td><td rowspan=1 colspan=1>4,240,590</td><td rowspan=1 colspan=1>4,240,590</td><td rowspan=1 colspan=1>4,273,118</td><td rowspan=1 colspan=1>5,936,826</td><td rowspan=1 colspan=1>647,708</td></tr><tr><td rowspan=1 colspan=1>9</td><td rowspan=1 colspan=1>48</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=3></td><td rowspan=1 colspan=1>3,874,731</td><td rowspan=1 colspan=1>3,874,731</td><td rowspan=1 colspan=1>445,698</td><td rowspan=1 colspan=1>472,431</td><td rowspan=1 colspan=1>4,347,162</td><td rowspan=1 colspan=1>4,347,162</td><td rowspan=1 colspan=1>4,379,234</td><td rowspan=1 colspan=1>6,086,027</td><td rowspan=1 colspan=1>663,986</td></tr><tr><td rowspan=1 colspan=1>10</td><td rowspan=1 colspan=1>49</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=3></td><td rowspan=1 colspan=1>3,918,049</td><td rowspan=1 colspan=1>3,918,049</td><td rowspan=1 colspan=1>501,884</td><td rowspan=1 colspan=1>537,934</td><td rowspan=1 colspan=1>4,455,983</td><td rowspan=1 colspan=1>4,455,983</td><td rowspan=1 colspan=1>4,488,286</td><td rowspan=1 colspan=1>6,238,377</td><td rowspan=1 colspan=1>680,607</td></tr><tr><td rowspan=1 colspan=1>15</td><td rowspan=1 colspan=1>54</td><td rowspan=1 colspan=3></td><td rowspan=4 colspan=3></td><td rowspan=1 colspan=1>4,149,550</td><td rowspan=1 colspan=1>4,149,550</td><td rowspan=1 colspan=1>794,574</td><td rowspan=1 colspan=1>901,969</td><td rowspan=1 colspan=1>5,051,519</td><td rowspan=1 colspan=1>5,051,519</td><td rowspan=1 colspan=1>5,074,392</td><td rowspan=1 colspan=1>6,061,823</td></tr><tr><td rowspan=1 colspan=1>20</td><td rowspan=1 colspan=1>59</td><td></td><td></td><td></td><td rowspan=1 colspan=1>4,389,678</td><td rowspan=1 colspan=1>4,389,678</td><td rowspan=1 colspan=1>1,107,871</td><td rowspan=1 colspan=1>1,330,387</td><td rowspan=1 colspan=1>5,720,065</td><td rowspan=1 colspan=1>5,720,065</td><td rowspan=1 colspan=1>5,736,975</td><td rowspan=1 colspan=1>6,864,078</td><td rowspan=1 colspan=1>748,871</td></tr><tr><td rowspan=1 colspan=1>25</td><td rowspan=1 colspan=1>64</td><td></td><td></td><td></td><td rowspan=1 colspan=1>4,647,207</td><td rowspan=1 colspan=1>4,647,207</td><td rowspan=1 colspan=1>1,443,224</td><td rowspan=1 colspan=1>1,834,771</td><td rowspan=1 colspan=1>6,481,978</td><td rowspan=1 colspan=1>6,481,978</td><td rowspan=1 colspan=1>6,486,056</td><td rowspan=1 colspan=1>7,130,176</td><td rowspan=1 colspan=1>777,902</td></tr><tr><td rowspan=2 colspan=1>3069</td><td rowspan=2 colspan=1>3069</td><td></td><td></td><td></td><td rowspan=1 colspan=1>0</td><td rowspan=1 colspan=1>0</td><td rowspan=1 colspan=1>1,802,186</td><td rowspan=1 colspan=1>0</td><td rowspan=1 colspan=1>0</td><td rowspan=1 colspan=1>0</td><td rowspan=1 colspan=1>7,332,915</td><td rowspan=1 colspan=1>8,066,207</td><td rowspan=1 colspan=1>880,023</td></tr><tr><td rowspan=1 colspan=14>給付滿期保險金7,332,915元(預估值）</td></tr></table>",
+        "bbox": [
+            55,
+            583,
+            946,
+            887
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "header",
+        "text": "40歲男性",
+        "bbox": [
+            786,
+            32,
+            947,
+            146
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "投保規則",
+        "text_level": 2,
+        "bbox": [
+            78,
+            39,
+            200,
+            60
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "table",
+        "img_path": "images/aa55bee0fd63fcc4cf349cfb66e6e9ce6d2f68c39a1b94005a657398d9e2512a.jpg",
+        "table_caption": [],
+        "table_footnote": [],
+        "table_body": "<table><tr><td rowspan=\"2\">繳費年期 及投保年龄</td><td colspan=\"2\">缴費年期</td><td colspan=\"2\">躉繳</td><td>2年期 繳 别</td><td colspan=\"4\">躉繳、年繳。</td></tr><tr><td colspan=\"2\">投保年龄</td><td>0歲~80歲</td><td>0歲~78歲</td><td colspan=\"4\">繳費 年期 表定/年缴保費</td></tr><tr><td rowspan=\"3\">投保金額 （以元為單位）</td><td colspan=\"4\">1.最低投保金額：新台幣20萬元。 2.本保險累計最高投保金額：</td><td rowspan=\"4\">高保費折扣</td><td>新台幣240萬元（含）</td><td>保費 折扣率</td><td>合併折 扣上限</td></tr><tr><td colspan=\"2\">投保年龄</td><td>投保金額</td><td rowspan=\"2\">躉繳</td><td>~360萬元（不含） 新台幣360萬元（含）</td><td>0.8%</td><td>0.8%</td></tr><tr><td colspan=\"2\">15足歲（不含)以下 15足歲（含）以上</td><td>新臺幣1,000萬元 新台幣2億元</td><td>以上</td><td>3.2%</td><td>3.2%</td></tr><tr><td rowspan=\"6\">繳費方式</td><td rowspan=\"2\">躉 繳</td><td colspan=\"3\" rowspan=\"2\">1.自行匯款。 2.金融機構自動轉帳：無保費折扣，需另檢 附「自動轉帳付款授權書」。 3.信用卡：需另檢附「保險費信用卡付款授</td><td rowspan=\"2\">2</td><td>新臺幣120萬元（含） ~180萬元（不含）</td><td>0.8%</td><td>1.8%</td></tr><tr><td>年期 新台幣180萬元（含） 以上</td><td>3.2%</td><td>4.2%</td></tr><tr><td rowspan=\"2\"></td><td colspan=\"3\" rowspan=\"2\">權書」。 1.自行匯款：若期保險費為自匯款且同 時附「自動轉帳付款授權書」，首期保險 費即與續期保險費同享有1%保費折扣。 2.金融機構自動轉帳：享有1%之保費折</td><td rowspan=\"2\">身故保險金 /完全失能 保險金給付 相關規定</td><td colspan=\"3\" rowspan=\"2\">1.給付式：可選擇「次性給付」或「分期定 期給付（限年給付）」（須分別註明比例）。 2.選擇分期定期給付，須指定給付期間（5年~</td></tr><tr><td colspan=\"3\">30年）。 3.要保人可選擇分期定期給付開始日，但該給付 開始日不得晚於受益人備齊給付申領文件之日</td></tr><tr><td rowspan=\"2\">2年期</td><td colspan=\"3\" rowspan=\"2\">扣，需另檢附「自動轉帳付款授權書」。 3.信用卡：需另檢附「保險費信用卡付款授 權書」。</td><td rowspan=\"2\">辦理。</td><td colspan=\"3\" rowspan=\"2\">起15日。</td></tr><tr><td colspan=\"2\">其他未另規範事宜，請依台灣壽現行各項投保規則</td></tr></table>",
+        "bbox": [
+            58,
+            77,
+            939,
+            441
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "注意事项",
+        "text_level": 2,
+        "bbox": [
+            60,
+            453,
+            181,
+            474
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "1.消費者投保前應審慎瞭解本商品之承保範圍、除外不保事項及商品風險。",
+        "bbox": [
+            57,
+            479,
+            531,
+            492
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "2.本商品為保險商品受『財團法保險安定基金』之『身保險安定基金專』保障，並非存款项目，故不受存款保險之保障。",
+        "bbox": [
+            57,
+            492,
+            583,
+            516
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "3.本商品經台灣人壽合格簽署人員檢視其內容業已符合一般精算原則及保險法令，惟為確保權益，基於保險公司與消費者衡平對等原則，消費者仍應詳加閱讀保險單條款與相關文件，審慎選擇保險商品。本商品如有虛偽不實或違法情事，應由台灣人壽及其負責人依法負責。",
+        "bbox": [
+            57,
+            516,
+            583,
+            562
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "4.消費者於購買本商品前，應詳閱各種銷售文件內容，本商品之預定附加費用率最高7.49%、最低4.18%；如要詳細了解其他相關資訊，請洽台灣人壽客户服務中心（客服務專線：0800-099-850/機另撥(02)8170-5156）或網站（www.taiwanlife.com)，以保障您的權益。",
+        "bbox": [
+            57,
+            562,
+            583,
+            608
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "5.人壽保險之死亡給付及年金保險之確定年金給付於被保險人死亡後給付於指定受益人者，依保險法第一百十二條規定不得作為被保險人之遺產，惟如涉有規避遺產稅等稅捐情事者，稽徵機關仍得依據有關稅法規定或納稅者權利保護法第七條所定實質課稅原則辦理。相關實務案例請參考台灣人壽網站實質課稅原則專區。",
+        "bbox": [
+            57,
+            608,
+            583,
+            655
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "6.本商品為利率變動型保險商品，宣告利率將隨經濟環境波動，除契約另有約定外，台灣人壽不負最低宣告利率保證之責。",
+        "bbox": [
+            57,
+            655,
+            583,
+            678
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "7.宣告利率並非固定利率，會隨台灣人壽宣告而有所變動，宣告利率之下限亦可能因市場利率偏低，而導致無最低利率保證，惟與市場利率無絕對關係。",
+        "bbox": [
+            57,
+            678,
+            583,
+            702
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "8.本商品為複利增額型壽險商品，其保單借款利率屬短期利率且具變動性，通常高於保單預定利率，保戶辦理保單借款必須支付高於按保單預定利率計算之利息，中途解約亦可能有損失或無法獲得複利增值。",
+        "bbox": [
+            57,
+            702,
+            583,
+            737
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "9.投保後解約或不繼續繳費可能不利消費者，請慎選符合需求之保險商品。",
+        "bbox": [
+            57,
+            738,
+            529,
+            750
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "10.保險契約各項權利義務皆詳列於保單條款，消費者務必詳加閱讀了解，並把握保單契約撤銷之時效(收到保單翌日起算十日內)。",
+        "bbox": [
+            50,
+            750,
+            583,
+            774
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "解約金非保險給付項。",
+        "bbox": [
+            50,
+            774,
+            221,
+            785
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "本保險契約須於訂立契約前提供要保人不低於三日之審閱期間。",
+        "bbox": [
+            50,
+            787,
+            465,
+            799
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "本商品係由台灣人壽保險股份有限公司發行，透過本公司之保險業務員或合作之保險代理人或保險經紀人行銷。",
+        "bbox": [
+            50,
+            799,
+            583,
+            821
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "本商品文宣僅供參考，詳細內容請參閱保單條款約定為準。",
+        "bbox": [
+            48,
+            824,
+            462,
+            837
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "【不分紅人壽保險單資訊揭露】",
+        "text_level": 2,
+        "bbox": [
+            589,
+            457,
+            806,
+            472
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "揭露解約及存與總繳保險費例關係如下：",
+        "bbox": [
+            589,
+            473,
+            902,
+            486
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "CVm+ΣDiv₂（1+i）m-t+ΣEnd（1+i）m-t",
+        "bbox": [
+            598,
+            488,
+            932,
+            505
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "ΣGP₂（1+i）m-t+1",
+        "bbox": [
+            692,
+            510,
+            835,
+            525
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "m=1，2，3，4，5，10，15，20",
+        "bbox": [
+            633,
+            526,
+            826,
+            538
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "ì：前曆年度之個台灣銀、第銀、合作庫三家庫每月初（每月第個營業）牌告之二年期定期储蓄存款最高年利率之平均值（本年度所使用数值為1.75%）",
+        "bbox": [
+            615,
+            538,
+            942,
+            581
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "CVm：第m保單年度之年末解約",
+        "bbox": [
+            591,
+            581,
+            791,
+            593
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "Divt：第t保單年度之可能紅利金額，但為不分紅保單者，其值為0",
+        "bbox": [
+            593,
+            592,
+            942,
+            613
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "GPt：第t保單年度之年繳保險費",
+        "bbox": [
+            594,
+            613,
+            791,
+            625
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "Endt：第t保單年度之生存保險金，但無生存保險金之給付者，其值为0",
+        "bbox": [
+            591,
+            624,
+            941,
+            645
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "m：應揭露之年期",
+        "bbox": [
+            608,
+            646,
+            715,
+            658
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "以缴，男性、女性為例之",
+        "bbox": [
+            591,
+            661,
+            747,
+            673
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "揭露值如下:(%)",
+        "bbox": [
+            591,
+            673,
+            692,
+            683
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "以缴費2年期，男性、女性為例之揭露值如下：(%)",
+        "bbox": [
+            768,
+            661,
+            942,
+            683
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "table",
+        "img_path": "images/49ef04ffdb538db91b37eb6d1ca801d3eb3ff3685841192a4246f3252202e937.jpg",
+        "table_caption": [],
+        "table_footnote": [],
+        "table_body": "<table><tr><td rowspan=1 colspan=1>投保年龄</td><td rowspan=1 colspan=2>5</td><td rowspan=1 colspan=2>35</td><td rowspan=1 colspan=2>65</td></tr><tr><td rowspan=1 colspan=1>保單年度</td><td rowspan=1 colspan=1>男</td><td rowspan=1 colspan=1>女</td><td rowspan=1 colspan=1>男</td><td rowspan=1 colspan=1>女</td><td rowspan=1 colspan=1>男</td><td rowspan=1 colspan=1>女</td></tr><tr><td rowspan=1 colspan=1>1</td><td rowspan=1 colspan=1>71</td><td rowspan=1 colspan=1>71</td><td rowspan=1 colspan=1>71</td><td rowspan=1 colspan=1>71</td><td rowspan=1 colspan=1>71</td><td rowspan=1 colspan=1>71</td></tr><tr><td rowspan=1 colspan=1>2</td><td rowspan=1 colspan=1>71</td><td rowspan=1 colspan=1>71</td><td rowspan=1 colspan=1>71</td><td rowspan=1 colspan=1>71</td><td rowspan=1 colspan=1>71</td><td rowspan=1 colspan=1>71</td></tr><tr><td rowspan=1 colspan=1>3</td><td rowspan=1 colspan=1>93</td><td rowspan=1 colspan=1>93</td><td rowspan=1 colspan=1>93</td><td rowspan=1 colspan=1>93</td><td rowspan=1 colspan=1>93</td><td rowspan=1 colspan=1>93</td></tr><tr><td rowspan=1 colspan=1>4</td><td rowspan=1 colspan=1>92</td><td rowspan=1 colspan=1>92</td><td rowspan=1 colspan=1>93</td><td rowspan=1 colspan=1>92</td><td rowspan=1 colspan=1>92</td><td rowspan=1 colspan=1>92</td></tr><tr><td rowspan=1 colspan=1>5</td><td rowspan=1 colspan=1>92</td><td rowspan=1 colspan=1>92</td><td rowspan=1 colspan=1>92</td><td rowspan=1 colspan=1>92</td><td rowspan=1 colspan=1>92</td><td rowspan=1 colspan=1>92</td></tr><tr><td rowspan=1 colspan=1>10</td><td rowspan=1 colspan=1>90</td><td rowspan=1 colspan=1>90</td><td rowspan=1 colspan=1>90</td><td rowspan=1 colspan=1>90</td><td rowspan=1 colspan=1>90</td><td rowspan=1 colspan=1>90</td></tr><tr><td rowspan=1 colspan=1>15</td><td rowspan=1 colspan=1>88</td><td rowspan=1 colspan=1>88</td><td rowspan=1 colspan=1>88</td><td rowspan=1 colspan=1>88</td><td rowspan=1 colspan=1>87</td><td rowspan=1 colspan=1>88</td></tr><tr><td rowspan=1 colspan=1>20</td><td rowspan=1 colspan=1>86</td><td rowspan=1 colspan=1>86</td><td rowspan=1 colspan=1>85</td><td rowspan=1 colspan=1>86</td><td rowspan=1 colspan=1>85</td><td rowspan=1 colspan=1>85</td></tr></table>",
+        "bbox": [
+            593,
+            686,
+            764,
+            785
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "table",
+        "img_path": "images/e490cdade821587bfea7821f2a71df0cde06620ff8c49be397aab03f5d71eadc.jpg",
+        "table_caption": [],
+        "table_footnote": [],
+        "table_body": "<table><tr><td rowspan=1 colspan=1>投保年龄</td><td rowspan=1 colspan=2>5</td><td rowspan=1 colspan=2>35</td><td rowspan=1 colspan=2>65</td></tr><tr><td rowspan=1 colspan=1>保單年度</td><td rowspan=1 colspan=1>男</td><td rowspan=1 colspan=1>女</td><td rowspan=1 colspan=1>男</td><td rowspan=1 colspan=1>女</td><td rowspan=1 colspan=1>男</td><td rowspan=1 colspan=1>女</td></tr><tr><td rowspan=1 colspan=1>1</td><td rowspan=1 colspan=1>63</td><td rowspan=1 colspan=1>63</td><td rowspan=1 colspan=1>63</td><td rowspan=1 colspan=1>63</td><td rowspan=1 colspan=1>61</td><td rowspan=1 colspan=1>62</td></tr><tr><td rowspan=1 colspan=1>2</td><td rowspan=1 colspan=1>70</td><td rowspan=1 colspan=1>69</td><td rowspan=1 colspan=1>70</td><td rowspan=1 colspan=1>69</td><td rowspan=1 colspan=1>69</td><td rowspan=1 colspan=1>69</td></tr><tr><td rowspan=1 colspan=1>3</td><td rowspan=1 colspan=1>91</td><td rowspan=1 colspan=1>91</td><td rowspan=1 colspan=1>91</td><td rowspan=1 colspan=1>91</td><td rowspan=1 colspan=1>91</td><td rowspan=1 colspan=1>91</td></tr><tr><td rowspan=1 colspan=1>4</td><td rowspan=1 colspan=1>91</td><td rowspan=1 colspan=1>91</td><td rowspan=1 colspan=1>91</td><td rowspan=1 colspan=1>91</td><td rowspan=1 colspan=1>90</td><td rowspan=1 colspan=1>90</td></tr><tr><td rowspan=1 colspan=1>5</td><td rowspan=1 colspan=1>90</td><td rowspan=1 colspan=1>90</td><td rowspan=1 colspan=1>90</td><td rowspan=1 colspan=1>90</td><td rowspan=1 colspan=1>90</td><td rowspan=1 colspan=1>90</td></tr><tr><td rowspan=1 colspan=1>10</td><td rowspan=1 colspan=1>89</td><td rowspan=1 colspan=1>89</td><td rowspan=1 colspan=1>89</td><td rowspan=1 colspan=1>89</td><td rowspan=1 colspan=1>88</td><td rowspan=1 colspan=1>88</td></tr><tr><td rowspan=1 colspan=1>15</td><td rowspan=1 colspan=1>87</td><td rowspan=1 colspan=1>87</td><td rowspan=1 colspan=1>86</td><td rowspan=1 colspan=1>86</td><td rowspan=1 colspan=1>86</td><td rowspan=1 colspan=1>86</td></tr><tr><td rowspan=1 colspan=1>20</td><td rowspan=1 colspan=1>84</td><td rowspan=1 colspan=1>85</td><td rowspan=1 colspan=1>83</td><td rowspan=1 colspan=1>84</td><td rowspan=1 colspan=1>83</td><td rowspan=1 colspan=1>84</td></tr></table>",
+        "bbox": [
+            769,
+            684,
+            941,
+            785
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "依據上列各表顯示，投保台灣人壽金利樂利率變動型養老保險於投保後解約對保戶是不利的。",
+        "bbox": [
+            591,
+            788,
+            939,
+            808
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "以上係以各階段不同性別，不同保單年度解約可能拿回的金額與累積已繳納保費之比例。",
+        "bbox": [
+            593,
+            808,
+            939,
+            829
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "image",
+        "img_path": "images/cb4a2a6b7fbec9dc2b433c0920fa72846dcf8ea746265823684bea6226b4a586.jpg",
+        "image_caption": [],
+        "image_footnote": [],
+        "bbox": [
+            43,
+            846,
+            99,
+            884
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "中國信託金控台灣人壽",
+        "bbox": [
+            110,
+            851,
+            230,
+            883
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "台灣人壽保險（股）公司為中國信託金融控股（股）公司旗下公司之，所經營業務項目包括個身保險業務及團體保險業務。行銷通路包括銀行保險、電話行銷、保險經紀人與代理人、業務員及企業保險通路，提供社會大眾個人、家庭、企業財務保障計劃，為社會建立完整的風險規劃體系。",
+        "bbox": [
+            250,
+            847,
+            944,
+            885
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "台灣人壽保險股份有限公司",
+        "bbox": [
+            42,
+            916,
+            196,
+            928
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "地址：台北市11568南港區經貿二路188號8樓",
+        "bbox": [
+            42,
+            931,
+            297,
+            941
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "網址：www.taiwanlife.com",
+        "bbox": [
+            42,
+            944,
+            201,
+            954
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "header",
+        "text": "（幣別/單位：新台幣/元）",
+        "bbox": [
+            774,
+            46,
+            937,
+            60
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "footer",
+        "text": "《2026.01》",
+        "bbox": [
+            885,
+            956,
+            951,
+            967
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "footer",
+        "text": "Control No:2512-OP-0135",
+        "bbox": [
+            789,
+            970,
+            954,
+            980
+        ],
+        "page_idx": 3
+    }
+]

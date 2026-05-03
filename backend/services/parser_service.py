@@ -1,6 +1,8 @@
+import json
 import os
 import subprocess
 import tempfile
+import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -110,6 +112,149 @@ def _get_docling_converter():
         }
     )
 
+
+# ── MinerU helpers ────────────────────────────────────────────────────────────
+
+def _get_page_heights_fitz(pdf_path: Path) -> dict[int, float]:
+    """Return {page_no (1-based): height_in_pt} using PyMuPDF."""
+    try:
+        import fitz
+        with fitz.open(pdf_path) as doc:
+            return {i + 1: float(page.rect.height) for i, page in enumerate(doc)}
+    except Exception:
+        return {}
+
+
+def _mineru_bbox_to_bbox(raw: list, page_no: int, page_height: float) -> BBox:
+    """Convert MinerU [x0, y0_top, x1, y1_top] (top-left origin) to bottom-left BBox."""
+    x0, y0_top, x1, y1_top = float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3])
+    return BBox(page=page_no, x0=x0, y0=page_height - y1_top, x1=x1, y1=page_height - y0_top)
+
+
+def _normalize_mineru_text(text: str) -> str:
+    """NFKC normalise to collapse 繁簡混用 edge cases from OCR pipeline."""
+    return " ".join(unicodedata.normalize("NFKC", text).split())
+
+
+def _html_table_to_dataframe(html: str) -> pd.DataFrame:
+    """Parse MinerU HTML table → DataFrame, handling rowspan/colspan via lxml/html5lib."""
+    if not html.strip():
+        return pd.DataFrame()
+    try:
+        dfs = pd.read_html(html, flavor="lxml")
+        if dfs:
+            return dfs[0].fillna("").astype(str)
+    except Exception:
+        pass
+    try:
+        dfs = pd.read_html(html)
+        if dfs:
+            return dfs[0].fillna("").astype(str)
+    except Exception:
+        pass
+    return pd.DataFrame()
+
+
+def _parse_via_mineru(
+    pdf_path: Path,
+    page_heights: dict[int, float],
+) -> ParsedDocument:
+    """Call MinerU REST API to extract tables and text.
+
+    Uses pipeline backend with chinese_cht language to minimise
+    Traditional/Simplified Chinese mixing in OCR output.
+    Falls back gracefully if the service is unavailable.
+    """
+    import requests as _requests
+
+    from config import settings
+
+    url = (settings.mineru_api_url or os.getenv("MINERU_API_URL", "")).rstrip("/")
+    if not url:
+        raise RuntimeError("MINERU_API_URL not configured")
+
+    with open(pdf_path, "rb") as f:
+        resp = _requests.post(
+            f"{url}/file_parse",
+            files={"files": (pdf_path.name, f, "application/pdf")},
+            data={
+                "backend": "pipeline",
+                "lang_list": "chinese_cht",
+                "parse_method": "auto",
+                "return_md": "true",
+                "return_content_list": "true",
+            },
+            timeout=300,
+        )
+    resp.raise_for_status()
+
+    data = resp.json()
+    results = data.get("results", {})
+    # Key is the file stem (filename without .pdf)
+    stem = pdf_path.stem
+    item = results.get(stem) or (next(iter(results.values()), {}) if results else {})
+
+    md = item.get("md_content", "") or ""
+    cl_raw = item.get("content_list", [])
+    cl: list = json.loads(cl_raw) if isinstance(cl_raw, str) else (cl_raw or [])
+
+    paragraphs: list[ParsedParagraph] = []
+    tables: list[ParsedTable] = []
+
+    for block in cl:
+        if not isinstance(block, dict):
+            continue
+
+        btype = block.get("type", "")
+        raw_bbox = block.get("bbox") or []
+        # MinerU uses 0-based page_idx
+        page_no = int(block.get("page_idx", 0)) + 1
+        page_h = page_heights.get(page_no, DEFAULT_PAGE_HEIGHT_PT)
+
+        bbox = _mineru_bbox_to_bbox(raw_bbox, page_no, page_h) if len(raw_bbox) == 4 else None
+
+        if btype == "text":
+            text = _normalize_mineru_text(block.get("text", "") or "")
+            if text and bbox:
+                paragraphs.append(ParsedParagraph(text=text, bbox=bbox))
+
+        elif btype == "table":
+            html = block.get("table_body", "") or ""
+            caption_raw = block.get("table_caption") or []
+            caption = (
+                caption_raw[0] if isinstance(caption_raw, list) and caption_raw
+                and isinstance(caption_raw[0], str)
+                else (caption_raw if isinstance(caption_raw, str) else None)
+            )
+            df = _html_table_to_dataframe(html)
+            if bbox:
+                tables.append(ParsedTable(
+                    dataframe=df,
+                    bbox=bbox,
+                    caption=caption,
+                    header_rows=1,
+                    cell_bboxes={},  # cell-level bbox not available from MinerU HTML
+                ))
+
+    total_pages = max(page_heights.keys()) if page_heights else max(
+        (int(b.get("page_idx", 0)) + 1 for b in cl if isinstance(b, dict)), default=1
+    )
+
+    return ParsedDocument(
+        pages=total_pages,
+        paragraphs=paragraphs,
+        tables=tables,
+        raw_json={
+            "engine": "mineru",
+            "raw_preview": md[:3000],
+            "paragraph_count": len(paragraphs),
+            "table_count": len(tables),
+        },
+        markdown_text=md or None,
+    )
+
+
+# ── Docling ───────────────────────────────────────────────────────────────────
 
 def _parse_via_docling(pdf_path: Path) -> ParsedDocument:
     converter = _get_docling_converter()
@@ -405,20 +550,34 @@ def parse_pdf(file_path: str) -> ParsedDocument:
             # Do NOT fall through to docling OCR — OCR noise causes false positives.
             return doc
         if doc.paragraphs:
-            # Text-layer PDF: augment with docling table detection.
-            try:
-                docling_doc = _parse_via_docling(pdf_path)
-                if docling_doc.tables:
-                    doc = ParsedDocument(
-                        pages=doc.pages,
-                        paragraphs=doc.paragraphs,
-                        tables=docling_doc.tables,
-                        raw_json=doc.raw_json,
-                        markdown_text=doc.markdown_text,
-                        is_image_pdf=False,
-                    )
-            except Exception:
-                pass  # tables are optional; fitz paragraphs are primary
+            # Text-layer PDF: augment with table detection.
+            # Prefer MinerU (higher table precision, cell-level HTML) when configured;
+            # fall back to Docling when MinerU is unavailable.
+            page_heights = _get_page_heights_fitz(pdf_path)
+            table_doc = None
+
+            from config import settings
+            if settings.mineru_api_url or os.getenv("MINERU_API_URL", ""):
+                try:
+                    table_doc = _parse_via_mineru(pdf_path, page_heights)
+                except Exception:
+                    pass  # MinerU unavailable — fall through to Docling
+
+            if table_doc is None:
+                try:
+                    table_doc = _parse_via_docling(pdf_path)
+                except Exception:
+                    pass
+
+            if table_doc and table_doc.tables:
+                doc = ParsedDocument(
+                    pages=doc.pages,
+                    paragraphs=doc.paragraphs,
+                    tables=table_doc.tables,
+                    raw_json=doc.raw_json,
+                    markdown_text=doc.markdown_text,
+                    is_image_pdf=False,
+                )
             return doc
     except ModuleNotFoundError as exc:
         errors.append(f"pymupdf unavailable: {exc}")

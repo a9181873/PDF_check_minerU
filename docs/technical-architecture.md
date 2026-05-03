@@ -1,6 +1,6 @@
 # PDF 差異比對系統 — 技術架構文件
 
-> 版本: 2026-04-24 | 更新摘要: 新增帳號管理、響應式 UI、TXT 匯出、誤判優化
+> 版本: 2026-05-03 | 更新摘要: 導入 MinerU 高精度解析、cell-level 表格 diff、70% 聚合策略
 
 ---
 
@@ -23,9 +23,14 @@ graph TB
         REV[routes_review.py<br/>審核]
         EXP[routes_export.py<br/>匯出]
         WS[websocket.py<br/>即時進度]
-        DIFF[diff_service.py<br/>差異引擎]
-        PARSE[parser_service.py<br/>PDF 解析]
+        DIFF[diff_service.py<br/>差異引擎<br/>cell-level + 聚合]
+        PARSE[parser_service.py<br/>PDF 解析 fallback 鏈]
         EXPSERV[export_service.py<br/>匯出服務]
+    end
+
+    subgraph "MinerU Service (獨立容器)"
+        MINERU[mineru-api:18080<br/>pipeline backend<br/>chinese_cht]
+        MCACHE[(modelscope<br/>volume cache)]
     end
 
     subgraph "Persistence"
@@ -41,6 +46,9 @@ graph TB
     AP --> AUTH
     AUTH --> DB
     COMP --> PARSE
+    PARSE -->|MINERU_API_URL| MINERU
+    MINERU --- MCACHE
+    PARSE -->|fallback| DIFF
     COMP --> DIFF
     COMP --> DB
     COMP --> FS
@@ -91,15 +99,31 @@ Client                         Server
 
 ## 3. 差異引擎架構
 
-### 3.1 四路聯集比對策略
+### 3.1 解析 fallback 鏈
+
+```mermaid
+graph LR
+    A[PDF 上傳] --> B{MINERU_API_URL<br/>已設定?}
+    B -->|是| C[MinerU pipeline<br/>chinese_cht]
+    B -->|否| E[Docling + OCR]
+    C -->|失敗/逾時| E
+    E -->|失敗| F[PyMuPDF]
+    F -->|失敗| G[pdftotext]
+    C --> H[ParsedDocument<br/>含 cell-level 表格]
+    E --> H
+    F --> H
+    G --> H
+```
+
+### 3.2 四路聯集比對策略
 
 ```mermaid
 graph TD
     A[PDF 上傳] --> B{有文字層?}
-    B -->|是| C[Docling / PyMuPDF 解析]
+    B -->|是| C[MinerU / Docling / PyMuPDF 解析]
     B -->|否| D[像素 + 圖片比對]
     C --> E[段落 diff<br/>SequenceMatcher]
-    C --> F[表格 diff<br/>cell-level]
+    C --> F[表格 diff<br/>cell-level + 聚合]
     C --> G[像素 diff<br/>補充驗證]
     C --> H[嵌入圖片 diff<br/>pHash]
     E --> I{文字+像素交叉驗證}
@@ -112,7 +136,26 @@ graph TD
     K --> L[合併排序<br/>d001, d002...]
 ```
 
-### 3.2 誤判抑制機制 (2026-04-24 更新)
+### 3.3 Cell-Level 表格 diff 與聚合策略
+
+MinerU 輸出的表格含完整 rowspan/colspan HTML，解析為 DataFrame 後執行逐格比對：
+
+```
+for each (row, col) in merged grid:
+    if old_cell != new_cell → record DiffItem with cell bbox
+
+change_ratio = changed_cells / total_cells
+if change_ratio >= 0.70:
+    # 整表替換：合併為 1 筆 DiffItem，bbox = 整張表
+    return [整表替換 DiffItem]
+else:
+    # 回傳所有格層級 DiffItem
+    return pending_cell_diffs
+```
+
+**70% 閾值理由**：保險 DM 費率表一旦改版通常整欄數值都改，cell-level 標記反而產生噪音；低於 70% 的局部修改（如改 1-3 個費率數字）才有格層級精確定位的價值。
+
+### 3.4 誤判抑制機制 (2026-04-24 更新)
 
 | 過濾器 | 說明 | 閾值 |
 |--------|------|------|
@@ -124,7 +167,7 @@ graph TD
 | DPI | 渲染解析度 | 200 (原 150) |
 | 深度正規化 | NFKC + 去除零寬字元 + 統一空格/破折號 | — |
 
-### 3.3 嵌入圖片與像素比對
+### 3.5 嵌入圖片與像素比對
 
 - **像素比對**: 文字 PDF 也會執行像素比對，門檻調降至 15 以捕捉細微變更（如標點、線條）。
 - **嵌入圖片比對**: 使用 `imagehash` 提取 PDF 內部原始圖檔並比對 pHash，漢明距離 > 0 視為變更。
@@ -267,21 +310,55 @@ API:
 ## 8. 部署架構
 
 ```
-Docker Container (pdf-system)
-├── FastAPI (uvicorn :8000)
-│   ├── Backend API (/api/*)
-│   ├── WebSocket (/ws/*)
-│   └── Static Files (React build → /static)
-└── Volume Mount
-    └── ./runtime → /app/runtime
-        ├── uploads/
-        ├── exports/
-        ├── snapshots/
-        ├── crops/
-        └── app.db
+Docker Compose
+├── mineru-api (mineru-api:pipeline)
+│   ├── mineru-api --pipeline-backend pipeline :18080
+│   └── Volume: mineru_model_cache → /root/.cache/modelscope
+│
+├── backend (pdf-check-backend:latest)
+│   ├── FastAPI (uvicorn :8000)
+│   │   ├── Backend API (/api/*)
+│   │   ├── WebSocket (/ws/*)
+│   │   └── Static Files (React build → /static)
+│   ├── MINERU_API_URL=http://mineru-api:18080
+│   └── Volume: backend_runtime → /app/runtime
+│       ├── uploads/old, uploads/new
+│       ├── exports/
+│       ├── snapshots/, crops/
+│       └── app.db
+│
+└── Network: internal (bridge)
+    └── backend depends_on mineru-api (service_healthy)
 ```
 
-支援離線部署：先在有網路環境 build image + 預載 HuggingFace 模型快取，再匯出到離線環境。
+### 8.1 MinerU 服務建構
+
+`mineru/Dockerfile` 在 build 時預下載模型（`mineru-models-download -s modelscope -m pipeline`），掛載 volume 後重建不需重複下載。
+
+```bash
+# 僅重建 backend（不影響 MinerU 模型）
+docker compose build backend && docker compose up -d backend
+
+# 完整重建（模型已在 volume，不會重新下載）
+docker compose up --build -d
+```
+
+### 8.2 MinerU 繁體中文設定
+
+`parser_service.py` 呼叫 MinerU API 時固定傳入：
+
+```json
+{
+  "backend": "pipeline",
+  "lang_list": "chinese_cht",
+  "parse_method": "auto",
+  "return_content_list": "true"
+}
+```
+
+`chinese_cht` 替代預設 `ch`，可將繁簡混用段落從 9 段降至 2 段以下。
+
+支援離線部署：先在有網路環境 build image + 預載模型，再匯出到離線環境。
 
 ## 9. 安全考量
 
@@ -293,9 +370,34 @@ Docker Container (pdf-system)
 | HTTPS | 未啟用 | Docker 內網不需要 |
 | 預設帳號 | admin/admin123 | **首次登入後應修改密碼** |
 
-## 10. 本次更新變更清單 (2026-04-24)
+## 10. 變更清單
 
-### 前端
+### 2026-05-03 — MinerU 整合、cell-level 表格 diff
+
+#### 新增/修改
+
+| 檔案 | 動作 | 說明 |
+|------|------|------|
+| `mineru/Dockerfile` | 新增 | MinerU pipeline 容器，預載 modelscope 模型 |
+| `docker-compose.yml` | 修改 | 新增 `mineru-api` service + healthcheck + volume |
+| `backend/config.py` | 修改 | 新增 `mineru_api_url` 設定（空值 = 停用） |
+| `backend/services/parser_service.py` | 修改 | 新增 `_parse_via_mineru()`、`_mineru_bbox_to_bbox()`、`_normalize_mineru_text()`；fallback 鏈改為 MinerU → Docling → PyMuPDF → pdftotext |
+| `backend/services/diff_service.py` | 修改 | 新增 `_diff_table_cells()` cell-level diff + 70% 聚合策略；`diff_tables()` 改用新函式 |
+| `backend/requirements.txt` | 修改 | 已含 `requests`, `lxml`（MinerU HTTP client 依賴） |
+
+#### 測試結果（15/15 通過）
+
+- 自我對比（相同 PDF）→ 0 diffs ✓
+- 整表替換（100% 格變更）→ 單一「整表替換」DiffItem ✓
+- 局部修改（1 格）→ cell-level DiffItem ✓
+- HTML table → DataFrame 解析 ✓
+- NFKC 正規化 ✓
+
+---
+
+### 2026-04-24 — 帳號管理、響應式 UI、TXT 匯出、誤判優化
+
+#### 前端
 
 | 檔案 | 動作 | 說明 |
 |------|------|------|
@@ -306,7 +408,7 @@ Docker Container (pdf-system)
 | `LoginPage.tsx` | 新增 | 登入頁面 |
 | `AdminPage.tsx` | 新增 | 帳號管理頁面 |
 
-### 後端
+#### 後端
 
 | 檔案 | 動作 | 說明 |
 |------|------|------|

@@ -129,7 +129,7 @@ def test_export_review_log_csv_contains_enriched_log_rows(tmp_path: Path):
         output_path=str(tmp_path / "cmp-002_log.csv"),
     )
 
-    with Path(exported).open("r", encoding="utf-8", newline="") as csvfile:
+    with Path(exported).open("r", encoding="utf-8-sig", newline="") as csvfile:
         rows = list(DictReader(csvfile))
 
     assert len(rows) == 1

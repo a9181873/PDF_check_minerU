@@ -1,0 +1,20 @@
+
+# ==========================================
+# PDF Check MinerU — PDF 比對系統 (minerU 版)
+# ==========================================
+pdfcheck_minerU.{$DOMAIN} {
+    tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin-key.pem
+    reverse_proxy pdf-check-minerU:8000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        health_uri /health
+        health_interval 30s
+    }
+    log {
+        output file /data/logs/pdfcheck-mineru-access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+        format json
+    }
+}
