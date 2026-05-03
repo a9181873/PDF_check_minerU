@@ -4,11 +4,11 @@ services:
     build:
       context: .
       dockerfile: mineru/Dockerfile
-    container_name: mineru-api
+    container_name: mineru-api-minerU
     environment:
       MINERU_MODEL_SOURCE: local
     volumes:
-      - mineru_model_cache:/root/.cache/modelscope
+      - mineru_model_cache_minerU:/root/.cache/modelscope
     networks:
       - internal
     expose:
@@ -26,16 +26,16 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: pdf-check-backend
+    container_name: pdf-check-minerU
     environment:
       DATA_DIR: /app/runtime
       HF_HOME: /app/.cache/huggingface
       OCR_LANGS: chi_tra+chi_sim+eng
       DEBUG: 'false'
-      MINERU_API_URL: 'http://mineru-api:18080'
+      MINERU_API_URL: 'http://mineru-api-minerU:18080'
     volumes:
-      - backend_runtime:/app/runtime
-      - backend_hf_cache:/app/.cache/huggingface
+      - backend_runtime_minerU:/app/runtime
+      - backend_hf_cache_minerU:/app/.cache/huggingface
     networks:
       - internal
     expose:
@@ -46,9 +46,9 @@ services:
     restart: unless-stopped
 
 volumes:
-  backend_runtime:
-  backend_hf_cache:
-  mineru_model_cache:
+  backend_runtime_minerU:
+  backend_hf_cache_minerU:
+  mineru_model_cache_minerU:
 
 networks:
   internal:
