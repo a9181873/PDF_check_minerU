@@ -1,5 +1,5 @@
 services:
-  mineru-api:
+  mineru-api-minerU:
     image: mineru-api:pipeline
     build:
       context: .
@@ -21,7 +21,7 @@ services:
       retries: 3
       start_period: 20s
 
-  backend:
+  backend-minerU:
     image: pdf-check-backend:latest
     build:
       context: .
@@ -41,7 +41,7 @@ services:
     expose:
       - '8000'
     depends_on:
-      mineru-api:
+      mineru-api-minerU:
         condition: service_healthy
     restart: unless-stopped
 
