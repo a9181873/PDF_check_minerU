@@ -442,7 +442,24 @@ def diff_pixels(
                     result.append(w[4])
             return " ".join(result).strip()
 
+        # ── Phase 1: quick scan at 72 DPI to find pages with differences ──
+        # Avoids full-resolution rendering for pages that are identical,
+        # which is the common case for documents where only 1-2 pages changed.
+        _scan_mat = fitz.Matrix(1.0, 1.0)  # 72 / 72 = 1×
+        _scan_min_area = max(1, int(min_area * (72.0 / dpi) ** 2))
+        _diff_pages: set[int] = set()
+        for _pi in range(shared):
+            _po = doc_old[_pi].get_pixmap(matrix=_scan_mat, colorspace=fitz.csGRAY)
+            _pn = doc_new[_pi].get_pixmap(matrix=_scan_mat, colorspace=fitz.csGRAY)
+            _ao = np.frombuffer(_po.samples, dtype=np.uint8).reshape(_po.height, _po.width)
+            _an = np.frombuffer(_pn.samples, dtype=np.uint8).reshape(_pn.height, _pn.width)
+            _scan_mask = np.abs(_ao.astype(np.int16) - _an.astype(np.int16)) > threshold
+            if int(_scan_mask.sum()) >= _scan_min_area:
+                _diff_pages.add(_pi)
+
         for page_i in range(shared):
+            if page_i not in _diff_pages:
+                continue
             page_no = page_i + 1
             page_old = doc_old[page_i]
             page_new = doc_new[page_i]
@@ -916,12 +933,24 @@ def _merge_nearby_diffs(items: list[DiffItem], gap_threshold: float = 50.0) -> l
         if px != py:
             parent[px] = py
 
-    for i in range(n):
+    # Sort by (page, y0) so the inner loop can break early:
+    # once bj.y0 > bi.y1 + gap_threshold, all subsequent items are
+    # even further away — no merge possible. O(n log n + n·w) vs O(n²).
+    sorted_order = sorted(range(n), key=lambda k: (
+        (mergeable[k].new_bbox or mergeable[k].old_bbox).page,
+        (mergeable[k].new_bbox or mergeable[k].old_bbox).y0,
+    ))
+
+    for rank_i in range(n):
+        i = sorted_order[rank_i]
         bi = mergeable[i].new_bbox or mergeable[i].old_bbox
-        for j in range(i + 1, n):
+        for rank_j in range(rank_i + 1, n):
+            j = sorted_order[rank_j]
             bj = mergeable[j].new_bbox or mergeable[j].old_bbox
-            if bi.page != bj.page:
-                continue
+            if bj.page != bi.page:
+                break  # sorted by page — remaining items are on later pages
+            if bj.y0 > bi.y1 + gap_threshold:
+                break  # v_gap already exceeds threshold; subsequent items only farther
             h_gap = max(0.0, max(bi.x0 - bj.x1, bj.x0 - bi.x1))
             v_gap = max(0.0, max(bi.y0 - bj.y1, bj.y0 - bi.y1))
             if math.sqrt(h_gap ** 2 + v_gap ** 2) <= gap_threshold:

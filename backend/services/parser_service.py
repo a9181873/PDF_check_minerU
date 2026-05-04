@@ -557,17 +557,28 @@ def parse_pdf(file_path: str) -> ParsedDocument:
             table_doc = None
 
             from config import settings
-            if settings.mineru_api_url or os.getenv("MINERU_API_URL", ""):
-                try:
-                    table_doc = _parse_via_mineru(pdf_path, page_heights)
-                except Exception:
-                    pass  # MinerU unavailable — fall through to Docling
+            from concurrent.futures import ThreadPoolExecutor, FIRST_COMPLETED, wait as _wait
+            mineru_url = settings.mineru_api_url or os.getenv("MINERU_API_URL", "")
 
-            if table_doc is None:
-                try:
-                    table_doc = _parse_via_docling(pdf_path)
-                except Exception:
-                    pass
+            _pool = ThreadPoolExecutor(max_workers=2)
+            _futures: dict = {}
+            if mineru_url:
+                _futures[_pool.submit(_parse_via_mineru, pdf_path, page_heights)] = "mineru"
+            _futures[_pool.submit(_parse_via_docling, pdf_path)] = "docling"
+
+            _remaining = set(_futures.keys())
+            while _remaining and table_doc is None:
+                _done, _remaining = _wait(_remaining, return_when=FIRST_COMPLETED)
+                for _fut in _done:
+                    try:
+                        table_doc = _fut.result()
+                    except Exception:
+                        pass
+                    if table_doc is not None:
+                        break
+            # shutdown(wait=False): the loser thread keeps running in the background
+            # but we don't block waiting for it. Safe for a long-running server process.
+            _pool.shutdown(wait=False)
 
             if table_doc and table_doc.tables:
                 doc = ParsedDocument(
