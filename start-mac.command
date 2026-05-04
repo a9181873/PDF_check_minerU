@@ -34,7 +34,7 @@ echo ""
 echo "等待服務完成初始化..."
 READY=0
 for i in {1..30}; do
-  if curl -fsS "http://localhost:8000/health" >/dev/null 2>&1; then
+  if curl -fsS "http://localhost:8001/health" >/dev/null 2>&1; then
     READY=1
     break
   fi
@@ -44,14 +44,14 @@ done
 echo ""
 if [ "$READY" -eq 1 ]; then
   echo "啟動成功。"
-  open "http://localhost:8000"
+  open "http://localhost:8001"
 else
   echo "容器已啟動，系統可能仍在初始化中。"
   echo "請稍後手動開啟瀏覽器前往。"
 fi
 
-echo "前端介面: http://localhost:8000"
-echo "API: http://localhost:8000/api"
+echo "前端介面: http://localhost:8001"
+echo "API: http://localhost:8001/api"
 echo ""
 
 # Keep terminal open momentarily for user to read output

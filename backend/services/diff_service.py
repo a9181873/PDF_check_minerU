@@ -875,6 +875,123 @@ def _sort_key(item: DiffItem) -> tuple[int, float]:
     return (bbox.page, -bbox.y1)
 
 
+def _merge_nearby_diffs(items: list[DiffItem], gap_threshold: float = 50.0) -> list[DiffItem]:
+    """Merge spatially adjacent TEXT/NUMBER diffs on the same page.
+
+    Prevents a single logical change (e.g. "Control NO : 2312-2512-0P2")
+    from being reported as multiple separate diffs when the parser splits
+    the text into separate pixel regions.
+
+    Uses union-find with path compression for transitive closure.
+    """
+    import math
+    from collections import defaultdict
+
+    _MERGEABLE = {DiffType.TEXT_MODIFIED, DiffType.NUMBER_MODIFIED}
+
+    mergeable: list[DiffItem] = []
+    non_mergeable: list[DiffItem] = []
+    for item in items:
+        bbox = item.new_bbox or item.old_bbox
+        if bbox and item.diff_type in _MERGEABLE:
+            mergeable.append(item)
+        else:
+            non_mergeable.append(item)
+
+    if len(mergeable) <= 1:
+        return items
+
+    # ── Union-find ──
+    n = len(mergeable)
+    parent = list(range(n))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x: int, y: int) -> None:
+        px, py = find(x), find(y)
+        if px != py:
+            parent[px] = py
+
+    for i in range(n):
+        bi = mergeable[i].new_bbox or mergeable[i].old_bbox
+        for j in range(i + 1, n):
+            bj = mergeable[j].new_bbox or mergeable[j].old_bbox
+            if bi.page != bj.page:
+                continue
+            h_gap = max(0.0, max(bi.x0 - bj.x1, bj.x0 - bi.x1))
+            v_gap = max(0.0, max(bi.y0 - bj.y1, bj.y0 - bi.y1))
+            if math.sqrt(h_gap ** 2 + v_gap ** 2) <= gap_threshold:
+                union(i, j)
+
+    groups: dict[int, list[int]] = defaultdict(list)
+    for i in range(n):
+        groups[find(i)].append(i)
+
+    result = list(non_mergeable)
+    for indices in groups.values():
+        if len(indices) == 1:
+            result.append(mergeable[indices[0]])
+            continue
+
+        # Sort by reading order: top→bottom, left→right
+        group = [mergeable[i] for i in indices]
+        group.sort(key=lambda it: (
+            -(it.new_bbox or it.old_bbox).y1,
+            (it.new_bbox or it.old_bbox).x0,
+        ))
+
+        old_parts, new_parts, bboxes = [], [], []
+        best_conf = 0.0
+        has_number = False
+        ctx_set: set[str] = set()
+        keep_img_old = keep_img_new = None
+
+        for it in group:
+            if it.old_value:
+                old_parts.append(it.old_value)
+            if it.new_value:
+                new_parts.append(it.new_value)
+            b = it.new_bbox or it.old_bbox
+            if b:
+                bboxes.append(b)
+            best_conf = max(best_conf, it.confidence)
+            if it.diff_type == DiffType.NUMBER_MODIFIED:
+                has_number = True
+            if it.context:
+                ctx_set.add(it.context)
+            if it.old_image_base64 and not keep_img_old:
+                keep_img_old = it.old_image_base64
+            if it.new_image_base64 and not keep_img_new:
+                keep_img_new = it.new_image_base64
+
+        union_bbox = BBox(
+            page=bboxes[0].page,
+            x0=min(b.x0 for b in bboxes),
+            y0=min(b.y0 for b in bboxes),
+            x1=max(b.x1 for b in bboxes),
+            y1=max(b.y1 for b in bboxes),
+        ) if bboxes else None
+
+        result.append(DiffItem(
+            id="",
+            diff_type=DiffType.NUMBER_MODIFIED if has_number else DiffType.TEXT_MODIFIED,
+            old_value=" ".join(old_parts) if old_parts else None,
+            new_value=" ".join(new_parts) if new_parts else None,
+            old_bbox=union_bbox,
+            new_bbox=union_bbox,
+            old_image_base64=keep_img_old,
+            new_image_base64=keep_img_new,
+            context=next(iter(ctx_set)) if ctx_set else "N/A",
+            confidence=best_conf,
+        ))
+
+    return result
+
+
 def merge_diff_results(
     text_diffs: list[DiffItem],
     table_diffs: list[DiffItem],
@@ -886,6 +1003,9 @@ def merge_diff_results(
         merged.extend(pixel_diffs)
     if image_diffs:
         merged.extend(image_diffs)
+
+    # ── Proximity merge: combine adjacent text/number diffs ──
+    merged = _merge_nearby_diffs(merged)
 
     # ── Deduplication: remove smaller boxes contained within larger ones ──
     # This prevents "框中有框" (box within box) where e.g. a table-level

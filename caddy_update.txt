@@ -4,7 +4,7 @@
 # ==========================================
 pdfcheck_minerU.{$DOMAIN} {
     tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin-key.pem
-    reverse_proxy pdf-check-minerU:8000 {
+    reverse_proxy localhost:8001 {
         header_up Host {host}
         header_up X-Real-IP {remote_host}
         health_uri /health

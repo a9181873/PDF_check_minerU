@@ -38,8 +38,8 @@ services:
       - backend_hf_cache_minerU:/app/.cache/huggingface
     networks:
       - internal
-    expose:
-      - '8000'
+    ports:
+      - '8001:8000'
     depends_on:
       mineru-api-minerU:
         condition: service_healthy
@@ -52,4 +52,4 @@ volumes:
 
 networks:
   internal:
-    external: true
+    driver: bridge

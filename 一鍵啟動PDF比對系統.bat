@@ -42,7 +42,7 @@ where curl >nul 2>&1
 if not errorlevel 1 (
   set "HAS_CURL=1"
   for /L %%i in (1,1,30) do (
-    curl -fsS "http://localhost:8000/health" >nul 2>&1
+    curl -fsS "http://localhost:8001/health" >nul 2>&1
     if not errorlevel 1 (
       set "READY=1"
       goto :health_done
@@ -63,10 +63,10 @@ if "!READY!"=="1" (
     echo 請稍後手動開啟。
   )
 )
-echo 前端介面: http://localhost:8000
-echo API: http://localhost:8000/api
+echo 前端介面: http://localhost:8001
+echo API: http://localhost:8001/api
 
-if "!READY!"=="1" start "" "http://localhost:8000"
+if "!READY!"=="1" start "" "http://localhost:8001"
 
 echo.
 pause
