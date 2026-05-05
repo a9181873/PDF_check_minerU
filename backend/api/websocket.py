@@ -16,7 +16,33 @@ async def compare_progress_socket(websocket: WebSocket, task_id: str):
         while True:
             state = TASK_STORE.get(task_id)
             if not state:
-                await websocket.send_json({"event": "error", "data": {"message": "Task not found"}})
+                # Task not in memory (e.g., after server restart) — fall back to DB.
+                from models.database import get_comparison, get_comparison_report
+                row = get_comparison(task_id)
+                if not row:
+                    await websocket.send_json({"event": "error", "data": {"message": "Task not found"}})
+                    break
+                db_status = row.get("status", "pending")
+                if db_status == "done":
+                    report = get_comparison_report(task_id)
+                    if report:
+                        await websocket.send_json({
+                            "event": "complete",
+                            "data": report.model_dump(mode="json"),
+                        })
+                    else:
+                        await websocket.send_json({"event": "error", "data": {"message": "Result data not found"}})
+                elif db_status == "error":
+                    await websocket.send_json({
+                        "event": "error",
+                        "data": {"message": row.get("error_message") or "Processing error"},
+                    })
+                else:
+                    # Task was mid-processing when server restarted — unrecoverable
+                    await websocket.send_json({
+                        "event": "error",
+                        "data": {"message": "任務因伺服器重啟中斷，請重新上傳比較"},
+                    })
                 break
 
             signature = (
