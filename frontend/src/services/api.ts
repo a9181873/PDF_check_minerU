@@ -178,4 +178,50 @@ export const exportApi = {
   },
 };
 
+export const archiveApi = {
+  async verify(
+    comparisonId: string,
+    data: { reviewer?: string; notes?: string }
+  ): Promise<{ archive_id: string; session_id: string; is_new_archive: boolean; verified_at: string }> {
+    const response = await api.post(`/api/archive/${comparisonId}/verify`, data);
+    return response.data;
+  },
+
+  async getHistory(
+    comparisonId: string
+  ): Promise<{ archive: ArchiveRecord | null; sessions: VerificationSession[] }> {
+    const response = await api.get(`/api/archive/${comparisonId}/history`);
+    return response.data;
+  },
+
+  getFileUrl(archiveId: string, fileType: 'old_pdf' | 'new_pdf' | 'annotated_pdf'): string {
+    return buildApiUrl(`/api/archive/files/${archiveId}/${fileType}`);
+  },
+};
+
+export interface ArchiveRecord {
+  id: string;
+  old_hash: string;
+  new_hash: string;
+  old_filename: string;
+  new_filename: string;
+  old_archive_path: string;
+  new_archive_path: string;
+  annotated_archive_path: string | null;
+  first_comparison_id: string;
+  archived_at: string;
+}
+
+export interface VerificationSession {
+  id: string;
+  archive_id: string;
+  comparison_id: string;
+  reviewer: string | null;
+  verified_at: string;
+  total_diffs: number;
+  confirmed: number;
+  flagged: number;
+  notes: string | null;
+}
+
 export default api;

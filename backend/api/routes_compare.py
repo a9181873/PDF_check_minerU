@@ -22,9 +22,11 @@ from models.database import (
     save_diff_report,
     save_markdown_paths,
     save_snapshot_dir,
+    update_comparison_hashes,
     update_comparison_status,
 )
 from models.schemas import CompareStatusResponse, UploadResponse
+from services.archive_service import compute_pdf_hash
 from services.diff_service import generate_diff_report
 from services.parser_service import parse_pdf, save_markdown
 
@@ -209,6 +211,13 @@ async def upload_compare_files(
         old_file_path=str(old_path),
         new_file_path=str(new_path),
     )
+
+    try:
+        old_hash = compute_pdf_hash(old_path)
+        new_hash = compute_pdf_hash(new_path)
+        update_comparison_hashes(task_id, old_hash, new_hash)
+    except Exception:
+        pass
 
     background_tasks.add_task(
         _run_compare_task,

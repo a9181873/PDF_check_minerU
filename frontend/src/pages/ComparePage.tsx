@@ -1,13 +1,14 @@
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { isAxiosError } from 'axios';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertCircle, BarChart3, ChevronDown, Download, Eye, EyeOff, LogOut, Settings, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { AlertCircle, BarChart3, ChevronDown, ClipboardList, Download, Eye, EyeOff, LogOut, Save, Settings, Upload, ZoomIn, ZoomOut } from 'lucide-react';
 
 import ChecklistPanel from '../components/ChecklistPanel';
 import DiffListPanel from '../components/DiffListPanel';
 import SearchBar from '../components/SearchBar';
 import SyncScrollContainer from '../components/SyncScrollContainer';
-import { checklistApi, buildApiUrl, buildWebSocketUrl, compareApi, reviewApi } from '../services/api';
+import VerificationHistoryModal from '../components/VerificationHistoryModal';
+import { checklistApi, buildApiUrl, buildWebSocketUrl, compareApi, reviewApi, archiveApi } from '../services/api';
 import { ChecklistItem, DiffReport } from '../services/types';
 import { useCompareStore } from '../stores/compareStore';
 import { useCrossWindowSync } from '../hooks/useCrossWindowSync';
@@ -97,6 +98,9 @@ const ComparePage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'diffs' | 'checklist'>('diffs');
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showDiffLabels, setShowDiffLabels] = useState(true);
+  const [archiving, setArchiving] = useState(false);
+  const [archiveToast, setArchiveToast] = useState<string | null>(null);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   const { broadcastPageChange, broadcastDiffSelect } = useCrossWindowSync(taskId || null);
   const { user: authUser, logout } = useAuthStore();
@@ -347,6 +351,26 @@ const ComparePage: React.FC = () => {
     setShowExportMenu(false);
   };
 
+  const handleVerifyAndArchive = async () => {
+    if (!taskId) return;
+    setArchiving(true);
+    try {
+      const result = await archiveApi.verify(taskId, {
+        reviewer: authUser?.display_name || authUser?.username,
+      });
+      const msg = result.is_new_archive
+        ? '已存檔，建立新案例紀錄'
+        : '已存檔，新增至既有案例紀錄';
+      setArchiveToast(msg);
+      setTimeout(() => setArchiveToast(null), 3500);
+    } catch {
+      setArchiveToast('存檔失敗，請稍後再試');
+      setTimeout(() => setArchiveToast(null), 3500);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
   const getPdfUrl = (version: 'old' | 'new') => {
     if (!taskId) {
       return null;
@@ -417,7 +441,7 @@ const ComparePage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,_#f5f5f5_0%,_#edf3ee_100%)] flex flex-col">
-      <header className="border-b border-[#dfe7e2] bg-white/90 px-6 py-4 backdrop-blur">
+      <header className="relative z-10 border-b border-[#dfe7e2] bg-white/90 px-6 py-4 backdrop-blur">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div>
@@ -495,6 +519,30 @@ const ComparePage: React.FC = () => {
                 <Settings size={16} />
               </button>
             )}
+            {authUser && status?.status === 'done' && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleVerifyAndArchive}
+                  disabled={archiving}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors disabled:opacity-60"
+                  title="完成驗證並存檔"
+                >
+                  <Save size={16} />
+                  <span>{archiving ? '存檔中…' : '存檔'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowHistoryModal(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
+                  title="查閱檢核歷史"
+                >
+                  <ClipboardList size={16} />
+                  <span>檢核歷史</span>
+                </button>
+              </>
+            )}
+
             <div className="relative" ref={exportMenuRef}>
               <button
                 type="button"
@@ -829,6 +877,20 @@ const ComparePage: React.FC = () => {
           </div>
         </div>
       </footer>
+
+      {taskId && (
+        <VerificationHistoryModal
+          comparisonId={taskId}
+          isOpen={showHistoryModal}
+          onClose={() => setShowHistoryModal(false)}
+        />
+      )}
+
+      {archiveToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 bg-gray-900 text-white text-sm rounded-xl shadow-lg">
+          {archiveToast}
+        </div>
+      )}
     </div>
   );
 };

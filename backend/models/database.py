@@ -105,12 +105,41 @@ def init_db() -> None:
                 snapshots_json TEXT,
                 created_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS pdf_archives (
+                id TEXT PRIMARY KEY,
+                old_hash TEXT NOT NULL,
+                new_hash TEXT NOT NULL,
+                old_filename TEXT NOT NULL,
+                new_filename TEXT NOT NULL,
+                old_archive_path TEXT NOT NULL,
+                new_archive_path TEXT NOT NULL,
+                annotated_archive_path TEXT,
+                first_comparison_id TEXT NOT NULL,
+                archived_at TEXT NOT NULL,
+                UNIQUE (old_hash, new_hash)
+            );
+
+            CREATE TABLE IF NOT EXISTS verification_sessions (
+                id TEXT PRIMARY KEY,
+                archive_id TEXT NOT NULL,
+                comparison_id TEXT NOT NULL,
+                reviewer TEXT,
+                verified_at TEXT NOT NULL,
+                total_diffs INTEGER,
+                confirmed INTEGER,
+                flagged INTEGER,
+                notes TEXT,
+                FOREIGN KEY (archive_id) REFERENCES pdf_archives(id)
+            );
             """
         )
         _ensure_column(conn, "comparisons", "error_message", "TEXT")
         _ensure_column(conn, "comparisons", "old_markdown_path", "TEXT")
         _ensure_column(conn, "comparisons", "new_markdown_path", "TEXT")
         _ensure_column(conn, "comparisons", "snapshot_dir", "TEXT")
+        _ensure_column(conn, "comparisons", "old_hash", "TEXT")
+        _ensure_column(conn, "comparisons", "new_hash", "TEXT")
 
 
 def create_project(name: str) -> dict[str, str]:
@@ -558,6 +587,114 @@ def delete_user(user_id: str) -> bool:
     with get_connection() as conn:
         cur = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
     return cur.rowcount > 0
+
+
+def update_comparison_hashes(comparison_id: str, old_hash: str, new_hash: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE comparisons SET old_hash = ?, new_hash = ? WHERE id = ?",
+            (old_hash, new_hash, comparison_id),
+        )
+
+
+def get_archive_by_hashes(old_hash: str, new_hash: str) -> dict | None:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM pdf_archives WHERE old_hash = ? AND new_hash = ?",
+            (old_hash, new_hash),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def create_pdf_archive(
+    archive_id: str,
+    old_hash: str,
+    new_hash: str,
+    old_filename: str,
+    new_filename: str,
+    old_archive_path: str,
+    new_archive_path: str,
+    annotated_archive_path: str | None,
+    first_comparison_id: str,
+) -> dict:
+    now = utc_now_iso()
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO pdf_archives
+               (id, old_hash, new_hash, old_filename, new_filename,
+                old_archive_path, new_archive_path, annotated_archive_path,
+                first_comparison_id, archived_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (archive_id, old_hash, new_hash, old_filename, new_filename,
+             old_archive_path, new_archive_path, annotated_archive_path,
+             first_comparison_id, now),
+        )
+    return {
+        "id": archive_id, "old_hash": old_hash, "new_hash": new_hash,
+        "old_filename": old_filename, "new_filename": new_filename,
+        "old_archive_path": old_archive_path, "new_archive_path": new_archive_path,
+        "annotated_archive_path": annotated_archive_path,
+        "first_comparison_id": first_comparison_id, "archived_at": now,
+    }
+
+
+def update_archive_annotated_path(archive_id: str, annotated_path: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE pdf_archives SET annotated_archive_path = ? WHERE id = ?",
+            (annotated_path, archive_id),
+        )
+
+
+def create_verification_session(
+    session_id: str,
+    archive_id: str,
+    comparison_id: str,
+    reviewer: str | None,
+    total_diffs: int,
+    confirmed: int,
+    flagged: int,
+    notes: str | None,
+) -> dict:
+    now = utc_now_iso()
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO verification_sessions
+               (id, archive_id, comparison_id, reviewer, verified_at,
+                total_diffs, confirmed, flagged, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (session_id, archive_id, comparison_id, reviewer, now,
+             total_diffs, confirmed, flagged, notes),
+        )
+    return {
+        "id": session_id, "archive_id": archive_id, "comparison_id": comparison_id,
+        "reviewer": reviewer, "verified_at": now, "total_diffs": total_diffs,
+        "confirmed": confirmed, "flagged": flagged, "notes": notes,
+    }
+
+
+def get_verification_sessions_by_archive(archive_id: str) -> list[dict]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM verification_sessions WHERE archive_id = ? ORDER BY verified_at DESC",
+            (archive_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_archive_by_comparison(comparison_id: str) -> dict | None:
+    with get_connection() as conn:
+        comp = conn.execute(
+            "SELECT old_hash, new_hash FROM comparisons WHERE id = ?",
+            (comparison_id,),
+        ).fetchone()
+        if not comp or not comp["old_hash"]:
+            return None
+        row = conn.execute(
+            "SELECT * FROM pdf_archives WHERE old_hash = ? AND new_hash = ?",
+            (comp["old_hash"], comp["new_hash"]),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 def ensure_default_admin() -> None:

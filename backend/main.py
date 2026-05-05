@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from api.routes_archive import router as archive_router
 from api.routes_auth import router as auth_router
 from api.routes_compare import router as compare_router
 from api.routes_checklist import router as checklist_router
@@ -30,6 +31,7 @@ app.include_router(project_router)
 app.include_router(review_router)
 app.include_router(checklist_router)
 app.include_router(export_router)
+app.include_router(archive_router)
 app.include_router(websocket_router)
 
 
@@ -39,6 +41,7 @@ def on_startup() -> None:
     settings.new_upload_dir.mkdir(parents=True, exist_ok=True)
     settings.export_dir.mkdir(parents=True, exist_ok=True)
     settings.markdown_export_dir.mkdir(parents=True, exist_ok=True)
+    settings.archive_dir.mkdir(parents=True, exist_ok=True)
     init_db()
     ensure_default_project()
     ensure_default_admin()

@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     markdown_export_dir: Path = Path(".")
     snapshots_dir: Path = Path(".")
     crops_dir: Path = Path(".")
+    archive_dir: Path = Path(".")
     db_path: Path = Path(".")
 
     allowed_origins: list[str] = ["*"]
@@ -43,6 +44,7 @@ class Settings(BaseSettings):
         self.markdown_export_dir = self.export_dir / "markdown"
         self.snapshots_dir = self.data_dir / "snapshots"
         self.crops_dir = self.data_dir / "crops"
+        self.archive_dir = self.data_dir / "archive"
         self.db_path = self.data_dir / "app.db"
         return self
 
