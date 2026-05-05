@@ -31,10 +31,8 @@ interface PDFViewerProps {
   showDiffLabels?: boolean;
 }
 
-/** Track per-page rendered dimensions */
+/** Track per-page original PDF dimensions (in PDF points, scale-independent) */
 interface PageDimension {
-  width: number;
-  height: number;
   pdfWidth: number;
   pdfHeight: number;
 }
@@ -95,14 +93,14 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
    * This is the most precise way to get coordinate mapping.
    */
   const handlePageLoadSuccess = useCallback((pageNum: number, page: any) => {
+    // Only store scale-independent PDF point dimensions.
+    // Rendered pixel size is not stored — the overlay uses % positioning instead.
     const pdfWidth = page.originalWidth ?? page.width / scale;
     const pdfHeight = page.originalHeight ?? page.height / scale;
-    const renderedWidth = page.width;
-    const renderedHeight = page.height;
 
     setPageDimensions((prev) => {
       const next = new Map(prev);
-      next.set(pageNum, { width: renderedWidth, height: renderedHeight, pdfWidth, pdfHeight });
+      next.set(pageNum, { pdfWidth, pdfHeight });
       return next;
     });
   }, [scale]);
@@ -278,7 +276,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                         className="flex justify-center"
                       >
                         {/* Page + overlay wrapper: relative so overlay is scoped to this page */}
-                        <div className="relative inline-block transition-all duration-300">
+                        <div className="relative inline-block" style={{ verticalAlign: 'top' }}>
                           {/* Grayscale applied only to PDF canvas, NOT the diff overlay */}
                           <div className={grayscale ? 'filter-grayscale' : ''}>
                             <Page
@@ -297,8 +295,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                               diffItems={diffItems}
                               selectedDiffId={selectedDiffId}
                               pageNumber={pageNum}
-                              renderedWidth={dims.width}
-                              renderedHeight={dims.height}
                               pdfPageWidth={dims.pdfWidth}
                               pdfPageHeight={dims.pdfHeight}
                               onDiffClick={onDiffClick}

@@ -60,7 +60,7 @@ const SyncScrollContainer: React.FC<SyncScrollContainerProps> = ({
     }
     unlockTimerRef.current = window.setTimeout(() => {
       isSyncingRef.current = false;
-    }, 50);
+    }, 150);
   }, [syncEnabled]);
 
   useEffect(() => {
@@ -115,7 +115,7 @@ const SyncScrollContainer: React.FC<SyncScrollContainerProps> = ({
       }
 
       if (unlockTimerRef.current) window.clearTimeout(unlockTimerRef.current);
-      unlockTimerRef.current = window.setTimeout(() => { isSyncingRef.current = false; }, 50);
+      unlockTimerRef.current = window.setTimeout(() => { isSyncingRef.current = false; }, 150);
     };
 
     window.addEventListener('cross-window-scroll', handleCrossWindowScroll);
@@ -174,7 +174,6 @@ const SyncScrollContainer: React.FC<SyncScrollContainerProps> = ({
           <div
             ref={leftRef}
             className="flex-1 overflow-auto scroll-sync"
-            style={{ scrollBehavior: 'smooth' }}
           >
             <div className="p-4">
               {leftContent}
@@ -237,7 +236,6 @@ const SyncScrollContainer: React.FC<SyncScrollContainerProps> = ({
           <div
             ref={rightRef}
             className="flex-1 overflow-auto scroll-sync"
-            style={{ scrollBehavior: 'smooth' }}
           >
             <div className="p-4">
               {rightContent}

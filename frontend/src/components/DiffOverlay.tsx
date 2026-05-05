@@ -5,10 +5,6 @@ interface DiffOverlayProps {
   diffItems: DiffItem[];
   /** The page number this overlay is scoped to */
   pageNumber: number;
-  /** Actual rendered width of the PDF canvas (px) */
-  renderedWidth: number;
-  /** Actual rendered height of the PDF canvas (px) */
-  renderedHeight: number;
   /** Original PDF page width in PDF points (usually 595 for A4) */
   pdfPageWidth: number;
   /** Original PDF page height in PDF points (usually 842 for A4) */
@@ -69,8 +65,6 @@ const getTrimmedDiffText = (oldValue: string, newValue: string) => {
 const DiffOverlay: React.FC<DiffOverlayProps> = ({
   diffItems,
   pageNumber,
-  renderedWidth,
-  renderedHeight,
   pdfPageWidth,
   pdfPageHeight,
   selectedDiffId = null,
@@ -87,19 +81,19 @@ const DiffOverlay: React.FC<DiffOverlayProps> = ({
     return null;
   }
 
-  const scaleX = renderedWidth / pdfPageWidth;
-  const scaleY = renderedHeight / pdfPageHeight;
-
   return (
-    <div className="absolute inset-0 pointer-events-none" style={{ width: renderedWidth, height: renderedHeight }}>
+    // inset-0 always fills the parent .relative div exactly — no stored pixel dimensions needed
+    <div className="absolute inset-0 pointer-events-none">
       {pageDiffs.map((diff) => {
         const bbox = diff.new_bbox || diff.old_bbox;
         if (!bbox) return null;
 
-        const x = bbox.x0 * scaleX;
-        const y = (pdfPageHeight - bbox.y1) * scaleY; // PDF Y axis is bottom-up
-        const width = (bbox.x1 - bbox.x0) * scaleX;
-        const height = (bbox.y1 - bbox.y0) * scaleY;
+        // Use % so the overlay stays accurate regardless of scale or transition state.
+        // PDF Y axis is bottom-up; CSS Y axis is top-down.
+        const left = (bbox.x0 / pdfPageWidth) * 100;
+        const top = ((pdfPageHeight - bbox.y1) / pdfPageHeight) * 100;
+        const width = ((bbox.x1 - bbox.x0) / pdfPageWidth) * 100;
+        const height = ((bbox.y1 - bbox.y0) / pdfPageHeight) * 100;
 
         const colorClass = getDiffColor(diff.diff_type);
         const label = getDiffLabel(diff.diff_type);
@@ -117,10 +111,10 @@ const DiffOverlay: React.FC<DiffOverlayProps> = ({
             className={`${colorClass} cursor-pointer group pointer-events-auto ${isSelected ? 'is-selected' : ''}`}
             style={{
               position: 'absolute',
-              left: `${x}px`,
-              top: `${y}px`,
-              width: `${Math.max(width, 4)}px`,
-              height: `${Math.max(height, 4)}px`,
+              left: `${left}%`,
+              top: `${top}%`,
+              width: `${Math.max(width, 0.3)}%`,
+              height: `${Math.max(height, 0.3)}%`,
             }}
             onClick={() => onDiffClick?.(diff)}
             title={titleText}
