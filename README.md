@@ -253,8 +253,8 @@ PDF_check/
 ├── docs/
 ├── samples/
 ├── docker-compose.yml
-├── 一鍵啟動PDF比對系統.command
-├── 一鍵停止PDF比對系統.command
+├── start-mac.command
+├── stop-mac.command
 ├── 一鍵啟動PDF比對系統.bat
 └── 一鍵停止PDF比對系統.bat
 ```
@@ -334,29 +334,40 @@ Vite 已設定 proxy（本機開發 backend port 為 8001）：
 
 ## 推薦硬體規格
 
-導入 MinerU 後，解析精度顯著提升（cell-level 表格），但對記憶體需求也相應增加。
+以 **3 人同時操作**為評估基準。MinerU 模型只載入一次常駐（~5GB），3 任務增量解析約 ~3–6GB，加上 OS/Docker ~3GB，實際峰值約 **11–14GB**。
 
-### MinerU POC 實測（macOS M 系列 CPU）
+### 個人電腦（需安裝 Docker Desktop）
 
-| 檔案 | 大小 | 耗時 | 記憶體增量 | 表格數 |
-|------|------|------|-----------|--------|
-| 金利樂.pdf | 3.1MB | ~17s | +2.2GB | 5 |
-| 臻鑽旺旺.pdf | 6.5MB | ~15s | +0.3GB（已快取）| 4 |
+| 平台 | 等級 | 規格 | 備注 |
+|------|------|------|------|
+| **Windows** | 基本 | i5 第 10 代以上 / Ryzen 5 3600 以上・**16GB** DDR4/DDR5・512GB NVMe + 256GB 資料碟 | 可承載 3 人；10-11 代 SSIM/NCC 較慢 |
+| **Windows** | 最佳 | i7 第 12 代以上 / Ryzen 7 7700 以上・**32GB** DDR5・1TB NVMe + 512GB 資料碟・RTX 4060（選配） | 完全流暢，GPU 可加速 MinerU 3-5× |
+| **macOS** | 基本 | Mac mini M4 / MacBook Pro M3（8 核心）・**16GB** 統一記憶體・512GB SSD | 足夠；高峰時建議關閉其他大型應用 |
+| **macOS** | 最佳 | Mac mini M4 Pro / MacBook Pro M4 Pro（12 核心）・**24GB** 統一記憶體・512GB SSD | 流暢無壓力，無需外接 GPU |
 
-### 建議規格（3–5 人共用）
+### 雲端（3 人同時操作，月費隨用隨付）
 
-| 等級 | 規格 | 適用情境 |
-|------|------|----------|
-| 最低可用 | 8 核心 CPU / **16GB RAM** / SSD | 1-2 人輕度使用 |
-| **建議（3–5 人）** | **12 核心以上 CPU / 32GB RAM / SSD** | 日常並發 2-3 任務 |
-| 高效部署 | 16 核心 / 64GB RAM / NVMe SSD | 4-5 人並發 + 大型 DM |
+| 平台 | 等級 | 規格 | 參考月費 | 備注 |
+|------|------|------|---------|------|
+| **OCI Always Free** | — | 4 OCPU ARM + 24GB・200GB 磁碟 | **$0** | ARM 架構；MinerU 需確認相容性，可用 Docling fallback |
+| **OCI E4 Flex** | 基本 | 4 OCPU x86 + **16GB**・256GB Block Vol | **~$73** | CP 值最高，完整支援 MinerU |
+| **OCI E4 Flex** | 最佳 | 8 OCPU x86 + **32GB**・512GB Block Vol | **~$181** | — |
+| **Azure D-series v5** | 基本 | `D4s_v5` 4 vCPU + **16GB**・256GB Premium SSD | ~$190–230 | 適合已用微軟企業生態 |
+| **Azure D-series v5** | 最佳 | `D8s_v5` 8 vCPU + **32GB**・512GB Premium SSD | ~$280–350 | — |
+| **GCP n2-standard** | 基本 | `n2-standard-4` 4 vCPU + **16GB**・256GB pd-ssd | ~$175–210 | 適合已用 Google Workspace |
+| **GCP n2-standard** | 最佳 | `n2-standard-8` 8 vCPU + **32GB**・512GB pd-ssd | ~$260–320 | — |
 
-### 補充
+> 各雲端平台建議 Ubuntu 22.04 LTS；儲存選 SSD 等級（OCI Balanced、Azure Premium SSD、GCP pd-ssd），避免 HDD 造成 MinerU 模型載入卡頓。
 
-- MinerU 首次啟動需載入 pipeline 模型（約 3-5GB），之後保持常駐
-- Docker volume `mineru_model_cache` 儲存模型，避免每次重建重複下載
-- 磁碟需求：建議預留 **30GB 以上**（含模型快取 ~5-8GB + runtime + archives）
-- GPU 非必要，但若配備 CUDA GPU（8GB+ VRAM）可顯著加速大型 PDF 解析
+### 磁碟規劃（封存功能，每筆封存存 3 份 PDF）
+
+| 使用頻率 | 每月新增封存 | 建議資料碟總量 |
+|----------|------------|--------------|
+| 輕度（偶爾比對） | ~30 筆 | 256GB |
+| 一般（每日作業） | ~100 筆 | 512GB |
+| 高頻（密集改版） | ~300 筆 | 1TB+ |
+
+> MinerU 模型首次下載約 5–8GB，快取於 Docker volume 後重建不需重複下載。GPU（CUDA 8GB+ VRAM）可將 MinerU 解析速度提升 3–5×，非必要但推薦大型 DM 場景。
 
 ## 核心資料流
 

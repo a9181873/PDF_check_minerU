@@ -189,21 +189,29 @@ SQLite + runtime files + in-memory stores
 
 ### 4.2 `diff_service.py`
 
-目前以文字段落 diff 為主。
+差異引擎核心，整合多路比對技術：
 
 `diff_paragraphs()`：
+- 對 old/new paragraph text 先做 whitespace normalize (NFKC)
+- 用 `SequenceMatcher.get_opcodes()` 產生差異碼
+- `_guess_diff_type()` 根據 regex 決定 `number_modified` 或 `text_modified`
 
-- 對 old/new paragraph text 先做 whitespace normalize
-- 用 `SequenceMatcher.get_opcodes()` 產生 `equal / replace / delete / insert`
-- `replace` 會對切片做逐段配對
-- `_guess_diff_type()` 根據數字 regex 決定 `number_modified` 或 `text_modified`
+`diff_tables()`：
+- **Cell-level diff**：逐格比對 DataFrame 內容
+- **70% 聚合策略**：若表格變動格數超過 70%，自動合併為單一「整表替換」項，避免 UI 碎片化
 
-目前未完成部分：
+`diff_images()` (2026-05-08 重大更新)：
+- **感知雜湊 (pHash)**：初步判斷圖片是否變動或替換
+- **SSIM 子區域定位**：針對 pHash 匹配的圖片，用滑動窗口 SSIM 偵測細微局部變更（如費率數字修改）
+- **區域性 OCR**：對 SSIM 標記區域調用 Tesseract OCR，並將結果回傳為 `TEXT_MODIFIED`
 
-- `diff_tables()` 已提供基礎逐格內容比對，但 bbox 仍以 table 級別為主
-- `diff_pixels()` 預設停用
+`diff_pixels()`：
+- **動態 DPI**：Phase 1 低解析度掃描頁面差異，Phase 2 高解析度分析變更頁
+- **自適應 NCC**：小區域採寬鬆門檻 (0.70)，捕捉極微小文字變動
 
-也就是說，現在實際結果以 paragraph diff 為主，table diff 為輔。
+後處理：
+- **`_merge_nearby_diffs()`**：使用 Union-Find 演算法對空間鄰近的差異項進行物理聚合，解決解析器斷行產生的碎片標記。
+- **去重機制**：自動移除「框中框」重疊項。
 
 ### 4.3 `checklist_service.py`
 

@@ -1,6 +1,6 @@
 # PDF 差異比對系統 — 技術架構文件
 
-> 版本: 2026-05-04 | 更新摘要: 新增鄰近合併（_merge_nearby_diffs）、解析技術詳細說明、docker port 調整為 8001
+> 版本: 2026-05-08 | 更新摘要: 新增 SSIM 子區域變更定位、區域性 Tesseract OCR 整合、核心引擎優化
 
 ---
 
@@ -276,9 +276,13 @@ graph TD
 |------|------|
 | 提取 | 從兩份 PDF 提取所有嵌入圖片 |
 | 位置匹配 | IoU（Intersection over Union）≥ 0.8 → 視為同一張圖 |
-| 相似度 | pHash（感知哈希）Hamming distance > 4 or 尺寸差 > 2px → 標記 IMAGE_DIFF |
-| 過濾 | 跳過佔頁面 ≥ 80% 的背景圖 |
+| 感知雜湊 (pHash) | Hamming distance > 4 or 尺寸差 > 2px → 標記 `IMAGE_DIFF` (整體變更) |
+| **SSIM 子區域定位** | 對 pHash 一致的圖片執行 **Structural Similarity** 滑動窗口分析，定位小區域細微變動 |
+| **區域性 OCR** | 針對 SSIM 標記的差異子區域執行 **Tesseract OCR**，讀取舊/新文字內容 |
+| 過濾 | 跳過佔頁面 ≥ 80% 的背景圖；OCR 結果若 100% 一致則抑制誤報 |
 | 信心值 | 0.85–0.90 |
+
+> **SSIM 與 OCR 協作 (2026-05-08)**：解決了以往感知雜湊只能偵測「大改」的問題。現在即使圖片內只改了一個數字（如：費率圖表、說明小字），也能透過 SSIM 精確定位變更區域，並用 Tesseract 讀出具體的修改內容（例如：2.4% → 2.8%）。
 
 #### 後處理：鄰近合併與去重
 
@@ -543,6 +547,19 @@ docker compose up --build -d
 | 預設帳號 | admin/admin123 | **首次登入後應修改密碼** |
 
 ## 10. 變更清單
+
+### 2026-05-08 — 核心引擎升級：SSIM 子區域定位 + 區域性 OCR
+
+#### 新增/修改
+
+| 檔案 | 動作 | 說明 |
+|------|------|------|
+| `backend/services/diff_service.py` | 修改 | 新增 `_ssim_map()` 與 `_locate_image_changes()`：實作滑動窗口 SSIM 分析，精確定位圖片內的細微變更區域。 |
+| `backend/services/diff_service.py` | 修改 | 新增 `_ocr_tile_pair()`：封裝 Tesseract OCR 流程，對 SSIM 標記區域進行文字讀取與正規化對比。 |
+| `backend/services/diff_service.py` | 修改 | 優化 `diff_images()`：整合 SSIM/OCR 邏輯，使圖片內文字修改能以 `TEXT_MODIFIED` 類型呈現。 |
+| `README.md` | 修改 | 更新最新更新摘要，補充 SSIM 技術細節。 |
+
+---
 
 ### 2026-05-04 — 三項效能優化 + 鄰近差異合併 + docker port 調整
 
