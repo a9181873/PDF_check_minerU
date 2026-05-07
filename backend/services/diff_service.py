@@ -376,7 +376,7 @@ def diff_pixels(
     old_pdf_path: str,
     new_pdf_path: str,
     threshold: int = 30,
-    min_area: int = 400,
+    min_area: int = 100,
     dpi: int = 200,
 ) -> list[DiffItem]:
     """Pixel-level diff using PyMuPDF rendering + numpy + scipy connected components.
@@ -509,6 +509,13 @@ def diff_pixels(
                 # rendering noise rather than a content change. NCC is scale and
                 # brightness invariant, so it stays close to 1.0 under pure
                 # compression/gamma drift but drops sharply for real edits.
+                # Small regions (likely individual digits/glyphs inside infographics
+                # or short labels) need a looser NCC threshold — at 0.94 a 2-character
+                # change like "24"→"28" inside a 30×40 px box can still score 0.95+
+                # because most of the patch is identical background.
+                is_small_region = actual_px < 2000
+                ncc_threshold = 0.70 if is_small_region else 0.94
+
                 patch_old = arr_old[r0:r1, c0:c1].astype(np.float64)
                 patch_new = arr_new[r0:r1, c0:c1].astype(np.float64)
                 if patch_old.size >= 100:
@@ -553,10 +560,10 @@ def diff_pixels(
                             best_ncc = ncc
                         
                         # Threshold for "identical text just shifted"
-                        if best_ncc > 0.94:
+                        if best_ncc > ncc_threshold:
                             break
-                            
-                    if best_ncc > 0.94:
+
+                    if best_ncc > ncc_threshold:
                         continue
 
                 # PDF points in fitz's top-left origin (Y grows down)
@@ -610,7 +617,12 @@ def diff_pixels(
                 if not ot and not nt and (patch_h < 20 or patch_w < 20):
                     continue
 
-                if not ot and not nt:
+                # Run OCR fallback when:
+                # (a) Neither side has native text, OR
+                # (b) Small region with at least one side missing text — likely a
+                #     digit/glyph baked into a raster image (e.g. infographic numbers).
+                should_ocr = (not ot and not nt) or (is_small_region and (not ot or not nt))
+                if should_ocr:
                     try:
                         import subprocess, tempfile, os as _os
                         from PIL import Image as _PILImage, ImageFilter as _PILFilter
@@ -698,9 +710,11 @@ def diff_pixels(
                     diff_type = DiffType.IMAGE_DIFF
                     context_label = f"Page {page_no} 表格/版面變更"
 
-                # Only suppress SMALL graphic noise (lines, borders, anti-aliasing).
-                # Large visual diffs (tables, layout) are meaningful and should be shown.
-                if diff_type == DiffType.IMAGE_DIFF and not is_large_region:
+                # Only suppress mid-size graphic noise (lines, borders, anti-aliasing).
+                # Large visual diffs (tables, layout) AND tiny-but-real changes
+                # (single digits inside infographics that OCR couldn't read)
+                # both deserve to be reported with screenshot evidence.
+                if diff_type == DiffType.IMAGE_DIFF and not is_large_region and not is_small_region:
                     continue
 
                 try:
@@ -739,6 +753,119 @@ def diff_pixels(
         doc_new.close()
 
     return items
+
+
+def _ssim_map(a, b, win: int = 11):
+    """Sliding-window SSIM. Returns same-shape float32 array.
+    Lower values = more dissimilar. Used for sub-region change localization
+    inside embedded raster images (e.g. infographics with small text edits)."""
+    import numpy as np
+    from scipy.ndimage import uniform_filter
+    a = a.astype(np.float32)
+    b = b.astype(np.float32)
+    mu_a = uniform_filter(a, win)
+    mu_b = uniform_filter(b, win)
+    va = uniform_filter(a * a, win) - mu_a ** 2
+    vb = uniform_filter(b * b, win) - mu_b ** 2
+    cov = uniform_filter(a * b, win) - mu_a * mu_b
+    C1 = (0.01 * 255) ** 2
+    C2 = (0.03 * 255) ** 2
+    return ((2 * mu_a * mu_b + C1) * (2 * cov + C2)) / \
+           ((mu_a ** 2 + mu_b ** 2 + C1) * (va + vb + C2))
+
+
+def _locate_image_changes(oi: dict, ni: dict) -> list[dict]:
+    """Use SSIM to find sub-regions inside an image pair that differ.
+    Returns [{pixel_bbox: (px0,py0,px1,py1), severity: float}] in NEW image
+    pixel coordinates."""
+    try:
+        import numpy as np
+        from scipy import ndimage
+    except ImportError:
+        return []
+
+    img_o = oi["pil_img"]
+    img_n = ni["pil_img"]
+    if img_o.size != img_n.size:
+        target = (max(img_o.width, img_n.width), max(img_o.height, img_n.height))
+        img_o = img_o.resize(target)
+        img_n = img_n.resize(target)
+    a = np.array(img_o.convert("L"))
+    b = np.array(img_n.convert("L"))
+    if a.shape[0] < 32 or a.shape[1] < 32:
+        return []
+
+    sim_map = _ssim_map(a, b, win=11)
+    diff_mask = sim_map < 0.85
+    if not diff_mask.any():
+        return []
+
+    dilated = ndimage.binary_dilation(diff_mask, iterations=3)
+    labeled, n = ndimage.label(dilated)
+    out: list[dict] = []
+    for rid in range(1, n + 1):
+        region = labeled == rid
+        if int(region.sum()) < 50:
+            continue
+        rs, cs = np.where(region)
+        out.append({
+            "pixel_bbox": (int(cs.min()), int(rs.min()),
+                           int(cs.max()) + 1, int(rs.max()) + 1),
+            "severity": float(1.0 - sim_map[region].mean()),
+        })
+    return out
+
+
+def _ocr_tile_pair(oi: dict, ni: dict, pixel_bbox: tuple) -> tuple[str, str]:
+    """Crop the SSIM-flagged region from both PIL images and run Tesseract.
+    Returns (old_text, new_text). Empty strings on OCR failure."""
+    try:
+        import subprocess, tempfile
+        import os as _os
+        import numpy as np
+        from PIL import Image as _PILImage
+    except ImportError:
+        return "", ""
+
+    px0, py0, px1, py1 = pixel_bbox
+
+    def _ocr_one(pil_img):
+        # Pad slightly so the OCR sees full glyph strokes
+        pad = 4
+        w, h = pil_img.size
+        crop = pil_img.crop((max(0, px0 - pad), max(0, py0 - pad),
+                             min(w, px1 + pad), min(h, py1 + pad))).convert("L")
+        # Upscale to at least 120 px tall for Tesseract accuracy
+        if crop.height < 120:
+            scale = max(1, 120 // crop.height + 1)
+            crop = crop.resize((crop.width * scale, crop.height * scale),
+                               _PILImage.LANCZOS)
+        arr = np.array(crop)
+        thresh = int(arr.mean()) - 20
+        thresh = max(80, min(thresh, 200))
+        bin_img = _PILImage.fromarray(((arr > thresh) * 255).astype(np.uint8))
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            bin_img.save(f.name)
+            tmp = f.name
+        try:
+            result = subprocess.run(
+                ["tesseract", tmp, "stdout",
+                 "-l", "chi_tra", "--psm", "6", "--oem", "1"],
+                capture_output=True, text=True, timeout=10,
+            )
+            return result.stdout.strip()
+        except Exception:
+            return ""
+        finally:
+            try:
+                _os.unlink(tmp)
+            except Exception:
+                pass
+
+    try:
+        return _ocr_one(oi["pil_img"]), _ocr_one(ni["pil_img"])
+    except Exception:
+        return "", ""
 
 
 def diff_images(
@@ -795,6 +922,8 @@ def diff_images(
                 page_imgs.append({
                     "xref": xref,
                     "phash": phash,
+                    "pil_img": pil_img,
+                    "page_h_pt": ph,
                     "rect": r,
                     "bbox": BBox(page=page.number + 1, x0=r.x0, y0=ph - r.y1, x1=r.x1, y1=ph - r.y0),
                     "width": r.width,
@@ -841,8 +970,8 @@ def diff_images(
                     ni = new_imgs[best_j]
                     hamming = oi["phash"] - ni["phash"]
                     size_changed = abs(oi["width"] - ni["width"]) > 2 or abs(oi["height"] - ni["height"]) > 2
-                    
-                    # Only report image change if hamming distance is significant (> 4) 
+
+                    # Only report image change if hamming distance is significant (> 4)
                     # or size changed, to ignore minor export artifacts
                     if hamming > 4 or size_changed:
                         desc_parts = []
@@ -858,6 +987,42 @@ def diff_images(
                             context=f"Page {page_no} \u5d4c\u5165\u5716\u7247\u8b8a\u66f4",
                             confidence=0.90,
                         ))
+                    else:
+                        # SSIM-based local heatmap: catches small text edits inside
+                        # an embedded raster (e.g. "24\u5e74" \u2192 "28\u5e74" in an infographic)
+                        # that pHash on the whole image misses.
+                        sub_changes = _locate_image_changes(oi, ni)
+                        if sub_changes:
+                            scale_x = oi["rect"].width / oi["pil_img"].width
+                            scale_y = oi["rect"].height / oi["pil_img"].height
+                            ph_pt = oi["page_h_pt"]
+                            for sc in sub_changes:
+                                px0, py0, px1, py1 = sc["pixel_bbox"]
+                                fx0 = oi["rect"].x0 + px0 * scale_x
+                                fx1 = oi["rect"].x0 + px1 * scale_x
+                                fy_top    = oi["rect"].y0 + py0 * scale_y
+                                fy_bottom = oi["rect"].y0 + py1 * scale_y
+                                sub_bbox = BBox(
+                                    page=page_no,
+                                    x0=fx0, y0=ph_pt - fy_bottom,
+                                    x1=fx1, y1=ph_pt - fy_top,
+                                )
+                                old_text, new_text = _ocr_tile_pair(oi, ni, sc["pixel_bbox"])
+                                # Same OCR text \u2192 noise, suppress
+                                if old_text and new_text and \
+                                   _deep_normalize(old_text).replace(" ", "") == \
+                                   _deep_normalize(new_text).replace(" ", ""):
+                                    continue
+                                has_text = bool(old_text or new_text)
+                                items.append(DiffItem(
+                                    id="",
+                                    diff_type=DiffType.TEXT_MODIFIED if has_text else DiffType.IMAGE_DIFF,
+                                    old_value=old_text or "\u5d4c\u5165\u5716\u5167\u5c40\u90e8\u8b8a\u66f4",
+                                    new_value=new_text or f"SSIM severity={sc['severity']:.2f}",
+                                    old_bbox=sub_bbox, new_bbox=sub_bbox,
+                                    context=f"Page {page_no} \u5d4c\u5165\u5716\u5167\u5bb9\u8b8a\u66f4",
+                                    confidence=0.85,
+                                ))
                 else:
                     items.append(DiffItem(
                         id="", diff_type=DiffType.DELETED,
