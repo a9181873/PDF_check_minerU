@@ -104,10 +104,13 @@ export const useCompareStore = create<CompareState>()(
 
       setReport: (report) => {
         const items = report.items || [];
+        const { selectedDiffId } = get();
+        // Preserve existing selection if it's still valid in the new report
+        const selectionStillValid = selectedDiffId && items.some((i) => i.id === selectedDiffId);
         set({
           report,
           filteredItems: items,
-          selectedDiffId: items.length > 0 ? items[0].id : null,
+          selectedDiffId: selectionStillValid ? selectedDiffId : (items.length > 0 ? items[0].id : null),
         });
       },
 

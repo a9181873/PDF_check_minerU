@@ -13,9 +13,12 @@ const AdminPage: React.FC = () => {
   const [form, setForm] = useState({ username: '', display_name: '', password: '', role: 'reviewer' });
   const [editForm, setEditForm] = useState({ display_name: '', password: '', role: '', is_active: true });
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
-    try { setUsers(await authService.listUsers()); } catch { /* ignore */ }
+    try { setUsers(await authService.listUsers()); } catch { setError('載入帳號清單失敗'); }
   }, []);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
@@ -25,17 +28,22 @@ const AdminPage: React.FC = () => {
   }, [currentUser, navigate]);
 
   const handleCreate = async () => {
+    if (creating) return;
     setError(null);
     if (!form.username || !form.display_name || !form.password) { setError('所有欄位皆為必填'); return; }
+    setCreating(true);
     try {
       await authService.createUser(form);
       setForm({ username: '', display_name: '', password: '', role: 'reviewer' });
       setShowCreate(false);
       await loadUsers();
     } catch { setError('建立失敗，帳號可能已存在'); }
+    finally { setCreating(false); }
   };
 
   const handleUpdate = async (userId: string) => {
+    if (updatingId) return;
+    setUpdatingId(userId);
     try {
       const payload: Record<string, unknown> = {};
       if (editForm.display_name) payload.display_name = editForm.display_name;
@@ -46,11 +54,18 @@ const AdminPage: React.FC = () => {
       setEditId(null);
       await loadUsers();
     } catch { setError('更新失敗'); }
+    finally { setUpdatingId(null); }
   };
 
   const handleDelete = async (userId: string) => {
+    if (deletingId) return;
     if (!confirm('確定要刪除此帳號？')) return;
-    try { await authService.deleteUser(userId); await loadUsers(); } catch { setError('刪除失敗'); }
+    setDeletingId(userId);
+    try {
+      await authService.deleteUser(userId);
+      await loadUsers();
+    } catch { setError('刪除失敗'); }
+    finally { setDeletingId(null); }
   };
 
   const startEdit = (u: UserInfo) => {
@@ -104,8 +119,8 @@ const AdminPage: React.FC = () => {
               </select>
             </div>
             <div className="flex gap-2">
-              <button onClick={handleCreate} className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm">建立</button>
-              <button onClick={() => setShowCreate(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">取消</button>
+              <button onClick={handleCreate} disabled={creating} className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm disabled:opacity-60 disabled:cursor-not-allowed">{creating ? '建立中…' : '建立'}</button>
+              <button onClick={() => setShowCreate(false)} disabled={creating} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm disabled:opacity-60">取消</button>
             </div>
           </div>
         )}
@@ -130,8 +145,8 @@ const AdminPage: React.FC = () => {
                       </label>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => handleUpdate(u.id)} className="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700">儲存</button>
-                      <button onClick={() => setEditId(null)} className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">取消</button>
+                      <button onClick={() => handleUpdate(u.id)} disabled={updatingId === u.id} className="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed">{updatingId === u.id ? '儲存中…' : '儲存'}</button>
+                      <button onClick={() => setEditId(null)} disabled={updatingId === u.id} className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-60">取消</button>
                     </div>
                   </div>
                 ) : (
@@ -149,7 +164,7 @@ const AdminPage: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <button onClick={() => startEdit(u)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">編輯</button>
                       {u.id !== currentUser?.id && (
-                        <button onClick={() => handleDelete(u.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                        <button onClick={() => handleDelete(u.id)} disabled={deletingId === u.id} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"><Trash2 size={16} /></button>
                       )}
                     </div>
                   </div>

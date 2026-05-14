@@ -1,13 +1,13 @@
 import io
 import re
-import shutil
 import uuid
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 
+from api.routes_auth import get_current_user
 from api.task_store import TASK_STORE
 from config import settings
 from models.database import (
@@ -30,7 +30,7 @@ from services.archive_service import compute_pdf_hash
 from services.diff_service import generate_diff_report
 from services.parser_service import parse_pdf, save_markdown
 
-router = APIRouter(prefix="/api/compare", tags=["compare"])
+router = APIRouter(prefix="/api/compare", tags=["compare"], dependencies=[Depends(get_current_user)])
 
 
 def _assert_pdf(file: UploadFile) -> None:
@@ -42,8 +42,25 @@ def _assert_pdf(file: UploadFile) -> None:
 def _save_upload(file: UploadFile, dest_dir: Path, task_id: str) -> Path:
     safe_name = f"{task_id}_{Path(file.filename or 'upload.pdf').name}"
     path = dest_dir / safe_name
-    with path.open("wb") as target:
-        shutil.copyfileobj(file.file, target)
+    max_bytes = settings.max_upload_size_mb * 1024 * 1024
+    total = 0
+    chunk_size = 1024 * 1024  # 1MB
+    try:
+        with path.open("wb") as target:
+            while True:
+                chunk = file.file.read(chunk_size)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"檔案超過大小限制 {settings.max_upload_size_mb}MB",
+                    )
+                target.write(chunk)
+    except HTTPException:
+        path.unlink(missing_ok=True)
+        raise
     return path
 
 

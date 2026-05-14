@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { CheckCircle, Copy, ExternalLink, Flag, Maximize2, Minus, Plus, RotateCcw, X } from 'lucide-react';
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
 
-import { buildApiUrl } from '../services/api';
+import { buildAuthedUrl } from '../services/api';
 import { DiffItem, DiffType } from '../services/types';
 import { useAuthStore } from '../stores/authStore';
 
@@ -93,9 +93,9 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
   const [lightbox, setLightbox] = useState<{ url: string; label: string } | null>(null);
 
   const isImageDiff = diff.diff_type === DiffType.IMAGE_DIFF;
-  const cropBase = taskId && isImageDiff ? buildApiUrl(`/api/compare/${taskId}/crop/${diff.id}`) : null;
-  const oldCropUrl = diff.old_image_base64 || (cropBase && diff.old_bbox ? `${cropBase}/old` : null);
-  const newCropUrl = diff.new_image_base64 || (cropBase && diff.new_bbox ? `${cropBase}/new` : null);
+  const canFetchCrop = taskId && isImageDiff;
+  const oldCropUrl = diff.old_image_base64 || (canFetchCrop && diff.old_bbox ? buildAuthedUrl(`/api/compare/${taskId}/crop/${diff.id}/old`) : null);
+  const newCropUrl = diff.new_image_base64 || (canFetchCrop && diff.new_bbox ? buildAuthedUrl(`/api/compare/${taskId}/crop/${diff.id}/new`) : null);
   const showOldImage = !!oldCropUrl && !oldCropFailed;
   const showNewImage = !!newCropUrl && !newCropFailed;
 

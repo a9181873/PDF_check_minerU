@@ -16,15 +16,24 @@ export default function VerificationHistoryModal({ comparisonId, isOpen, onClose
 
   useEffect(() => {
     if (!isOpen) return;
+    let cancelled = false;
     setLoading(true);
     setError(null);
     archiveApi.getHistory(comparisonId)
       .then(({ archive, sessions }) => {
+        if (cancelled) return;
         setArchive(archive);
         setSessions(sessions);
       })
-      .catch(() => setError('無法載入檢核歷史'))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (cancelled) return;
+        setError('無法載入檢核歷史');
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [isOpen, comparisonId]);
 
   if (!isOpen) return null;

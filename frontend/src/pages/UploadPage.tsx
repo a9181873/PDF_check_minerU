@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { isAxiosError } from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { Upload, File, Folder, AlertCircle, CheckCircle, XCircle, Clock, ChevronRight, Search, Download, LogOut, Settings, User, Trash2 } from 'lucide-react';
-import { compareApi, projectApi, buildApiUrl } from '../services/api';
+import { compareApi, projectApi, buildAuthedUrl } from '../services/api';
 import { ComparisonInfo } from '../services/types';
 import { useAuthStore } from '../stores/authStore';
 
@@ -37,6 +37,7 @@ const UploadPage: React.FC = () => {
   const exportDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const navTimerRef = useRef<number | null>(null);
 
   const filteredHistory = useMemo(() => {
     if (!historySearch) return recentComparisons;
@@ -49,11 +50,12 @@ const UploadPage: React.FC = () => {
   }, [recentComparisons, historySearch]);
 
   const handleHistoryExport = (compId: string, format: string) => {
-    window.open(buildApiUrl(`/api/export/${compId}/${format}`), '_blank', 'noopener,noreferrer');
+    window.open(buildAuthedUrl(`/api/export/${compId}/${format}`), '_blank', 'noopener,noreferrer');
     setOpenExportId(null);
   };
 
   const handleDeleteConfirm = async (compId: string) => {
+    if (deletingId) return;
     setConfirmDeleteId(null);
     setDeletingId(compId);
     try {
@@ -97,6 +99,16 @@ const UploadPage: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [openExportId]);
+
+  // Cancel the post-upload navigate timer if user leaves the page mid-countdown
+  useEffect(() => {
+    return () => {
+      if (navTimerRef.current !== null) {
+        window.clearTimeout(navTimerRef.current);
+        navTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Auto-suggest project name when both files are selected (only if user hasn't edited)
   useEffect(() => {
@@ -176,8 +188,9 @@ const UploadPage: React.FC = () => {
       const result = await compareApi.uploadFiles(oldFile, newFile, projectId || undefined);
       setSuccess('檔案上傳成功！正在進行比對分析...');
       
-      // Redirect to compare page after a short delay
-      setTimeout(() => {
+      // Redirect to compare page after a short delay (cancellable on unmount)
+      navTimerRef.current = window.setTimeout(() => {
+        navTimerRef.current = null;
         navigate(`/compare/${result.task_id}`);
       }, 1500);
     } catch (err: unknown) {
@@ -525,14 +538,16 @@ const UploadPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); handleDeleteConfirm(comp.id); }}
-                        className="px-2 py-1 text-xs bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                        disabled={deletingId === comp.id}
+                        className="px-2 py-1 text-xs bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                       >
-                        確認刪除
+                        {deletingId === comp.id ? '刪除中…' : '確認刪除'}
                       </button>
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
-                        className="px-2 py-1 text-xs bg-gray-200 text-gray-600 rounded-lg hover:bg-gray-300 transition-colors"
+                        disabled={deletingId === comp.id}
+                        className="px-2 py-1 text-xs bg-gray-200 text-gray-600 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-60"
                       >
                         取消
                       </button>

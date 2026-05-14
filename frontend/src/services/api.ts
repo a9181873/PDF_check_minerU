@@ -24,7 +24,27 @@ const api = axios.create({
   },
 });
 
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('auth_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 export const buildApiUrl = (path: string) => (API_BASE ? joinUrl(API_BASE, path) : path);
+
+/**
+ * Like buildApiUrl, but appends ?token= for endpoints opened via window.open / <iframe>
+ * (browser-driven loads that can't set the Authorization header).
+ */
+export const buildAuthedUrl = (path: string) => {
+  const base = buildApiUrl(path);
+  const token = localStorage.getItem('auth_token');
+  if (!token) return base;
+  const sep = base.includes('?') ? '&' : '?';
+  return `${base}${sep}token=${encodeURIComponent(token)}`;
+};
 
 export const buildWebSocketUrl = (path: string) => {
   const baseOrigin = WS_BASE || API_BASE || window.location.origin;
@@ -34,6 +54,11 @@ export const buildWebSocketUrl = (path: string) => {
     url.protocol = 'ws:';
   } else if (url.protocol === 'https:') {
     url.protocol = 'wss:';
+  }
+
+  const token = localStorage.getItem('auth_token');
+  if (token) {
+    url.searchParams.set('token', token);
   }
 
   return url.toString();
@@ -117,7 +142,7 @@ export const projectApi = {
   },
 
   exportAllComparisonsUrl(): string {
-    return buildApiUrl('/api/projects/all/comparisons/export');
+    return buildAuthedUrl('/api/projects/all/comparisons/export');
   },
 };
 
@@ -174,7 +199,7 @@ export const checklistApi = {
 
 export const exportApi = {
   getDownloadUrl(comparisonId: string, format: 'report' | 'pdf' | 'excel' = 'report') {
-    return buildApiUrl(`/api/export/${comparisonId}/${format}`);
+    return buildAuthedUrl(`/api/export/${comparisonId}/${format}`);
   },
 };
 
@@ -195,7 +220,7 @@ export const archiveApi = {
   },
 
   getFileUrl(archiveId: string, fileType: 'old_pdf' | 'new_pdf' | 'annotated_pdf'): string {
-    return buildApiUrl(`/api/archive/files/${archiveId}/${fileType}`);
+    return buildAuthedUrl(`/api/archive/files/${archiveId}/${fileType}`);
   },
 };
 

@@ -4,8 +4,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from fastapi import Depends
+
 from api.routes_archive import router as archive_router
-from api.routes_auth import router as auth_router
+from api.routes_auth import get_current_user, router as auth_router
 from api.routes_compare import router as compare_router
 from api.routes_checklist import router as checklist_router
 from api.routes_export import router as export_router
@@ -21,8 +23,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(auth_router)
@@ -53,13 +55,13 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/system/resource-logs")
-def get_resource_logs(limit: int = 50):
+def get_resource_logs(limit: int = 50, _user: dict = Depends(get_current_user)):
     from services.resource_monitor import list_resource_logs
     return list_resource_logs(limit)
 
 
 @app.get("/api/system/resource-logs/{task_id}")
-def get_resource_log_detail_route(task_id: str):
+def get_resource_log_detail_route(task_id: str, _user: dict = Depends(get_current_user)):
     from services.resource_monitor import get_resource_log_detail as _get_detail
     detail = _get_detail(task_id)
     if not detail:

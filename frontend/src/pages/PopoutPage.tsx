@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useCompareStore } from '../stores/compareStore';
-import { compareApi, buildApiUrl } from '../services/api';
+import { compareApi, buildAuthedUrl } from '../services/api';
 import { useCrossWindowSync } from '../hooks/useCrossWindowSync';
 
 const PDFViewer = lazy(() => import('../components/PDFViewer'));
@@ -108,11 +108,11 @@ const PopoutPage: React.FC = () => {
      broadcastDiffSelect(diff.id);
   };
 
-  if (isLoading || !report || !version) {
+  if (isLoading || !report || !taskId || !version) {
     return <InlineLoader label="Loading document" />;
   }
 
-  const pdfUrl = buildApiUrl(`/api/compare/${taskId}/pdf/${version}`);
+  const pdfUrl = buildAuthedUrl(`/api/compare/${taskId}/pdf/${version}`);
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-gray-100 flex flex-col">

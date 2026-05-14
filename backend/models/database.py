@@ -698,9 +698,35 @@ def get_archive_by_comparison(comparison_id: str) -> dict | None:
 
 
 def ensure_default_admin() -> None:
-    """Create default admin account if no users exist."""
+    """Create default admin account if no users exist.
+
+    Password resolution order:
+    1. Env var DEFAULT_ADMIN_PASSWORD if set
+    2. Auto-generated random password written to runtime/.initial_admin_password
+       (file is chmod 600; admin should read it once then delete)
+    """
+    import logging
+    import os
+    import secrets
+    from config import settings as _settings
+
     with get_connection() as conn:
         count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-    if count == 0:
-        create_user("admin", "系統管理員", "admin123", role="admin")
+    if count != 0:
+        return
+
+    password = os.environ.get("DEFAULT_ADMIN_PASSWORD", "").strip()
+    if not password:
+        password = secrets.token_urlsafe(16)
+        try:
+            pw_file = _settings.data_dir / ".initial_admin_password"
+            pw_file.write_text(password + "\n")
+            pw_file.chmod(0o600)
+            logging.warning(
+                "Default admin created. Initial password written to %s — read it and delete the file.",
+                pw_file,
+            )
+        except OSError:
+            logging.warning("Default admin initial password (save now): %s", password)
+    create_user("admin", "系統管理員", password, role="admin")
 

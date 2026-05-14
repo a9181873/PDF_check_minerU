@@ -1,14 +1,30 @@
 import asyncio
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
+from api.routes_auth import decode_token
 from api.task_store import TASK_STORE
+from models.database import get_user_by_id
 
 router = APIRouter(tags=["websocket"])
 
 
 @router.websocket("/ws/compare/{task_id}")
 async def compare_progress_socket(websocket: WebSocket, task_id: str):
+    # Auth via ?token= query string (browser WebSocket can't set Authorization header)
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    payload = decode_token(token)
+    if not payload:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    user = get_user_by_id(payload["sub"])
+    if not user or not user.get("is_active"):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
     await websocket.accept()
 
     last_signature: tuple[str, int, str, str | None] | None = None

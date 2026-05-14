@@ -1,8 +1,12 @@
+import logging
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+
+logger = logging.getLogger(__name__)
 from fastapi.responses import FileResponse
 
+from api.routes_auth import get_current_user
 from api.task_store import TASK_STORE
 from config import settings
 from models.database import get_checklist, get_comparison_report, get_review_counts, get_review_logs
@@ -15,7 +19,7 @@ from services.export_service import (
     export_review_report_pdf,
 )
 
-router = APIRouter(prefix="/api/export", tags=["export"])
+router = APIRouter(prefix="/api/export", tags=["export"], dependencies=[Depends(get_current_user)])
 
 
 def _resolve_new_pdf_path(task_id: str, filename: str) -> Path | None:
@@ -68,7 +72,8 @@ async def export_pdf(comparison_id: str):
     try:
         exported = export_annotated_pdf(str(source_pdf), report.items, str(output))
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        logger.exception("annotated PDF export failed for %s", comparison_id)
+        raise HTTPException(status_code=503, detail="匯出標註 PDF 失敗，請稍後再試") from exc
     return FileResponse(
         exported,
         media_type="application/pdf",
@@ -120,7 +125,8 @@ async def export_report(comparison_id: str):
             output_path=str(output),
         )
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        logger.exception("review report PDF export failed for %s", comparison_id)
+        raise HTTPException(status_code=503, detail="匯出差異檢核報告失敗，請稍後再試") from exc
     return FileResponse(
         exported,
         media_type="application/pdf",

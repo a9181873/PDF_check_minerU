@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from api.routes_auth import get_current_user
 from api.task_store import TASK_STORE
 from models.database import (
     add_review_log,
@@ -11,7 +12,7 @@ from models.database import (
 )
 from models.schemas import ReviewActionRequest, ReviewSummaryResponse
 
-router = APIRouter(prefix="/api/review", tags=["review"])
+router = APIRouter(prefix="/api/review", tags=["review"], dependencies=[Depends(get_current_user)])
 
 
 def _load_report(comparison_id: str):

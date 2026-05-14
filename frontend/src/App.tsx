@@ -41,7 +41,7 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
           <Route path="/compare/:taskId" element={<ProtectedRoute><ComparePage /></ProtectedRoute>} />
-          <Route path="/popout/:taskId/:version" element={<PopoutPage />} />
+          <Route path="/popout/:taskId/:version" element={<ProtectedRoute><PopoutPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

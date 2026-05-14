@@ -1,14 +1,15 @@
 import csv
 import io
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+from api.routes_auth import get_current_user
 from models.database import list_project_comparisons, list_projects, project_exists
 from models.database import create_project as create_project_row
 from models.schemas import ProjectCreateRequest, ProjectResponse
 
-router = APIRouter(prefix="/api/projects", tags=["project"])
+router = APIRouter(prefix="/api/projects", tags=["project"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("", response_model=ProjectResponse)

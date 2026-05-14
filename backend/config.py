@@ -10,10 +10,13 @@ _DEFAULT_DATA_DIR = _HOST_RUNTIME if _HOST_RUNTIME.exists() else Path("/app/runt
 
 class Settings(BaseSettings):
     app_name: str = "PDF Diff Checker API"
-    debug: bool = True
+    debug: bool = False
 
     base_dir: Path = _BASE_DIR
     data_dir: Path = _DEFAULT_DATA_DIR
+
+    jwt_secret: str = ""
+    jwt_expiry_seconds: int = 86400 * 7
 
     # Derived paths — defaults are placeholders; model_validator resolves them.
     uploads_dir: Path = Path(".")
@@ -26,7 +29,8 @@ class Settings(BaseSettings):
     archive_dir: Path = Path(".")
     db_path: Path = Path(".")
 
-    allowed_origins: list[str] = ["*"]
+    allowed_origins: list[str] = ["http://localhost:8001"]
+    max_upload_size_mb: int = 100
 
     # MinerU REST API endpoint (empty = disabled, falls back to Docling)
     # Example: "http://mineru-api:18080" (docker-compose internal) or "http://localhost:18080"
@@ -46,6 +50,22 @@ class Settings(BaseSettings):
         self.crops_dir = self.data_dir / "crops"
         self.archive_dir = self.data_dir / "archive"
         self.db_path = self.data_dir / "app.db"
+
+        # Auto-generate JWT secret if not provided (writes to data_dir for persistence)
+        if not self.jwt_secret:
+            import secrets
+            secret_file = self.data_dir / ".jwt_secret"
+            try:
+                if secret_file.exists():
+                    self.jwt_secret = secret_file.read_text().strip()
+                else:
+                    self.data_dir.mkdir(parents=True, exist_ok=True)
+                    self.jwt_secret = secrets.token_urlsafe(48)
+                    secret_file.write_text(self.jwt_secret)
+                    secret_file.chmod(0o600)
+            except OSError:
+                # Fallback to in-memory random secret if filesystem write fails
+                self.jwt_secret = secrets.token_urlsafe(48)
         return self
 
     @field_validator("debug", mode="before")

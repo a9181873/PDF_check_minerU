@@ -6,7 +6,8 @@
       "Bash(docker exec *)",
       "Bash(export MINERU_MODEL_SOURCE=modelscope)",
       "Bash(/tmp/mineru_poc_venv/bin/mineru-models-download -s modelscope -t pipeline)",
-      "Bash(/tmp/mineru_poc_venv/bin/mineru-models-download -s modelscope -m pipeline)"
+      "Bash(/tmp/mineru_poc_venv/bin/mineru-models-download -s modelscope -m pipeline)",
+      "Bash(python3 -m py_compile api/routes_auth.py api/routes_compare.py api/routes_review.py api/routes_archive.py api/routes_export.py api/routes_checklist.py api/routes_project.py api/websocket.py api/task_store.py main.py config.py models/database.py)"
     ]
   }
 }

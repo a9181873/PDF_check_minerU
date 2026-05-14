@@ -7,9 +7,10 @@ import time
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 
+from config import settings
 from models.database import (
     create_user,
     delete_user,
@@ -21,10 +22,6 @@ from models.database import (
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-
-# Simple JWT-like token using HMAC-SHA256 (no external dependency)
-_SECRET = "pdf-check-secret-key-change-in-production"
-_TOKEN_EXPIRY = 86400 * 7  # 7 days
 
 
 def _b64e(data: bytes) -> str:
@@ -40,10 +37,10 @@ def create_token(user_id: str, username: str, role: str) -> str:
     header = _b64e(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
     payload = _b64e(
         json.dumps(
-            {"sub": user_id, "username": username, "role": role, "exp": int(time.time()) + _TOKEN_EXPIRY}
+            {"sub": user_id, "username": username, "role": role, "exp": int(time.time()) + settings.jwt_expiry_seconds}
         ).encode()
     )
-    sig = _b64e(hmac.new(_SECRET.encode(), f"{header}.{payload}".encode(), hashlib.sha256).digest())
+    sig = _b64e(hmac.new(settings.jwt_secret.encode(), f"{header}.{payload}".encode(), hashlib.sha256).digest())
     return f"{header}.{payload}.{sig}"
 
 
@@ -52,7 +49,7 @@ def decode_token(token: str) -> dict | None:
     if len(parts) != 3:
         return None
     header_b, payload_b, sig_b = parts
-    expected = _b64e(hmac.new(_SECRET.encode(), f"{header_b}.{payload_b}".encode(), hashlib.sha256).digest())
+    expected = _b64e(hmac.new(settings.jwt_secret.encode(), f"{header_b}.{payload_b}".encode(), hashlib.sha256).digest())
     if not hmac.compare_digest(expected, sig_b):
         return None
     try:
@@ -64,11 +61,23 @@ def decode_token(token: str) -> dict | None:
     return payload
 
 
-def get_current_user(authorization: Annotated[str | None, Header()] = None) -> dict:
-    if not authorization or not authorization.startswith("Bearer "):
+def get_current_user(
+    authorization: Annotated[str | None, Header()] = None,
+    token: Annotated[str | None, Query()] = None,
+) -> dict:
+    """Resolve authenticated user from Authorization header OR ?token= query.
+
+    Query-param fallback exists so browser-driven downloads (window.open) and
+    WebSocket connections can pass credentials without setting headers.
+    """
+    raw_token: str | None = None
+    if authorization and authorization.startswith("Bearer "):
+        raw_token = authorization[7:]
+    elif token:
+        raw_token = token
+    if not raw_token:
         raise HTTPException(status_code=401, detail="未登入")
-    token = authorization[7:]
-    payload = decode_token(token)
+    payload = decode_token(raw_token)
     if not payload:
         raise HTTPException(status_code=401, detail="Token 無效或已過期")
     user = get_user_by_id(payload["sub"])

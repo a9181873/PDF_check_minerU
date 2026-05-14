@@ -1,9 +1,10 @@
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from api.routes_auth import get_current_user
 from api.task_store import TASK_STORE
 from models.database import (
     get_archive_by_comparison,
@@ -17,7 +18,7 @@ from services.archive_service import (
     record_verification,
 )
 
-router = APIRouter(prefix="/api/archive", tags=["archive"])
+router = APIRouter(prefix="/api/archive", tags=["archive"], dependencies=[Depends(get_current_user)])
 
 
 class VerifyRequest(BaseModel):

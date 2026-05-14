@@ -1,14 +1,14 @@
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { isAxiosError } from 'axios';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertCircle, BarChart3, ChevronDown, ClipboardList, Download, Eye, EyeOff, LogOut, Save, Settings, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { AlertCircle, BarChart3, ChevronDown, ClipboardList, Contrast, Download, Eye, EyeOff, LogOut, Save, Settings, Upload, ZoomIn, ZoomOut } from 'lucide-react';
 
 import ChecklistPanel from '../components/ChecklistPanel';
 import DiffListPanel from '../components/DiffListPanel';
 import SearchBar from '../components/SearchBar';
 import SyncScrollContainer from '../components/SyncScrollContainer';
 import VerificationHistoryModal from '../components/VerificationHistoryModal';
-import { checklistApi, buildApiUrl, buildWebSocketUrl, compareApi, reviewApi, archiveApi } from '../services/api';
+import { checklistApi, buildAuthedUrl, buildWebSocketUrl, compareApi, reviewApi, archiveApi } from '../services/api';
 import { ChecklistItem, DiffReport } from '../services/types';
 import { useCompareStore } from '../stores/compareStore';
 import { useCrossWindowSync } from '../hooks/useCrossWindowSync';
@@ -293,7 +293,7 @@ const ComparePage: React.FC = () => {
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [showExportMenu]);
 
-  const handleConfirmDiff = async (diffId: string, reviewer?: string, note?: string) => {
+const handleConfirmDiff = async (diffId: string, reviewer?: string, note?: string) => {
     if (!taskId) {
       return;
     }
@@ -347,7 +347,7 @@ const ComparePage: React.FC = () => {
       return;
     }
 
-    window.open(buildApiUrl(`/api/export/${taskId}/${format}`), '_blank', 'noopener,noreferrer');
+    window.open(buildAuthedUrl(`/api/export/${taskId}/${format}`), '_blank', 'noopener,noreferrer');
     setShowExportMenu(false);
   };
 
@@ -376,7 +376,7 @@ const ComparePage: React.FC = () => {
       return null;
     }
 
-    return buildApiUrl(`/api/compare/${taskId}/pdf/${version}`);
+    return buildAuthedUrl(`/api/compare/${taskId}/pdf/${version}`);
   };
 
   // Any non-terminal status (including snapshotting) is still in-progress
@@ -441,117 +441,97 @@ const ComparePage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,_#f5f5f5_0%,_#edf3ee_100%)] flex flex-col">
-      <header className="relative z-10 border-b border-[#dfe7e2] bg-white/90 px-6 py-4 backdrop-blur">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div>
-              <div className="text-xs uppercase tracking-[0.18em] text-primary-700">Review Workspace</div>
-              <h1 className="text-xl font-bold text-gray-900">PDF 差異比對系統</h1>
-            </div>
-            <div className="text-sm text-gray-600 rounded-full border border-gray-200 bg-[#F5F5F5] px-3 py-1.5">
-              任務 ID: <span className="font-mono text-gray-800">{taskId}</span>
-            </div>
+      <header className="relative z-10 border-b border-[#dfe7e2] bg-white/90 px-6 pt-2 pb-2 backdrop-blur">
+        {/* Row 1: Title */}
+        <div className="flex items-center gap-2.5 mb-1.5">
+          <span className="text-xs font-semibold text-gray-900">PDF 差異比對系統</span>
+          <div className="text-xs text-gray-400 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono">
+            {taskId}
           </div>
+        </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex items-center space-x-1 border border-gray-200 rounded-xl bg-white/50 px-2 py-1.5 backdrop-blur">
+        {/* Row 2: Toolbar */}
+        <div className="flex items-center justify-between gap-2">
+          {/* Left group: view controls */}
+          <div className="flex items-center gap-1.5">
+            {/* Zoom group */}
+            <div className="h-8 inline-flex items-center rounded-xl border border-gray-200 bg-white overflow-hidden">
               <button
                 type="button"
                 onClick={() => setScale(Math.max(0.25, scale - 0.25))}
-                className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                className="w-7 h-full flex items-center justify-center text-gray-600 hover:bg-gray-50 transition-colors"
                 title="縮小"
               >
-                <ZoomOut size={16} />
+                <ZoomOut size={13} />
               </button>
-              <span className="text-sm font-medium w-12 text-center text-gray-700">{Math.round(scale * 100)}%</span>
+              <span className="w-10 h-full flex items-center justify-center text-xs font-medium text-gray-700 border-x border-gray-200">
+                {Math.round(scale * 100)}%
+              </span>
               <button
                 type="button"
                 onClick={() => setScale(Math.min(3.0, scale + 0.25))}
-                className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                className="w-7 h-full flex items-center justify-center text-gray-600 hover:bg-gray-50 transition-colors"
                 title="放大"
               >
-                <ZoomIn size={16} />
+                <ZoomIn size={13} />
               </button>
             </div>
-            
+
+            {/* 灰階 toggle */}
             <button
               type="button"
               onClick={() => setGrayscaleEnabled(!grayscaleEnabled)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-colors text-sm font-medium ${
+              className={`h-8 inline-flex items-center gap-1 px-2.5 rounded-xl border text-xs font-medium transition-colors ${
                 grayscaleEnabled
                   ? 'border-primary-200 bg-primary-50 text-primary-700'
                   : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
               }`}
               title="切換灰階模式"
             >
+              <Contrast size={13} />
               灰階
             </button>
 
+            {/* 差異訊息 toggle */}
             <button
               type="button"
               onClick={() => setShowDiffLabels(!showDiffLabels)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-colors text-sm font-medium ${
+              className={`h-8 inline-flex items-center gap-1 px-2.5 rounded-xl border text-xs font-medium transition-colors ${
                 showDiffLabels
                   ? 'border-primary-200 bg-primary-50 text-primary-700'
                   : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
               }`}
               title="顯示/隱藏差異標籤"
             >
+              {showDiffLabels ? <Eye size={13} /> : <EyeOff size={13} />}
               差異訊息
             </button>
+          </div>
 
+          {/* Right group: actions + user */}
+          <div className="flex items-center gap-1.5">
+            {/* 新比較 */}
             <button
               type="button"
               onClick={() => navigate('/')}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors"
+              className="h-8 inline-flex items-center gap-1 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
             >
-              <Upload size={16} />
-              <span>新比較</span>
+              <Upload size={13} />
+              新比較
             </button>
 
-            {authUser?.role === 'admin' && (
-              <button
-                type="button"
-                onClick={() => navigate('/admin')}
-                className="flex items-center gap-2 px-3 py-2.5 bg-white text-gray-700 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors"
-                title="帳號管理"
-              >
-                <Settings size={16} />
-              </button>
-            )}
-            {authUser && status?.status === 'done' && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleVerifyAndArchive}
-                  disabled={archiving}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors disabled:opacity-60"
-                  title="完成驗證並存檔"
-                >
-                  <Save size={16} />
-                  <span>{archiving ? '存檔中…' : '存檔'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowHistoryModal(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
-                  title="查閱檢核歷史"
-                >
-                  <ClipboardList size={16} />
-                  <span>檢核歷史</span>
-                </button>
-              </>
-            )}
+            <div className="h-5 w-px bg-gray-200 mx-0.5" />
 
+            {/* 下載匯出 */}
             <div className="relative" ref={exportMenuRef}>
               <button
                 type="button"
                 onClick={() => setShowExportMenu((current) => !current)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-xl hover:bg-primary-700 shadow-soft transition-colors"
+                className="h-8 inline-flex items-center gap-1 px-2.5 rounded-xl bg-primary-600 text-white text-xs font-medium hover:bg-primary-700 shadow-soft transition-colors"
               >
-                <Download size={16} />
-                <span>下載匯出</span>
-                <ChevronDown size={16} />
+                <Download size={13} />
+                下載匯出
+                <ChevronDown size={12} />
               </button>
 
               {showExportMenu ? (
@@ -608,17 +588,58 @@ const ComparePage: React.FC = () => {
               ) : null}
             </div>
 
+            {/* 存檔 / 歷史（任務完成後顯示） */}
+            {authUser && status?.status === 'done' && (
+              <>
+                <div className="h-5 w-px bg-gray-200 mx-0.5" />
+                <button
+                  type="button"
+                  onClick={handleVerifyAndArchive}
+                  disabled={archiving}
+                  className="h-8 inline-flex items-center gap-1 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-60"
+                  title="完成驗證並存檔"
+                >
+                  <Save size={13} />
+                  {archiving ? '存檔中…' : '存檔'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowHistoryModal(true)}
+                  className="h-8 inline-flex items-center gap-1 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  title="查閱檢核歷史"
+                >
+                  <ClipboardList size={13} />
+                  檢核歷史
+                </button>
+              </>
+            )}
+
+            {/* 帳號管理（admin 顯示） */}
+            {authUser?.role === 'admin' && (
+              <button
+                type="button"
+                onClick={() => navigate('/admin')}
+                className="h-8 inline-flex items-center gap-1 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                title="帳號管理"
+              >
+                <Settings size={13} />
+                帳號管理
+              </button>
+            )}
+
+            <div className="h-5 w-px bg-gray-200 mx-0.5" />
+
             {/* User info */}
             {authUser && (
-              <div className="flex items-center gap-2 pl-2 border-l border-gray-200">
-                <span className="text-sm text-gray-600">{authUser.display_name}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-600">{authUser.display_name}</span>
                 <button
                   type="button"
                   onClick={() => { logout(); navigate('/login'); }}
-                  className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  className="w-8 h-8 flex items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
                   title="登出"
                 >
-                  <LogOut size={16} />
+                  <LogOut size={13} />
                 </button>
               </div>
             )}
