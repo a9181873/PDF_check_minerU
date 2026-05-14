@@ -119,7 +119,10 @@ Persistence
 在本系統中：
 
 - 以獨立 Docker 容器（`mineru-api:pipeline`）執行，透過 REST API 提供服務
-- 使用 `pipeline` backend，**100% 地端，無需聯網**，模型存於 Docker volume `mineru_model_cache`
+- 使用 `pipeline` backend，**100% 地端，無需聯網**，模型存於 Docker volume `mineru_model_cache`。首次建立映像檔或重置時會自動下載以下核心模型（約 5-8GB）：
+  1. **版面佈局分析模型**（如 `PP-DocLayoutV2` 等）：用來分析與辨識文件中的不同區塊結構，如純文字、標題、圖片、表格及註腳。
+  2. **數學公式識別模型 (MFR)**（如 `unimernet_hf_small`）：精準將 PDF 中的數學方程式轉換成 LaTeX 語法。
+  3. **PDF-Extract-Kit 核心組件**：負責協調底層光學字元辨識 (OCR)、表格辨識與上述模型，將複雜排版的高解析度 PDF 轉化為乾淨結構化的 Markdown。
 - 設定 `lang_list=chinese_cht` 確保繁體中文輸出品質
 - Backend 透過環境變數 `MINERU_API_URL` 連接，未設定時自動回退至 Docling
 
