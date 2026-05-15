@@ -39,7 +39,7 @@ FastAPI
   └─ websocket.py: 即時進度推播（含記憶體遺失 fallback）
         │
 Services
-  ├─ parser_service.py: MinerU（主）/ Docling / PyMuPDF / pdftotext fallback 鏈（並行解析優化）
+  ├─ parser_service.py: MinerU（主）/ Docling / PyMuPDF / pdftotext fallback 鏈（MinerU 優先並行解析）
   ├─ diff_service.py: 段落 diff、cell-level 表格 diff（含70%聚合策略）
   │    ├─ 像素比對：動態 DPI、Sliding Window NCC、自適應 NCC 門檻
   │    ├─ SSIM 子區域變更定位：精確找出圖片內文字修改位置
@@ -195,17 +195,20 @@ Persistence
 - **四路聯集比對引擎** — 整合文字、表格、像素、嵌入圖片 (pHash) 的全方位比對
 - **零漏報優化 (Zero-Miss Tuning)** — 調降像素門檻與面積，小區域自適應 NCC (0.70)，確保人為修改無所遁形
 - **SSIM 子區域變更定位** — 利用 Structural Similarity 精確定位圖片內的差異子區域，搭配 Tesseract OCR 讀出文字
-- **並行解析優化** — parser_service 並行呼叫 MinerU，縮短大型 PDF 等待時間
+- **MinerU 準確率優先解析** — 預設 MinerU 成功即採用 MinerU，避免額外啟動 Docling 消耗 CPU/RAM；可用 `ENABLE_DOCLING_PARALLEL=true` 開啟實驗性並行解析
 - **Sliding Window 差異合併** — 鄰近 diff 自動聚合，避免 UI 被碎片化標記淹沒
 - **動態 DPI 像素比對** — 依頁面內容密度自適應渲染解析度
-- **PDF 驗證封存** — 比對完成後一鍵封存原始 PDF 與標註 PDF，SHA-256 去重避免重複儲存
-- **核驗歷史查詢** — `VerificationHistoryModal` 顯示每次核驗的審核者、確認數、標記數與備注
+- **案號留存** — 上傳頁可輸入案號；專案設定流程維持原樣，案號會成為封存與匯出檔名前綴
+- **PDF 驗證封存** — 比對完成後一鍵封存原始 PDF 與標註 PDF，以 `old_hash + new_hash + case_number` 去重，避免同 PDF 不同案號互相覆蓋
+- **核驗歷史查詢** — `VerificationHistoryModal` 顯示案號、審核者、確認數、標記數、備注，並可搜尋留存紀錄
+- **審核修改紀錄** — 若同一差異項目的審核狀態、審核人員或備註被修改，歷史紀錄會顯示修改摘要
 - **專案設定審核人員** — 在上傳頁面即時顯示當前審核者，並記錄至審核日誌中
 
 ### 目前限制
 
 - checklist 會持久化到 SQLite，但 `CHECKLIST_STORE` 仍保留作為執行中快取
 - 審核 summary 以每個 `diff_item_id` 最新一筆 `review_logs` 為準
+- 封存去重以 `old_hash + new_hash + case_number` 為準；未填案號時視為空案號案例
 - 若本機開發未指定 `DATA_DIR`，建議明確設定 runtime 路徑
 - MinerU cell bbox 目前由整表 bbox 推算（MinerU API 不提供單格座標），前端標記精確到整格欄位而非像素
 
@@ -300,6 +303,10 @@ docker compose down
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
 | `MINERU_API_URL` | `http://mineru-api:18080` | MinerU REST API 位址；空值 = 停用 MinerU，回退至 Docling |
+| `ENABLE_DOCLING_PARALLEL` | `false` | 是否讓 MinerU 與 Docling 同時解析；預設關閉以降低 CPU/RAM 並避免成功路徑選到較不精準的 fallback |
+| `MINERU_PREFERRED_WAIT_SECONDS` | `30` | 啟用 Docling 並行時，優先等待 MinerU 的秒數；調低偏速度，調高偏表格解析準確率 |
+| `GENERATE_SNAPSHOTS` | `true` | 比對完成後產生稽核用 snapshot PNG |
+| `SNAPSHOT_DIFF_PAGES_ONLY` | `true` | snapshot 只渲染有差異頁，降低 CPU 與磁碟使用 |
 | `DATA_DIR` | `/app/runtime` | Runtime 資料目錄 |
 | `OCR_LANGS` | `chi_tra+chi_sim+eng` | Docling OCR 語言（備援用） |
 | `DEBUG` | `false` | 開啟 debug 模式 |
@@ -337,28 +344,28 @@ Vite 已設定 proxy（本機開發 backend port 為 8001）：
 
 ## 推薦硬體規格
 
-以 **3 人同時操作**為評估基準。MinerU 模型只載入一次常駐（~5GB），3 任務增量解析約 ~3–6GB，加上 OS/Docker ~3GB，實際峰值約 **11–14GB**。
+以 **3 人同時操作**為評估基準。MinerU 模型只載入一次常駐，解析任務會再疊加 PyMuPDF / Docling / 像素比對記憶體。OCI 實測（2026-05-15，4 OCPU ARM / 23.4GB RAM，15 筆 `resource_logs`）顯示 backend 單任務 RSS 峰值最高約 **3.4GB**、平均峰值約 **1.9GB**、CPU 峰值可接近 **4 核滿載**；因此建議以 **24GB RAM 作為 3 人穩定使用基準**，16GB 視為輕量或 1-2 人使用下限。
 
 ### 個人電腦（需安裝 Docker Desktop）
 
 | 平台 | 等級 | 規格 | 備注 |
 |------|------|------|------|
-| **Windows** | 基本 | i5 第 10 代以上 / Ryzen 5 3600 以上・**16GB** DDR4/DDR5・512GB NVMe + 256GB 資料碟 | 可承載 3 人；10-11 代 SSIM/NCC 較慢 |
+| **Windows** | 基本 | i5 第 12 代以上 / Ryzen 5 5600 以上・**24GB** DDR4/DDR5・512GB NVMe + 256GB 資料碟 | 3 人穩定使用基準；16GB 僅建議 1-2 人或輕量 PDF |
 | **Windows** | 最佳 | i7 第 12 代以上 / Ryzen 7 7700 以上・**32GB** DDR5・1TB NVMe + 512GB 資料碟・RTX 4060（選配） | 完全流暢，GPU 可加速 MinerU 3-5× |
-| **macOS** | 基本 | Mac mini M4 / MacBook Pro M3（8 核心）・**16GB** 統一記憶體・512GB SSD | 足夠；高峰時建議關閉其他大型應用 |
-| **macOS** | 最佳 | Mac mini M4 Pro / MacBook Pro M4 Pro（12 核心）・**24GB** 統一記憶體・512GB SSD | 流暢無壓力，無需外接 GPU |
+| **macOS** | 基本 | Mac mini M4 / MacBook Pro M3（8 核心）・**24GB** 統一記憶體・512GB SSD | 3 人穩定使用基準；16GB 建議降低同時任務數 |
+| **macOS** | 最佳 | Mac mini M4 Pro / MacBook Pro M4 Pro（12 核心）・**32GB** 統一記憶體・512GB SSD | 流暢無壓力，無需外接 GPU |
 
 ### 雲端（3 人同時操作，月費隨用隨付）
 
 | 平台 | 等級 | 規格 | 參考月費 | 備注 |
 |------|------|------|---------|------|
 | **OCI Always Free** | — | 4 OCPU ARM + 24GB・200GB 磁碟 | **$0** | ARM 架構；MinerU 需確認相容性，可用 Docling fallback |
-| **OCI E4 Flex** | 基本 | 4 OCPU x86 + **16GB**・256GB Block Vol | **~$73** | CP 值最高，完整支援 MinerU |
+| **OCI E4 Flex** | 基本 | 4 OCPU x86 + **24GB**・256GB Block Vol | 依區域計價 | 3 人穩定使用基準，完整支援 MinerU |
 | **OCI E4 Flex** | 最佳 | 8 OCPU x86 + **32GB**・512GB Block Vol | **~$181** | — |
-| **Azure D-series v5** | 基本 | `D4s_v5` 4 vCPU + **16GB**・256GB Premium SSD | ~$190–230 | 適合已用微軟企業生態 |
-| **Azure D-series v5** | 最佳 | `D8s_v5` 8 vCPU + **32GB**・512GB Premium SSD | ~$280–350 | — |
-| **GCP n2-standard** | 基本 | `n2-standard-4` 4 vCPU + **16GB**・256GB pd-ssd | ~$175–210 | 適合已用 Google Workspace |
-| **GCP n2-standard** | 最佳 | `n2-standard-8` 8 vCPU + **32GB**・512GB pd-ssd | ~$260–320 | — |
+| **Azure D-series v5** | 基本 | `D8s_v5` 8 vCPU + **32GB**・512GB Premium SSD | ~$280–350 | 適合已用微軟企業生態 |
+| **Azure D-series v5** | 最佳 | `D16s_v5` 16 vCPU + **64GB**・1TB Premium SSD | 依區域計價 | 高頻/多任務 |
+| **GCP n2-standard** | 基本 | `n2-standard-8` 8 vCPU + **32GB**・512GB pd-ssd | ~$260–320 | 適合已用 Google Workspace |
+| **GCP n2-standard** | 最佳 | `n2-standard-16` 16 vCPU + **64GB**・1TB pd-ssd | 依區域計價 | 高頻/多任務 |
 
 > 各雲端平台建議 Ubuntu 22.04 LTS；儲存選 SSD 等級（OCI Balanced、Azure Premium SSD、GCP pd-ssd），避免 HDD 造成 MinerU 模型載入卡頓。
 
@@ -396,7 +403,7 @@ Vite 已設定 proxy（本機開發 backend port 為 8001）：
 
 ### 2. 解析流程
 
-`backend/services/parser_service.py` 採多層 fallback 鏈（並行解析優化）：
+`backend/services/parser_service.py` 採多層 fallback 鏈（MinerU 優先並行解析）：
 
 1. **MinerU**（預設，若 `MINERU_API_URL` 已設定）— REST API 呼叫，`pipeline` backend，`lang_list=chinese_cht`
 2. `Docling`（MinerU 不可用時自動切換）
@@ -437,10 +444,12 @@ MinerU 輸出 `content_list`（JSON）包含每個文字區塊與表格的座標
 
 `backend/services/archive_service.py`：
 
-- 計算 SHA-256 雜湊，相同 hash pair 不重複封存（去重）
-- 複製原始 PDF 與標註 PDF 至 `archives/{archive_id}/`
-- 每次核驗建立 `verification_sessions` 紀錄（審核者、確認數、標記數、備注）
-- 前端 `VerificationHistoryModal` 可查詢同一比對的所有核驗歷史
+- 計算 SHA-256 雜湊，封存去重鍵為 `old_hash + new_hash + case_number`
+- 同一組 PDF 若使用不同案號，會建立不同封存紀錄，避免下載檔名或歷史紀錄錯用前一個案號
+- 複製原始 PDF 與標註 PDF 至 `archives/{archive_id}/`，有案號時檔名前綴會帶入案號
+- 每次核驗建立 `verification_sessions` 紀錄（案號、審核者、確認數、標記數、備注）
+- 核驗時會保存當下的審核操作 snapshot；若審核紀錄有修改，會產生 `change_summary`
+- 前端 `VerificationHistoryModal` 可搜尋案號、審核人員、備註與審核修改內容
 
 ### 5. 前端渲染
 
@@ -465,7 +474,7 @@ MinerU 輸出 `content_list`（JSON）包含每個文字區塊與表格的座標
 
 ### Compare
 
-- `POST /api/compare/upload`
+- `POST /api/compare/upload` — 表單欄位包含 `old_pdf`、`new_pdf`、可選 `project_id`、可選 `case_number`
 - `GET /api/compare/{task_id}/status`
 - `GET /api/compare/{task_id}/result`
 - `GET /api/compare/{task_id}/markdown`
@@ -522,12 +531,12 @@ MinerU 輸出 `content_list`（JSON）包含每個文字區塊與表格的座標
 由 `backend/models/database.py` 建立並維護：
 
 - `projects`
-- `comparisons`（含 `old_hash` / `new_hash` 欄位）
+- `comparisons`（含 `case_number` / `old_hash` / `new_hash` 欄位）
 - `review_logs`
 - `checklists`
 - `users` — 帳號密碼管理 (pbkdf2 雜湊)
-- `pdf_archives` — 封存紀錄（SHA-256 去重、archive_id 目錄對應）
-- `verification_sessions` — 每次核驗的快照（審核者、確認數、標記數）
+- `pdf_archives` — 封存紀錄（`old_hash + new_hash + case_number` 去重、archive_id 目錄對應）
+- `verification_sessions` — 每次核驗的快照（案號、審核者、確認數、標記數、審核紀錄 snapshot）
 
 ### Runtime 檔案
 

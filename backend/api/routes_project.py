@@ -31,15 +31,17 @@ async def export_all_comparisons_csv():
 
     output = io.StringIO(newline="")
     writer = csv.writer(output)
-    writer.writerow(["比對編號", "專案名稱", "舊版檔案", "新版檔案", "狀態", "建立時間", "完成時間", "錯誤訊息"])
+    writer.writerow(["比對編號", "案號", "專案名稱", "舊版檔案", "新版檔案", "狀態", "審核人員", "建立時間", "完成時間", "錯誤訊息"])
     status_map = {"done": "已完成", "error": "錯誤", "pending": "待處理", "parsing": "處理中"}
     for row in rows:
         writer.writerow([
             row["id"],
+            row["case_number"] or "",
             row["project_id"] or "",
             row["old_filename"] or "",
             row["new_filename"] or "",
             status_map.get(row["status"], row["status"]),
+            row["latest_reviewer"] or "",
             row["created_at"] or "",
             row["completed_at"] or "",
             row["error_message"] or "",

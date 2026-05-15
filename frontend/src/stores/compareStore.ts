@@ -89,14 +89,26 @@ export const useCompareStore = create<CompareState>()(
       selectedDiffForPopup: null,
       scale: 1.0,
 
-      setTaskId: (taskId) => set({ 
-        taskId, 
-        status: null, 
-        report: null, 
-        filteredItems: [],
-        selectedDiffId: null,
-        checklist: []
-      }),
+      setTaskId: (taskId) => {
+        if (get().taskId === taskId) {
+          return;
+        }
+
+        set({
+          taskId,
+          status: null,
+          report: null,
+          filteredItems: [],
+          searchQuery: '',
+          selectedDiffId: null,
+          reviewedOnly: false,
+          checklist: [],
+          checklistFilter: 'all',
+          currentPage: { old: 1, new: 1 },
+          diffPopupOpen: false,
+          selectedDiffForPopup: null,
+        });
+      },
 
       setScale: (scale) => set({ scale }),
 
@@ -122,9 +134,11 @@ export const useCompareStore = create<CompareState>()(
           const matchesSearch = query === '' || 
             item.old_value?.toLowerCase().includes(query.toLowerCase()) ||
             item.new_value?.toLowerCase().includes(query.toLowerCase()) ||
-            item.context?.toLowerCase().includes(query.toLowerCase());
+            item.context?.toLowerCase().includes(query.toLowerCase()) ||
+            item.id.toLowerCase().includes(query.toLowerCase()) ||
+            (item.reviewed_by || '').toLowerCase().includes(query.toLowerCase());
           
-          const matchesReviewed = !reviewedOnly || item.reviewed;
+          const matchesReviewed = !reviewedOnly || !item.reviewed;
           
           return matchesSearch && matchesReviewed;
         });
@@ -144,9 +158,11 @@ export const useCompareStore = create<CompareState>()(
           const matchesSearch = searchQuery === '' || 
             item.old_value?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             item.new_value?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.context?.toLowerCase().includes(searchQuery.toLowerCase());
+            item.context?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            item.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (item.reviewed_by || '').toLowerCase().includes(searchQuery.toLowerCase());
           
-          const matchesReviewed = !newReviewedOnly || item.reviewed;
+          const matchesReviewed = !newReviewedOnly || !item.reviewed;
           
           return matchesSearch && matchesReviewed;
         });
@@ -197,6 +213,7 @@ export const useCompareStore = create<CompareState>()(
       closeDiffPopup: () => set({ diffPopupOpen: false, selectedDiffForPopup: null }),
 
       confirmDiff: async (diffId, reviewer, note) => {
+        void note;
         const { taskId, report, searchQuery, reviewedOnly } = get();
         if (!taskId || !report) return;
 
@@ -210,14 +227,17 @@ export const useCompareStore = create<CompareState>()(
           const matchesSearch = searchQuery === '' ||
             item.old_value?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             item.new_value?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.context?.toLowerCase().includes(searchQuery.toLowerCase());
-          const matchesReviewed = !reviewedOnly || item.reviewed;
+            item.context?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            item.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (item.reviewed_by || '').toLowerCase().includes(searchQuery.toLowerCase());
+          const matchesReviewed = !reviewedOnly || !item.reviewed;
           return matchesSearch && matchesReviewed;
         });
         set({ report: updatedReport, filteredItems: filtered });
       },
 
       flagDiff: async (diffId, reviewer, note) => {
+        void note;
         const { taskId, report, searchQuery, reviewedOnly } = get();
         if (!taskId || !report) return;
 
@@ -231,8 +251,10 @@ export const useCompareStore = create<CompareState>()(
           const matchesSearch = searchQuery === '' ||
             item.old_value?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             item.new_value?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.context?.toLowerCase().includes(searchQuery.toLowerCase());
-          const matchesReviewed = !reviewedOnly || item.reviewed;
+            item.context?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            item.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (item.reviewed_by || '').toLowerCase().includes(searchQuery.toLowerCase());
+          const matchesReviewed = !reviewedOnly || !item.reviewed;
           return matchesSearch && matchesReviewed;
         });
         set({ report: updatedReport, filteredItems: filtered });

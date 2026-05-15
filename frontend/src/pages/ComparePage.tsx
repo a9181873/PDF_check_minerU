@@ -9,7 +9,7 @@ import SearchBar from '../components/SearchBar';
 import SyncScrollContainer from '../components/SyncScrollContainer';
 import VerificationHistoryModal from '../components/VerificationHistoryModal';
 import { checklistApi, buildAuthedUrl, buildWebSocketUrl, compareApi, reviewApi, archiveApi } from '../services/api';
-import { ChecklistItem, DiffReport } from '../services/types';
+import { ChecklistItem, DiffItem, DiffReport } from '../services/types';
 import { useCompareStore } from '../stores/compareStore';
 import { useCrossWindowSync } from '../hooks/useCrossWindowSync';
 import { useAuthStore } from '../stores/authStore';
@@ -102,7 +102,7 @@ const ComparePage: React.FC = () => {
   const [archiveToast, setArchiveToast] = useState<string | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
-  const { broadcastPageChange, broadcastDiffSelect } = useCrossWindowSync(taskId || null);
+  const { broadcastScroll, broadcastPageChange, broadcastDiffSelect } = useCrossWindowSync(taskId || null);
   const { user: authUser, logout } = useAuthStore();
 
   const handlePageChange = (side: 'old' | 'new', page: number) => {
@@ -110,7 +110,7 @@ const ComparePage: React.FC = () => {
     broadcastPageChange(side, page);
   };
 
-  const handleDiffClick = (diff: any) => {
+  const handleDiffClick = (diff: DiffItem) => {
     setSelectedDiffId(diff.id);
     openDiffPopup(diff);
     broadcastDiffSelect(diff.id);
@@ -132,12 +132,16 @@ const ComparePage: React.FC = () => {
   };
 
   const loadChecklist = useCallback(
-    async (comparisonId: string) => {
+    async (comparisonId: string, shouldApply: () => boolean = () => true) => {
       try {
         const checklistData = await checklistApi.getChecklist(comparisonId);
-        setChecklist(checklistData);
+        if (shouldApply()) {
+          setChecklist(checklistData);
+        }
       } catch {
-        setChecklist([]);
+        if (shouldApply()) {
+          setChecklist([]);
+        }
       }
     },
     [setChecklist]
@@ -154,18 +158,30 @@ const ComparePage: React.FC = () => {
       return undefined;
     }
 
+    let isActive = true;
     let retryCount = 0;
     let reconnectTimer: number | undefined;
 
     const connectWS = () => {
+      if (!isActive) {
+        return;
+      }
+
       const socket = new WebSocket(buildWebSocketUrl(`/ws/compare/${taskId}`));
       wsConnectionRef.current = socket;
 
       socket.onopen = () => {
+        if (!isActive || wsConnectionRef.current !== socket) {
+          return;
+        }
         retryCount = 0;
       };
 
       socket.onmessage = (event) => {
+        if (!isActive || wsConnectionRef.current !== socket) {
+          return;
+        }
+
         try {
           const message = JSON.parse(event.data) as WsMessage;
 
@@ -189,7 +205,7 @@ const ComparePage: React.FC = () => {
 
             if (payload) {
               setReport(payload);
-              void loadChecklist(taskId);
+              void loadChecklist(taskId, () => isActive);
             }
             return;
           }
@@ -203,8 +219,10 @@ const ComparePage: React.FC = () => {
       };
 
       socket.onclose = () => {
-        wsConnectionRef.current = null;
-        if (retryCount < 5) {
+        if (wsConnectionRef.current === socket) {
+          wsConnectionRef.current = null;
+        }
+        if (isActive && retryCount < 5) {
           retryCount += 1;
           reconnectTimer = window.setTimeout(connectWS, 1000 * retryCount);
         }
@@ -214,11 +232,20 @@ const ComparePage: React.FC = () => {
     connectWS();
 
     return () => {
+      isActive = false;
       if (reconnectTimer) {
         window.clearTimeout(reconnectTimer);
       }
-      wsConnectionRef.current?.close();
-      wsConnectionRef.current = null;
+      const socket = wsConnectionRef.current;
+      if (socket) {
+        socket.onopen = null;
+        socket.onmessage = null;
+        socket.onclose = null;
+        socket.close();
+        if (wsConnectionRef.current === socket) {
+          wsConnectionRef.current = null;
+        }
+      }
     };
   }, [loadChecklist, setReport, setStatus, taskId]);
 
@@ -227,26 +254,39 @@ const ComparePage: React.FC = () => {
       return undefined;
     }
 
+    let isActive = true;
+
     const loadComparison = async () => {
       try {
         setIsLoading(true);
         setError(null);
 
         const statusData = await compareApi.getStatus(taskId);
+        if (!isActive) {
+          return;
+        }
         setStatus(statusData);
 
         if (statusData.status === 'done') {
           const reportData = await compareApi.getResult(taskId);
+          if (!isActive) {
+            return;
+          }
           setReport(reportData);
-          await loadChecklist(taskId);
+          await loadChecklist(taskId, () => isActive);
         } else if (statusData.status === 'error') {
           setError(statusData.error_message || '比較任務失敗');
         }
       } catch (err: unknown) {
+        if (!isActive) {
+          return;
+        }
         const detail = isAxiosError<{ detail?: string }>(err) ? err.response?.data?.detail : undefined;
         setError(detail || '載入比較結果失敗');
       } finally {
-        setIsLoading(false);
+        if (isActive) {
+          setIsLoading(false);
+        }
       }
     };
 
@@ -259,12 +299,18 @@ const ComparePage: React.FC = () => {
 
       try {
         const statusData = await compareApi.getStatus(taskId);
+        if (!isActive) {
+          return;
+        }
         setStatus(statusData);
 
         if (statusData.status === 'done') {
           const reportData = await compareApi.getResult(taskId);
+          if (!isActive) {
+            return;
+          }
           setReport(reportData);
-          await loadChecklist(taskId);
+          await loadChecklist(taskId, () => isActive);
           window.clearInterval(interval);
         } else if (statusData.status === 'error') {
           setError(statusData.error_message || '比較任務失敗');
@@ -275,7 +321,10 @@ const ComparePage: React.FC = () => {
       }
     }, 2000);
 
-    return () => window.clearInterval(interval);
+    return () => {
+      isActive = false;
+      window.clearInterval(interval);
+    };
   }, [loadChecklist, setReport, setStatus, taskId]);
 
   useEffect(() => {
@@ -293,7 +342,7 @@ const ComparePage: React.FC = () => {
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [showExportMenu]);
 
-const handleConfirmDiff = async (diffId: string, reviewer?: string, note?: string) => {
+  const handleConfirmDiff = async (diffId: string, reviewer?: string, note?: string) => {
     if (!taskId) {
       return;
     }
@@ -660,7 +709,7 @@ const handleConfirmDiff = async (diffId: string, reviewer?: string, note?: strin
                     ? 'border-primary-200 bg-primary-50 text-primary-700'
                     : 'border-gray-200 bg-[#F5F5F5] text-gray-700 hover:bg-gray-100'
                 }`}
-                title={reviewedOnly ? '顯示所有差異' : '僅顯示未審核差異'}
+                title={reviewedOnly ? '顯示所有差異' : '僅顯示待審差異'}
               >
                 {reviewedOnly ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
@@ -725,7 +774,7 @@ const handleConfirmDiff = async (diffId: string, reviewer?: string, note?: strin
                     searchQuery={searchQuery}
                     onSearchChange={setSearchQuery}
                     selectedDiffId={selectedDiffId}
-                    onDiffSelect={setSelectedDiffId}
+                    onDiffSelect={handleListDiffClick}
                   />
                 </div>
                 <div className="flex-1 overflow-hidden">
@@ -841,6 +890,7 @@ const handleConfirmDiff = async (diffId: string, reviewer?: string, note?: strin
                     }
                     syncEnabled={scrollSyncEnabled}
                     onSyncToggle={setScrollSyncEnabled}
+                    onScrollSync={broadcastScroll}
                     leftHidden={leftPanelHidden}
                     onLeftHiddenToggle={toggleLeftPanel}
                     taskId={taskId}

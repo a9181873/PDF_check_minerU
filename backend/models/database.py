@@ -35,6 +35,61 @@ def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) 
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
 
+def _create_pdf_archives_table_sql(table_name: str = "pdf_archives") -> str:
+    return f"""
+            CREATE TABLE IF NOT EXISTS {table_name} (
+                id TEXT PRIMARY KEY,
+                old_hash TEXT NOT NULL,
+                new_hash TEXT NOT NULL,
+                case_number TEXT,
+                old_filename TEXT NOT NULL,
+                new_filename TEXT NOT NULL,
+                old_archive_path TEXT NOT NULL,
+                new_archive_path TEXT NOT NULL,
+                annotated_archive_path TEXT,
+                first_comparison_id TEXT NOT NULL,
+                archived_at TEXT NOT NULL
+            );
+            """
+
+
+def _has_hash_only_archive_unique_constraint(conn: sqlite3.Connection) -> bool:
+    indexes = conn.execute("PRAGMA index_list(pdf_archives)").fetchall()
+    for index in indexes:
+        if not index["unique"]:
+            continue
+        cols = conn.execute(f"PRAGMA index_info({index['name']})").fetchall()
+        names = [col["name"] for col in cols]
+        if names == ["old_hash", "new_hash"]:
+            return True
+    return False
+
+
+def _migrate_pdf_archives_case_number_uniqueness(conn: sqlite3.Connection) -> None:
+    if not _has_hash_only_archive_unique_constraint(conn):
+        return
+
+    conn.execute("PRAGMA foreign_keys=OFF")
+    conn.execute("ALTER TABLE pdf_archives RENAME TO pdf_archives_old")
+    conn.executescript(_create_pdf_archives_table_sql("pdf_archives"))
+    conn.execute(
+        """
+        INSERT INTO pdf_archives (
+            id, old_hash, new_hash, case_number, old_filename, new_filename,
+            old_archive_path, new_archive_path, annotated_archive_path,
+            first_comparison_id, archived_at
+        )
+        SELECT
+            id, old_hash, new_hash, case_number, old_filename, new_filename,
+            old_archive_path, new_archive_path, annotated_archive_path,
+            first_comparison_id, archived_at
+        FROM pdf_archives_old
+        """
+    )
+    conn.execute("DROP TABLE pdf_archives_old")
+    conn.execute("PRAGMA foreign_keys=ON")
+
+
 def init_db() -> None:
     with get_connection() as conn:
         conn.executescript(
@@ -49,6 +104,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS comparisons (
                 id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
+                case_number TEXT,
                 old_filename TEXT NOT NULL,
                 new_filename TEXT NOT NULL,
                 old_file_path TEXT NOT NULL,
@@ -106,40 +162,40 @@ def init_db() -> None:
                 created_at TEXT NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS pdf_archives (
-                id TEXT PRIMARY KEY,
-                old_hash TEXT NOT NULL,
-                new_hash TEXT NOT NULL,
-                old_filename TEXT NOT NULL,
-                new_filename TEXT NOT NULL,
-                old_archive_path TEXT NOT NULL,
-                new_archive_path TEXT NOT NULL,
-                annotated_archive_path TEXT,
-                first_comparison_id TEXT NOT NULL,
-                archived_at TEXT NOT NULL,
-                UNIQUE (old_hash, new_hash)
-            );
-
             CREATE TABLE IF NOT EXISTS verification_sessions (
                 id TEXT PRIMARY KEY,
                 archive_id TEXT NOT NULL,
                 comparison_id TEXT NOT NULL,
+                case_number TEXT,
                 reviewer TEXT,
                 verified_at TEXT NOT NULL,
                 total_diffs INTEGER,
                 confirmed INTEGER,
                 flagged INTEGER,
                 notes TEXT,
+                review_logs_json TEXT,
                 FOREIGN KEY (archive_id) REFERENCES pdf_archives(id)
             );
             """
         )
+        conn.executescript(_create_pdf_archives_table_sql())
+        _ensure_column(conn, "comparisons", "case_number", "TEXT")
         _ensure_column(conn, "comparisons", "error_message", "TEXT")
         _ensure_column(conn, "comparisons", "old_markdown_path", "TEXT")
         _ensure_column(conn, "comparisons", "new_markdown_path", "TEXT")
         _ensure_column(conn, "comparisons", "snapshot_dir", "TEXT")
         _ensure_column(conn, "comparisons", "old_hash", "TEXT")
         _ensure_column(conn, "comparisons", "new_hash", "TEXT")
+        _ensure_column(conn, "pdf_archives", "case_number", "TEXT")
+        _ensure_column(conn, "verification_sessions", "case_number", "TEXT")
+        _ensure_column(conn, "verification_sessions", "review_logs_json", "TEXT")
+        _migrate_pdf_archives_case_number_uniqueness(conn)
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_pdf_archives_hash_case
+            ON pdf_archives(old_hash, new_hash, COALESCE(case_number, ''))
+            """
+        )
 
 
 def create_project(name: str) -> dict[str, str]:
@@ -187,19 +243,22 @@ def create_comparison(
     new_filename: str,
     old_file_path: str,
     new_file_path: str,
+    case_number: str | None = None,
 ) -> None:
     now = utc_now_iso()
+    normalized_case_number = case_number.strip() if case_number else None
     with get_connection() as conn:
         conn.execute(
             """
             INSERT INTO comparisons (
-                id, project_id, old_filename, new_filename,
+                id, project_id, case_number, old_filename, new_filename,
                 old_file_path, new_file_path, status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 comparison_id,
                 project_id,
+                normalized_case_number,
                 old_filename,
                 new_filename,
                 old_file_path,
@@ -323,9 +382,23 @@ def list_project_comparisons(project_id: str) -> list[dict]:
     with get_connection() as conn:
         rows = conn.execute(
             """
-            SELECT id, project_id, old_filename, new_filename, status,
+            SELECT id, project_id, case_number, old_filename, new_filename, status,
                    created_at, completed_at, error_message,
-                   old_markdown_path, new_markdown_path
+                   old_markdown_path, new_markdown_path,
+                   (
+                       SELECT reviewer
+                       FROM verification_sessions
+                       WHERE verification_sessions.comparison_id = comparisons.id
+                       ORDER BY verified_at DESC, rowid DESC
+                       LIMIT 1
+                   ) AS latest_reviewer,
+                   (
+                       SELECT verified_at
+                       FROM verification_sessions
+                       WHERE verification_sessions.comparison_id = comparisons.id
+                       ORDER BY verified_at DESC, rowid DESC
+                       LIMIT 1
+                   ) AS latest_verified_at
             FROM comparisons
             WHERE project_id = ?
             ORDER BY created_at DESC
@@ -339,9 +412,23 @@ def list_all_comparisons(limit: int = 10) -> list[dict]:
     with get_connection() as conn:
         rows = conn.execute(
             """
-            SELECT id, project_id, old_filename, new_filename, status,
+            SELECT id, project_id, case_number, old_filename, new_filename, status,
                    created_at, completed_at, error_message,
-                   old_markdown_path, new_markdown_path
+                   old_markdown_path, new_markdown_path,
+                   (
+                       SELECT reviewer
+                       FROM verification_sessions
+                       WHERE verification_sessions.comparison_id = comparisons.id
+                       ORDER BY verified_at DESC, rowid DESC
+                       LIMIT 1
+                   ) AS latest_reviewer,
+                   (
+                       SELECT verified_at
+                       FROM verification_sessions
+                       WHERE verification_sessions.comparison_id = comparisons.id
+                       ORDER BY verified_at DESC, rowid DESC
+                       LIMIT 1
+                   ) AS latest_verified_at
             FROM comparisons
             ORDER BY created_at DESC
             LIMIT ?
@@ -361,8 +448,15 @@ def list_all_comparisons_unlimited() -> list[dict]:
     with get_connection() as conn:
         rows = conn.execute(
             """
-            SELECT id, project_id, old_filename, new_filename, status,
-                   created_at, completed_at, error_message
+            SELECT id, project_id, case_number, old_filename, new_filename, status,
+                   created_at, completed_at, error_message,
+                   (
+                       SELECT reviewer
+                       FROM verification_sessions
+                       WHERE verification_sessions.comparison_id = comparisons.id
+                       ORDER BY verified_at DESC, rowid DESC
+                       LIMIT 1
+                   ) AS latest_reviewer
             FROM comparisons
             ORDER BY created_at DESC
             """
@@ -437,6 +531,48 @@ def get_review_logs(comparison_id: str) -> list[dict[str, str | None]]:
             (comparison_id,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def _describe_review_change(
+    current: dict[str, str | None],
+    previous: dict[str, str | None] | None,
+) -> str:
+    def fmt(value: str | None) -> str:
+        return value if value not in (None, "") else "空白"
+
+    if previous is None:
+        return (
+            f"建立審核紀錄：狀態 {fmt(current.get('action'))}，"
+            f"審核人員 {fmt(current.get('reviewer'))}，備註 {fmt(current.get('note'))}"
+        )
+
+    changes: list[str] = []
+    for key, label in (("action", "狀態"), ("reviewer", "審核人員"), ("note", "備註")):
+        old = previous.get(key)
+        new = current.get(key)
+        if old != new:
+            changes.append(f"{label}由「{fmt(old)}」改為「{fmt(new)}」")
+    return "；".join(changes) if changes else "重複儲存，內容未變更"
+
+
+def get_review_logs_with_changes(comparison_id: str) -> list[dict[str, str | None]]:
+    logs = get_review_logs(comparison_id)
+    latest_by_diff: dict[str, dict[str, str | None]] = {}
+    enriched: list[dict[str, str | None]] = []
+
+    for log in logs:
+        diff_item_id = log.get("diff_item_id") or ""
+        previous = latest_by_diff.get(diff_item_id)
+        item = dict(log)
+        item["previous_action"] = previous.get("action") if previous else None
+        item["previous_reviewer"] = previous.get("reviewer") if previous else None
+        item["previous_note"] = previous.get("note") if previous else None
+        item["change_type"] = "modified" if previous else "created"
+        item["change_summary"] = _describe_review_change(item, previous)
+        enriched.append(item)
+        latest_by_diff[diff_item_id] = log
+
+    return enriched
 
 
 def save_checklist(comparison_id: str, items: list[ChecklistItem]) -> None:
@@ -597,11 +733,17 @@ def update_comparison_hashes(comparison_id: str, old_hash: str, new_hash: str) -
         )
 
 
-def get_archive_by_hashes(old_hash: str, new_hash: str) -> dict | None:
+def get_archive_by_hashes(old_hash: str, new_hash: str, case_number: str | None = None) -> dict | None:
+    normalized_case_number = case_number.strip() if case_number else ""
     with get_connection() as conn:
         row = conn.execute(
-            "SELECT * FROM pdf_archives WHERE old_hash = ? AND new_hash = ?",
-            (old_hash, new_hash),
+            """
+            SELECT * FROM pdf_archives
+            WHERE old_hash = ?
+              AND new_hash = ?
+              AND COALESCE(case_number, '') = ?
+            """,
+            (old_hash, new_hash, normalized_case_number),
         ).fetchone()
     return dict(row) if row else None
 
@@ -610,6 +752,7 @@ def create_pdf_archive(
     archive_id: str,
     old_hash: str,
     new_hash: str,
+    case_number: str | None,
     old_filename: str,
     new_filename: str,
     old_archive_path: str,
@@ -621,16 +764,17 @@ def create_pdf_archive(
     with get_connection() as conn:
         conn.execute(
             """INSERT INTO pdf_archives
-               (id, old_hash, new_hash, old_filename, new_filename,
+               (id, old_hash, new_hash, case_number, old_filename, new_filename,
                 old_archive_path, new_archive_path, annotated_archive_path,
                 first_comparison_id, archived_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (archive_id, old_hash, new_hash, old_filename, new_filename,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (archive_id, old_hash, new_hash, case_number, old_filename, new_filename,
              old_archive_path, new_archive_path, annotated_archive_path,
              first_comparison_id, now),
         )
     return {
         "id": archive_id, "old_hash": old_hash, "new_hash": new_hash,
+        "case_number": case_number,
         "old_filename": old_filename, "new_filename": new_filename,
         "old_archive_path": old_archive_path, "new_archive_path": new_archive_path,
         "annotated_archive_path": annotated_archive_path,
@@ -650,26 +794,31 @@ def create_verification_session(
     session_id: str,
     archive_id: str,
     comparison_id: str,
+    case_number: str | None,
     reviewer: str | None,
     total_diffs: int,
     confirmed: int,
     flagged: int,
     notes: str | None,
+    review_logs: list[dict[str, str | None]] | None = None,
 ) -> dict:
     now = utc_now_iso()
+    review_logs_json = json.dumps(review_logs or [], ensure_ascii=False)
     with get_connection() as conn:
         conn.execute(
             """INSERT INTO verification_sessions
-               (id, archive_id, comparison_id, reviewer, verified_at,
-                total_diffs, confirmed, flagged, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (session_id, archive_id, comparison_id, reviewer, now,
-             total_diffs, confirmed, flagged, notes),
+               (id, archive_id, comparison_id, case_number, reviewer, verified_at,
+                total_diffs, confirmed, flagged, notes, review_logs_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (session_id, archive_id, comparison_id, case_number, reviewer, now,
+             total_diffs, confirmed, flagged, notes, review_logs_json),
         )
     return {
         "id": session_id, "archive_id": archive_id, "comparison_id": comparison_id,
+        "case_number": case_number,
         "reviewer": reviewer, "verified_at": now, "total_diffs": total_diffs,
         "confirmed": confirmed, "flagged": flagged, "notes": notes,
+        "review_logs_json": review_logs_json,
     }
 
 
@@ -685,14 +834,19 @@ def get_verification_sessions_by_archive(archive_id: str) -> list[dict]:
 def get_archive_by_comparison(comparison_id: str) -> dict | None:
     with get_connection() as conn:
         comp = conn.execute(
-            "SELECT old_hash, new_hash FROM comparisons WHERE id = ?",
+            "SELECT old_hash, new_hash, case_number FROM comparisons WHERE id = ?",
             (comparison_id,),
         ).fetchone()
         if not comp or not comp["old_hash"]:
             return None
         row = conn.execute(
-            "SELECT * FROM pdf_archives WHERE old_hash = ? AND new_hash = ?",
-            (comp["old_hash"], comp["new_hash"]),
+            """
+            SELECT * FROM pdf_archives
+            WHERE old_hash = ?
+              AND new_hash = ?
+              AND COALESCE(case_number, '') = ?
+            """,
+            (comp["old_hash"], comp["new_hash"], (comp["case_number"] or "").strip()),
         ).fetchone()
     return dict(row) if row else None
 
@@ -729,4 +883,3 @@ def ensure_default_admin() -> None:
         except OSError:
             logging.warning("Default admin initial password (save now): %s", password)
     create_user("admin", "系統管理員", password, role="admin")
-

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Loader2, ZoomIn, ZoomOut, RotateCw } from 'lucide-react';
 import DiffOverlay from './DiffOverlay';
@@ -37,6 +37,23 @@ interface PageDimension {
   pdfHeight: number;
 }
 
+interface PdfPageProxyLike {
+  originalWidth?: number;
+  originalHeight?: number;
+  width?: number;
+  height?: number;
+  cleanup?: () => void;
+  getViewport: (options: { scale: number; rotation?: number }) => { width: number; height: number };
+}
+
+interface PdfDocumentProxyLike {
+  numPages: number;
+  getPage: (pageNumber: number) => Promise<PdfPageProxyLike>;
+}
+
+const DEFAULT_PAGE_WIDTH = 595;
+const DEFAULT_PAGE_HEIGHT = 842;
+
 const PDFViewer: React.FC<PDFViewerProps> = ({
   file,
   currentPage,
@@ -58,8 +75,47 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pageDimensions, setPageDimensions] = useState<Map<number, PageDimension>>(new Map());
+  const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([currentPage]));
   const pageContainerRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
+  const loadSeqRef = useRef(0);
+
+  const documentKey =
+    typeof file === 'string'
+      ? file
+      : file
+        ? `${file.name}-${file.lastModified}-${file.size}`
+        : 'empty';
+
+  const selectedDiffPage = useMemo(() => {
+    if (!selectedDiffId) return null;
+    const diff = diffItems.find((item) => item.id === selectedDiffId);
+    return diff?.new_bbox?.page ?? diff?.old_bbox?.page ?? null;
+  }, [diffItems, selectedDiffId]);
+
+  const includePageWindow = useCallback((source: Set<number>, page: number, totalPages: number | null) => {
+    const next = new Set(source);
+    const maxPage = totalPages ?? page;
+    for (let p = Math.max(1, page - 1); p <= Math.min(maxPage, page + 1); p += 1) {
+      next.add(p);
+    }
+    return next;
+  }, []);
+
+  useEffect(() => {
+    loadSeqRef.current += 1;
+    const resetTimer = window.setTimeout(() => {
+      setNumPages(null);
+      setError(null);
+      setPageDimensions(new Map());
+      setVisiblePages(new Set([1]));
+      setIsLoading(Boolean(file));
+    }, 0);
+
+    return () => window.clearTimeout(resetTimer);
+  }, [documentKey, file]);
 
   useEffect(() => {
     if (selectedDiffId && viewerRef.current) {
@@ -75,16 +131,110 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     }
   }, [selectedDiffId, numPages]);
 
-  const handleDocumentLoadSuccess = ({ numPages: n }: { numPages: number }) => {
-    setNumPages(n);
+  useEffect(() => () => {
+    loadSeqRef.current += 1;
+    observerRef.current?.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setVisiblePages((prev) => includePageWindow(prev, currentPage, numPages));
+      if (selectedDiffPage === currentPage) {
+        return;
+      }
+      const pageEl = pageContainerRefs.current.get(currentPage);
+      pageEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [currentPage, includePageWindow, numPages, selectedDiffPage]);
+
+  useEffect(() => {
+    observerRef.current?.disconnect();
+
+    if (!numPages || !scrollerRef.current) {
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setVisiblePages((prev) => {
+          const next = new Set(prev);
+          entries.forEach((entry) => {
+            const page = Number((entry.target as HTMLElement).dataset.page);
+            if (!page) {
+              return;
+            }
+
+            if (entry.isIntersecting) {
+              next.add(page);
+            } else if (Math.abs(page - currentPage) > 1) {
+              next.delete(page);
+            }
+          });
+
+          return includePageWindow(next, currentPage, numPages);
+        });
+      },
+      {
+        root: scrollerRef.current,
+        rootMargin: '1200px 0px',
+        threshold: 0.01,
+      }
+    );
+
+    observerRef.current = observer;
+    pageContainerRefs.current.forEach((el) => observer.observe(el));
+
+    return () => {
+      observer.disconnect();
+      if (observerRef.current === observer) {
+        observerRef.current = null;
+      }
+    };
+  }, [currentPage, includePageWindow, numPages]);
+
+  const handleDocumentLoadSuccess = async (pdf: PdfDocumentProxyLike) => {
+    const sequence = loadSeqRef.current;
+    const totalPages = pdf.numPages;
+    setNumPages(totalPages);
     setIsLoading(false);
     setError(null);
+    setVisiblePages((prev) => includePageWindow(prev, currentPage, totalPages));
+
+    const dimensions = new Map<number, PageDimension>();
+    try {
+      for (let pageNum = 1; pageNum <= totalPages; pageNum += 1) {
+        if (sequence !== loadSeqRef.current) {
+          return;
+        }
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 1, rotation: 0 });
+        dimensions.set(pageNum, {
+          pdfWidth: viewport.width,
+          pdfHeight: viewport.height,
+        });
+        page.cleanup?.();
+      }
+
+      if (sequence === loadSeqRef.current) {
+        setPageDimensions(dimensions);
+      }
+    } catch (dimensionError) {
+      console.error('PDF page dimension load error:', dimensionError);
+    }
   };
 
   const handleDocumentLoadError = (loadError: Error) => {
+    const sequence = loadSeqRef.current;
+    window.setTimeout(() => {
+      if (sequence !== loadSeqRef.current) {
+        return;
+      }
+      setIsLoading(false);
+      setError(`無法載入 PDF: ${loadError.message}`);
+    }, 0);
     console.error('PDF load error:', loadError);
-    setIsLoading(false);
-    setError(`無法載入 PDF: ${loadError.message}`);
   };
 
   /**
@@ -92,13 +242,21 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
    * originalWidth / originalHeight (PDF points) and width / height (rendered px).
    * This is the most precise way to get coordinate mapping.
    */
-  const handlePageLoadSuccess = useCallback((pageNum: number, page: any) => {
+  const handlePageLoadSuccess = useCallback((pageNum: number, page: PdfPageProxyLike) => {
+    const sequence = loadSeqRef.current;
     // Only store scale-independent PDF point dimensions.
     // Rendered pixel size is not stored — the overlay uses % positioning instead.
-    const pdfWidth = page.originalWidth ?? page.width / scale;
-    const pdfHeight = page.originalHeight ?? page.height / scale;
+    const pdfWidth = page.originalWidth ?? (page.width ?? DEFAULT_PAGE_WIDTH * scale) / scale;
+    const pdfHeight = page.originalHeight ?? (page.height ?? DEFAULT_PAGE_HEIGHT * scale) / scale;
 
     setPageDimensions((prev) => {
+      if (sequence !== loadSeqRef.current) {
+        return prev;
+      }
+      const current = prev.get(pageNum);
+      if (current?.pdfWidth === pdfWidth && current?.pdfHeight === pdfHeight) {
+        return prev;
+      }
       const next = new Map(prev);
       next.set(pageNum, { pdfWidth, pdfHeight });
       return next;
@@ -108,8 +266,13 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   const setPageContainerRef = useCallback((pageNum: number, el: HTMLDivElement | null) => {
     if (el) {
       pageContainerRefs.current.set(pageNum, el);
+      observerRef.current?.observe(el);
     } else {
-      pageContainerRefs.current.delete(pageNum);
+      const existing = pageContainerRefs.current.get(pageNum);
+      if (existing) {
+        observerRef.current?.unobserve(existing);
+        pageContainerRefs.current.delete(pageNum);
+      }
     }
   }, []);
 
@@ -146,13 +309,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
       onPageChange?.(page);
     }
   };
-
-  const documentKey =
-    typeof file === 'string'
-      ? file
-      : file
-        ? `${file.name}-${file.lastModified}-${file.size}`
-        : 'empty';
 
   return (
     <div ref={viewerRef} className={`flex flex-col h-full ${className}`}>
@@ -236,7 +392,11 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
         </div>
       )}
 
-      <div className="relative flex-1 bg-gray-200 rounded-b-lg overflow-auto">
+      <div
+        ref={scrollerRef}
+        data-pdf-scroller="true"
+        className="relative flex-1 bg-gray-200 rounded-b-lg overflow-auto"
+      >
         {file ? (
           <>
             {isLoading && (
@@ -268,29 +428,52 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                 <div>
                   {numPages && Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
                     const dims = pageDimensions.get(pageNum);
+                    const isRotatedSideways = Math.abs(rotation % 180) === 90;
+                    const pdfWidth = dims?.pdfWidth ?? DEFAULT_PAGE_WIDTH;
+                    const pdfHeight = dims?.pdfHeight ?? DEFAULT_PAGE_HEIGHT;
+                    const pageWidth = (isRotatedSideways ? pdfHeight : pdfWidth) * scale;
+                    const pageHeight = (isRotatedSideways ? pdfWidth : pdfHeight) * scale;
+                    const shouldRenderPage = visiblePages.has(pageNum);
+
                     return (
                       <div
                         key={pageNum}
                         ref={(el) => setPageContainerRef(pageNum, el)}
                         data-page={pageNum}
-                        className="flex justify-center"
+                        className="flex justify-center py-3"
+                        style={{ minHeight: pageHeight + 24 }}
                       >
                         {/* Page + overlay wrapper: relative so overlay is scoped to this page */}
-                        <div className="relative inline-block" style={{ verticalAlign: 'top' }}>
-                          {/* Grayscale applied only to PDF canvas, NOT the diff overlay */}
-                          <div className={grayscale ? 'filter-grayscale' : ''}>
-                            <Page
-                              pageNumber={pageNum}
-                              scale={scale}
-                              rotate={rotation}
-                              renderTextLayer={false}
-                              renderAnnotationLayer={false}
-                              className="pdf-page shadow-md"
-                              onLoadSuccess={(page) => handlePageLoadSuccess(pageNum, page)}
-                            />
-                          </div>
+                        <div
+                          className="relative inline-block"
+                          style={{ verticalAlign: 'top', width: pageWidth, minHeight: pageHeight }}
+                        >
+                          {shouldRenderPage ? (
+                            <>
+                              {/* Grayscale applied only to PDF canvas, NOT the diff overlay */}
+                              <div className={grayscale ? 'filter-grayscale' : ''}>
+                                <Page
+                                  pageNumber={pageNum}
+                                  scale={scale}
+                                  rotate={rotation}
+                                  renderTextLayer={false}
+                                  renderAnnotationLayer={false}
+                                  className="pdf-page shadow-md"
+                                  onLoadSuccess={(page) => handlePageLoadSuccess(pageNum, page)}
+                                />
+                              </div>
+                            </>
+                          ) : (
+                            <div
+                              aria-hidden="true"
+                              className="flex items-center justify-center rounded bg-white/70 shadow-sm"
+                              style={{ width: pageWidth, height: pageHeight }}
+                            >
+                              <span className="text-xs text-gray-400">{pageNum} / {numPages}</span>
+                            </div>
+                          )}
                           {/* Per-page diff overlay — outside grayscale wrapper so colors stay vivid */}
-                          {dims && diffItems.length > 0 && (
+                          {shouldRenderPage && dims && diffItems.length > 0 && (
                             <DiffOverlay
                               diffItems={diffItems}
                               selectedDiffId={selectedDiffId}
@@ -302,9 +485,11 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                             />
                           )}
                           {/* Page number badge */}
-                          <div className="absolute top-3 right-3 bg-black/50 text-white text-xs px-2 py-0.5 rounded-full z-10">
-                            {pageNum} / {numPages}
-                          </div>
+                          {shouldRenderPage ? (
+                            <div className="absolute top-3 right-3 bg-black/50 text-white text-xs px-2 py-0.5 rounded-full z-10">
+                              {pageNum} / {numPages}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     );

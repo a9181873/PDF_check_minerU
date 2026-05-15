@@ -1,23 +1,31 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { PanelLeftClose, PanelLeftOpen, ExternalLink } from 'lucide-react';
-import { useCrossWindowSync } from '../hooks/useCrossWindowSync';
 
 interface SyncScrollContainerProps {
   leftContent: React.ReactNode;
   rightContent: React.ReactNode;
   syncEnabled?: boolean;
   onSyncToggle?: (enabled: boolean) => void;
+  onScrollSync?: (source: 'old' | 'new', ratio: number) => void;
   leftHidden?: boolean;
   onLeftHiddenToggle?: (hidden: boolean) => void;
   taskId?: string;
   className?: string;
 }
 
+const PDF_SCROLLER_SELECTOR = '[data-pdf-scroller="true"]';
+
+const getScrollElement = (pane: HTMLDivElement | null): HTMLElement | null => {
+  if (!pane) return null;
+  return pane.querySelector<HTMLElement>(PDF_SCROLLER_SELECTOR) ?? pane;
+};
+
 const SyncScrollContainer: React.FC<SyncScrollContainerProps> = ({
   leftContent,
   rightContent,
   syncEnabled = true,
   onSyncToggle,
+  onScrollSync,
   leftHidden = false,
   onLeftHiddenToggle,
   taskId,
@@ -28,16 +36,16 @@ const SyncScrollContainer: React.FC<SyncScrollContainerProps> = ({
   const isSyncingRef = useRef(false);
   const unlockTimerRef = useRef<number | null>(null);
 
-  const { broadcastScroll } = useCrossWindowSync(taskId || null);
-
   // Sync scroll positions
-  const syncScroll = useCallback((source: 'left' | 'right', target: 'left' | 'right') => {
+  const syncScroll = useCallback((source: 'left' | 'right', target: 'left' | 'right', sourceScrollEl?: HTMLElement) => {
     if (!syncEnabled || isSyncingRef.current) return;
 
     isSyncingRef.current = true;
 
-    const sourceEl = source === 'left' ? leftRef.current : rightRef.current;
-    const targetEl = target === 'left' ? leftRef.current : rightRef.current;
+    const sourcePane = source === 'left' ? leftRef.current : rightRef.current;
+    const targetPane = target === 'left' ? leftRef.current : rightRef.current;
+    const sourceEl = sourceScrollEl ?? getScrollElement(sourcePane);
+    const targetEl = getScrollElement(targetPane);
 
     if (sourceEl && targetEl) {
       const sourceScrollTop = sourceEl.scrollTop;
@@ -51,7 +59,7 @@ const SyncScrollContainer: React.FC<SyncScrollContainerProps> = ({
       if (sourceScrollable > 0 && targetScrollable > 0) {
         const sourceRatio = sourceScrollTop / sourceScrollable;
         targetEl.scrollTop = sourceRatio * targetScrollable;
-        broadcastScroll(source === 'left' ? 'old' : 'new', sourceRatio);
+        onScrollSync?.(source === 'left' ? 'old' : 'new', sourceRatio);
       }
     }
 
@@ -61,29 +69,33 @@ const SyncScrollContainer: React.FC<SyncScrollContainerProps> = ({
     unlockTimerRef.current = window.setTimeout(() => {
       isSyncingRef.current = false;
     }, 150);
-  }, [syncEnabled]);
+  }, [onScrollSync, syncEnabled]);
 
   useEffect(() => {
     const leftEl = leftRef.current;
     const rightEl = rightRef.current;
     
-    const handleLeftScroll = () => syncScroll('left', 'right');
-    const handleRightScroll = () => syncScroll('right', 'left');
+    const handleLeftScroll = (event: Event) => {
+      syncScroll('left', 'right', event.target as HTMLElement);
+    };
+    const handleRightScroll = (event: Event) => {
+      syncScroll('right', 'left', event.target as HTMLElement);
+    };
     
     if (leftEl) {
-      leftEl.addEventListener('scroll', handleLeftScroll);
+      leftEl.addEventListener('scroll', handleLeftScroll, true);
     }
     
     if (rightEl) {
-      rightEl.addEventListener('scroll', handleRightScroll);
+      rightEl.addEventListener('scroll', handleRightScroll, true);
     }
     
     return () => {
       if (leftEl) {
-        leftEl.removeEventListener('scroll', handleLeftScroll);
+        leftEl.removeEventListener('scroll', handleLeftScroll, true);
       }
       if (rightEl) {
-        rightEl.removeEventListener('scroll', handleRightScroll);
+        rightEl.removeEventListener('scroll', handleRightScroll, true);
       }
       if (unlockTimerRef.current) {
         window.clearTimeout(unlockTimerRef.current);
@@ -95,23 +107,14 @@ const SyncScrollContainer: React.FC<SyncScrollContainerProps> = ({
   useEffect(() => {
     const handleCrossWindowScroll = (e: Event) => {
       const customEvent = e as CustomEvent<{ source: 'old' | 'new', ratio: number }>;
-      const { source, ratio } = customEvent.detail;
-      
-      const targetEl = source === 'old' ? rightRef.current : leftRef.current;
-      const otherEl = source === 'old' ? leftRef.current : rightRef.current;
-      
-      if (targetEl) {
-        isSyncingRef.current = true;
-        const scrollable = targetEl.scrollHeight - targetEl.clientHeight;
-        if (scrollable > 0) targetEl.scrollTop = ratio * scrollable;
-      }
-      if (otherEl && source === 'old') {
-        const scrollable = otherEl.scrollHeight - otherEl.clientHeight;
-        if (scrollable > 0) otherEl.scrollTop = ratio * scrollable;
-      }
-      if (otherEl && source === 'new') {
-        const scrollable = otherEl.scrollHeight - otherEl.clientHeight;
-         if (scrollable > 0) otherEl.scrollTop = ratio * scrollable;
+      const { ratio } = customEvent.detail;
+
+      isSyncingRef.current = true;
+      for (const pane of [leftRef.current, rightRef.current]) {
+        const el = getScrollElement(pane);
+        if (!el) continue;
+        const scrollable = el.scrollHeight - el.clientHeight;
+        if (scrollable > 0) el.scrollTop = ratio * scrollable;
       }
 
       if (unlockTimerRef.current) window.clearTimeout(unlockTimerRef.current);
@@ -173,9 +176,9 @@ const SyncScrollContainer: React.FC<SyncScrollContainerProps> = ({
           </div>
           <div
             ref={leftRef}
-            className="flex-1 overflow-auto scroll-sync"
+            className="flex-1 overflow-hidden scroll-sync"
           >
-            <div className="p-4">
+            <div className="p-4 h-full">
               {leftContent}
             </div>
           </div>
@@ -235,9 +238,9 @@ const SyncScrollContainer: React.FC<SyncScrollContainerProps> = ({
           </div>
           <div
             ref={rightRef}
-            className="flex-1 overflow-auto scroll-sync"
+            className="flex-1 overflow-hidden scroll-sync"
           >
-            <div className="p-4">
+            <div className="p-4 h-full">
               {rightContent}
             </div>
           </div>

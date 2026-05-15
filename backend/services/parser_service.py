@@ -557,28 +557,81 @@ def parse_pdf(file_path: str) -> ParsedDocument:
             table_doc = None
 
             from config import settings
-            from concurrent.futures import ThreadPoolExecutor, FIRST_COMPLETED, wait as _wait
+            from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait as _wait
             mineru_url = settings.mineru_api_url or os.getenv("MINERU_API_URL", "")
 
-            _pool = ThreadPoolExecutor(max_workers=2)
-            _futures: dict = {}
-            if mineru_url:
-                _futures[_pool.submit(_parse_via_mineru, pdf_path, page_heights)] = "mineru"
-            _futures[_pool.submit(_parse_via_docling, pdf_path)] = "docling"
+            if mineru_url and settings.enable_docling_parallel:
+                pool = ThreadPoolExecutor(max_workers=2)
+                futures = {
+                    pool.submit(_parse_via_mineru, pdf_path, page_heights): "mineru",
+                    pool.submit(_parse_via_docling, pdf_path): "docling",
+                }
+                mineru_future = next(fut for fut, engine in futures.items() if engine == "mineru")
+                docling_candidate = None
 
-            _remaining = set(_futures.keys())
-            while _remaining and table_doc is None:
-                _done, _remaining = _wait(_remaining, return_when=FIRST_COMPLETED)
-                for _fut in _done:
+                def _future_result(fut):
                     try:
-                        table_doc = _fut.result()
+                        parsed = fut.result()
                     except Exception:
-                        pass
-                    if table_doc is not None:
-                        break
-            # shutdown(wait=False): the loser thread keeps running in the background
-            # but we don't block waiting for it. Safe for a long-running server process.
-            _pool.shutdown(wait=False)
+                        return None
+                    return parsed if parsed and parsed.tables else None
+
+                try:
+                    done, _ = _wait(
+                        {mineru_future},
+                        timeout=max(0.0, settings.mineru_preferred_wait_seconds),
+                        return_when=FIRST_COMPLETED,
+                    )
+                    if done:
+                        table_doc = _future_result(mineru_future)
+
+                    remaining = {fut for fut in futures if not fut.done()}
+                    while table_doc is None:
+                        for fut in [f for f in futures if f.done()]:
+                            parsed = _future_result(fut)
+                            if parsed is None:
+                                continue
+                            if futures[fut] == "mineru":
+                                table_doc = parsed
+                                break
+                            docling_candidate = parsed
+                            if mineru_future.done():
+                                table_doc = parsed
+                                break
+
+                        if table_doc is not None:
+                            break
+                        if docling_candidate is not None:
+                            table_doc = docling_candidate
+                            break
+                        if not remaining:
+                            break
+
+                        done, remaining = _wait(remaining, return_when=FIRST_COMPLETED)
+                        for fut in done:
+                            parsed = _future_result(fut)
+                            if parsed is None:
+                                continue
+                            if futures[fut] == "mineru":
+                                table_doc = parsed
+                            else:
+                                docling_candidate = parsed
+                        if docling_candidate is not None and table_doc is None and not mineru_future.done():
+                            table_doc = docling_candidate
+                finally:
+                    pool.shutdown(wait=False, cancel_futures=True)
+            else:
+                if mineru_url:
+                    try:
+                        table_doc = _parse_via_mineru(pdf_path, page_heights)
+                    except Exception:
+                        table_doc = None
+
+                try:
+                    if table_doc is None:
+                        table_doc = _parse_via_docling(pdf_path)
+                except Exception:
+                    table_doc = None
 
             if table_doc and table_doc.tables:
                 doc = ParsedDocument(

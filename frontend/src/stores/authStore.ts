@@ -18,39 +18,57 @@ interface AuthState {
   loadFromStorage: () => void;
 }
 
+const readStoredAuth = () => {
+  const token = localStorage.getItem('auth_token');
+  const userStr = localStorage.getItem('auth_user');
+  if (!token || !userStr) {
+    return null;
+  }
+
+  try {
+    return {
+      token,
+      user: JSON.parse(userStr) as AuthUser,
+    };
+  } catch {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
+    return null;
+  }
+};
+
 export const useAuthStore = create<AuthState>()(
   devtools(
-    (set) => ({
-      token: null,
-      user: null,
-      isAuthenticated: false,
+    (set) => {
+      const storedAuth = readStoredAuth();
 
-      setAuth: (token, user) => {
-        localStorage.setItem('auth_token', token);
-        localStorage.setItem('auth_user', JSON.stringify(user));
-        set({ token, user, isAuthenticated: true });
-      },
+      return {
+        token: storedAuth?.token ?? null,
+        user: storedAuth?.user ?? null,
+        isAuthenticated: Boolean(storedAuth),
 
-      logout: () => {
-        localStorage.removeItem('auth_token');
-        localStorage.removeItem('auth_user');
-        set({ token: null, user: null, isAuthenticated: false });
-      },
+        setAuth: (token, user) => {
+          localStorage.setItem('auth_token', token);
+          localStorage.setItem('auth_user', JSON.stringify(user));
+          set({ token, user, isAuthenticated: true });
+        },
 
-      loadFromStorage: () => {
-        const token = localStorage.getItem('auth_token');
-        const userStr = localStorage.getItem('auth_user');
-        if (token && userStr) {
-          try {
-            const user = JSON.parse(userStr) as AuthUser;
-            set({ token, user, isAuthenticated: true });
-          } catch {
-            localStorage.removeItem('auth_token');
-            localStorage.removeItem('auth_user');
+        logout: () => {
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('auth_user');
+          set({ token: null, user: null, isAuthenticated: false });
+        },
+
+        loadFromStorage: () => {
+          const stored = readStoredAuth();
+          if (stored) {
+            set({ token: stored.token, user: stored.user, isAuthenticated: true });
+          } else {
+            set({ token: null, user: null, isAuthenticated: false });
           }
-        }
-      },
-    }),
+        },
+      };
+    },
     { name: 'auth-store' }
   )
 );

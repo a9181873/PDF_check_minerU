@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useCompareStore } from '../stores/compareStore';
 import { compareApi, buildAuthedUrl } from '../services/api';
 import { useCrossWindowSync } from '../hooks/useCrossWindowSync';
+import { DiffItem } from '../services/types';
 
 const PDFViewer = lazy(() => import('../components/PDFViewer'));
 
@@ -19,12 +20,14 @@ function InlineLoader({ label }: { label: string }) {
 
 const PopoutPage: React.FC = () => {
   const { taskId, version } = useParams<{ taskId: string; version: 'old' | 'new' }>();
-  
+
   const {
     report,
     setTaskId,
     setReport,
     filteredItems,
+    selectedDiffId,
+    setSelectedDiffId,
     currentPage,
     setCurrentPage,
     openDiffPopup,
@@ -39,57 +42,63 @@ const PopoutPage: React.FC = () => {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const isSyncingRef = React.useRef(false);
 
+  const getScroller = React.useCallback(() => (
+    containerRef.current?.querySelector<HTMLElement>('[data-pdf-scroller="true"]') ?? null
+  ), []);
+
   useEffect(() => {
     if (taskId) {
       setTaskId(taskId);
-      
+      let isActive = true;
+
       const loadComparison = async () => {
         try {
           const reportData = await compareApi.getResult(taskId);
-          setReport(reportData);
+          if (isActive) {
+            setReport(reportData);
+          }
         } catch (err) {
-          console.error('Failed to load comparison result in popout window', err);
+          if (isActive) {
+            console.error('Failed to load comparison result in popout window', err);
+          }
         } finally {
-          setIsLoading(false);
+          if (isActive) {
+            setIsLoading(false);
+          }
         }
       };
-      
+
       void loadComparison();
+      return () => {
+        isActive = false;
+      };
     }
+    return undefined;
   }, [taskId, setTaskId, setReport]);
 
   useEffect(() => {
     // Listen for incoming cross-window scroll events
     const handleScrollEvent = (e: CustomEvent<{ source: string, ratio: number }>) => {
-      if (!containerRef.current) return;
+      const targetEl = getScroller();
+      if (!targetEl) return;
       if (e.detail.source === version || e.detail.source === 'popout') return;
-      
+
       isSyncingRef.current = true;
-      const targetEl = containerRef.current;
       const targetScrollable = targetEl.scrollHeight - targetEl.clientHeight;
       if (targetScrollable > 0) {
-          targetEl.scrollTop = e.detail.ratio * targetScrollable;
+        targetEl.scrollTop = e.detail.ratio * targetScrollable;
       }
       setTimeout(() => { isSyncingRef.current = false; }, 50);
     };
 
     window.addEventListener('cross-window-scroll', handleScrollEvent as EventListener);
     return () => window.removeEventListener('cross-window-scroll', handleScrollEvent as EventListener);
-  }, [version]);
+  }, [getScroller, version]);
 
-  useEffect(() => {
-    // When the custom page-change event is fired by 'useCrossWindowSync' 
-    // it already updates `useCompareStore`.
-    const handlePageEvent = (e: CustomEvent<{ side: string, page: number }>) => {
-        // Nothing explicit needed unless we need local state, but the store handles it
-    };
-    window.addEventListener('cross-window-page-change', handlePageEvent as EventListener);
-    return () => window.removeEventListener('cross-window-page-change', handlePageEvent as EventListener);
-  }, []);
-
-  const handleScroll = () => {
-    if (isSyncingRef.current || !containerRef.current) return;
-    const el = containerRef.current;
+  const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    if (isSyncingRef.current) return;
+    const el = event.target as HTMLElement;
+    if (el.dataset.pdfScroller !== 'true') return;
     const scrollable = el.scrollHeight - el.clientHeight;
     if (scrollable > 0) {
       const ratio = el.scrollTop / scrollable;
@@ -102,10 +111,11 @@ const PopoutPage: React.FC = () => {
     setCurrentPage(side, page);
     broadcastPageChange(side, page);
   };
-  
-  const handleDiffClick = (diff: any) => {
-     openDiffPopup(diff);
-     broadcastDiffSelect(diff.id);
+
+  const handleDiffClick = (diff: DiffItem) => {
+    setSelectedDiffId(diff.id);
+    openDiffPopup(diff);
+    broadcastDiffSelect(diff.id);
   };
 
   if (isLoading || !report || !taskId || !version) {
@@ -116,38 +126,39 @@ const PopoutPage: React.FC = () => {
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-gray-100 flex flex-col">
-       <div className="flex items-center justify-between p-3 bg-gray-100 border-b border-gray-300 shadow-sm z-10">
-            <div className="flex items-center space-x-2">
-              <span className="font-medium text-gray-700">
-                  {version === 'old' ? '舊版文件' : '新版文件'}
-              </span>
-              <div className={`text-xs px-2 py-0.5 rounded ${version === 'old' ? 'bg-gray-300 text-gray-700' : 'bg-primary-50 text-primary-700'}`}>
-                {version === 'old' ? '原始版本' : '修訂版本'}
-              </div>
-            </div>
-        </div>
-        <div 
-           ref={containerRef}
-           onScroll={handleScroll}
-           className="flex-1 overflow-auto w-full relative" style={{ scrollBehavior: 'smooth' }}
-        >
-          <div className="p-4 w-full h-full pb-32">
-            <Suspense fallback={<InlineLoader label="Loading PDF" />}>
-              <PDFViewer
-                  file={pdfUrl}
-                  currentPage={currentPage[version]}
-                  onPageChange={handlePageChange}
-                  scale={scale}
-                  onScaleChange={setScale}
-                  grayscale={grayscaleEnabled}
-                  onGrayscaleChange={setGrayscaleEnabled}
-                  showControls={true}
-                  diffItems={filteredItems}
-                  onDiffClick={handleDiffClick}
-              />
-            </Suspense>
+      <div className="flex items-center justify-between p-3 bg-gray-100 border-b border-gray-300 shadow-sm z-10">
+        <div className="flex items-center space-x-2">
+          <span className="font-medium text-gray-700">
+            {version === 'old' ? '舊版文件' : '新版文件'}
+          </span>
+          <div className={`text-xs px-2 py-0.5 rounded ${version === 'old' ? 'bg-gray-300 text-gray-700' : 'bg-primary-50 text-primary-700'}`}>
+            {version === 'old' ? '原始版本' : '修訂版本'}
           </div>
         </div>
+      </div>
+      <div
+        ref={containerRef}
+        onScrollCapture={handleScroll}
+        className="flex-1 overflow-hidden w-full relative"
+      >
+        <div className="p-4 w-full h-full">
+          <Suspense fallback={<InlineLoader label="Loading PDF" />}>
+            <PDFViewer
+              file={pdfUrl}
+              currentPage={currentPage[version]}
+              onPageChange={handlePageChange}
+              scale={scale}
+              onScaleChange={setScale}
+              grayscale={grayscaleEnabled}
+              onGrayscaleChange={setGrayscaleEnabled}
+              showControls={true}
+              diffItems={filteredItems}
+              selectedDiffId={selectedDiffId}
+              onDiffClick={handleDiffClick}
+            />
+          </Suspense>
+        </div>
+      </div>
     </div>
   );
 };

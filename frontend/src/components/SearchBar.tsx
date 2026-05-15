@@ -36,10 +36,15 @@ const SearchBar: React.FC<SearchBarProps> = ({
 
   // Filter and search items
   const filteredItems = diffItems.filter(item => {
+    const q = inputValue.toLowerCase();
+    const bbox = item.new_bbox || item.old_bbox;
     const matchesSearch = inputValue === '' || 
-      item.old_value?.toLowerCase().includes(inputValue.toLowerCase()) ||
-      item.new_value?.toLowerCase().includes(inputValue.toLowerCase()) ||
-      item.context?.toLowerCase().includes(inputValue.toLowerCase());
+      item.old_value?.toLowerCase().includes(q) ||
+      item.new_value?.toLowerCase().includes(q) ||
+      item.context?.toLowerCase().includes(q) ||
+      item.id.toLowerCase().includes(q) ||
+      (item.reviewed_by || '').toLowerCase().includes(q) ||
+      (bbox ? `p${bbox.page}`.includes(q) || `第${bbox.page}頁`.includes(q) || String(bbox.page) === q : false);
     
     const matchesFilter = filterType === 'all' || item.diff_type === filterType;
     

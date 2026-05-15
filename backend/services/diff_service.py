@@ -717,23 +717,6 @@ def diff_pixels(
                 if diff_type == DiffType.IMAGE_DIFF and not is_large_region and not is_small_region:
                     continue
 
-                try:
-                    import base64, logging as _logging
-                    clip_rect = fitz.Rect(fx0, fy0, fx1, fy1) + (-4, -4, 4, 4)
-                    # Use 2x resolution for table/large regions, 1.5x for text
-                    ui_scale = 2.0 if is_large_region else 1.5
-                    mat_ui = fitz.Matrix(ui_scale, ui_scale)
-                    p_o = page_old.get_pixmap(matrix=mat_ui, clip=clip_rect)
-                    p_n = page_new.get_pixmap(matrix=mat_ui, clip=clip_rect)
-                    b64_old = "data:image/png;base64," + base64.b64encode(p_o.tobytes("png")).decode("utf-8")
-                    b64_new = "data:image/png;base64," + base64.b64encode(p_n.tobytes("png")).decode("utf-8")
-                    _logging.info(f"[CROP] Generated base64 images: old={len(b64_old)}B, new={len(b64_new)}B for region {r0},{c0}-{r1},{c1}")
-                except Exception as e:
-                    import logging as _logging
-                    _logging.error(f"[CROP] Failed to generate base64 for region {r0},{c0}-{r1},{c1}: {e}")
-                    b64_old = None
-                    b64_new = None
-
                 items.append(
                     DiffItem(
                         id="",
@@ -742,8 +725,11 @@ def diff_pixels(
                         new_value=new_text,
                         old_bbox=bbox,
                         new_bbox=bbox,
-                        old_image_base64=b64_old,
-                        new_image_base64=b64_new,
+                        # Crops are generated once on disk by snapshot_service and
+                        # loaded lazily by the UI. Keeping them out of the report
+                        # prevents large base64 strings from bloating memory and JSON.
+                        old_image_base64=None,
+                        new_image_base64=None,
                         context=context_label,
                         confidence=0.95,
                     )

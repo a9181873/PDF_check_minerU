@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,6 +11,7 @@ from models.database import (
     get_archive_by_comparison,
     get_comparison,
     get_comparison_report,
+    get_review_logs_with_changes,
     get_verification_sessions_by_archive,
 )
 from services.archive_service import (
@@ -31,6 +33,16 @@ def _load_report(comparison_id: str):
     if state and state.result:
         return state.result
     return get_comparison_report(comparison_id)
+
+
+def _parse_review_logs_snapshot(raw: str | None) -> list[dict]:
+    if not raw:
+        return []
+    try:
+        payload = json.loads(raw)
+        return payload if isinstance(payload, list) else []
+    except json.JSONDecodeError:
+        return []
 
 
 @router.post("/{comparison_id}/verify")
@@ -60,11 +72,13 @@ async def verify_and_archive(comparison_id: str, payload: VerifyRequest):
         new_path=new_path,
         old_hash=old_hash,
         new_hash=new_hash,
+        case_number=comp.get("case_number"),
     )
 
     session = record_verification(
         archive_id=archive_record["id"],
         comparison_id=comparison_id,
+        case_number=comp.get("case_number"),
         reviewer=payload.reviewer,
         report=report,
         notes=payload.notes,
@@ -82,10 +96,19 @@ async def verify_and_archive(comparison_id: str, payload: VerifyRequest):
 async def get_history(comparison_id: str):
     archive = get_archive_by_comparison(comparison_id)
     if not archive:
-        return {"archive": None, "sessions": []}
+        return {"archive": None, "sessions": [], "review_logs": []}
 
     sessions = get_verification_sessions_by_archive(archive["id"])
-    return {"archive": archive, "sessions": sessions}
+    review_logs = []
+    for session in sessions:
+        if session.get("comparison_id") != comparison_id:
+            continue
+        review_logs = _parse_review_logs_snapshot(session.get("review_logs_json"))
+        if review_logs:
+            break
+    if not review_logs:
+        review_logs = get_review_logs_with_changes(comparison_id)
+    return {"archive": archive, "sessions": sessions, "review_logs": review_logs}
 
 
 @router.get("/by-archive/{archive_id}/sessions")
@@ -118,10 +141,11 @@ async def download_archive_file(archive_id: str, file_type: str):
     if not file_path or not Path(file_path).exists():
         raise HTTPException(status_code=404, detail="File not found in archive")
 
+    case_prefix = f"{archive.get('case_number')}_" if archive.get("case_number") else ""
     filename_map = {
-        "old_pdf": f"old_{archive['old_filename']}",
-        "new_pdf": f"new_{archive['new_filename']}",
-        "annotated_pdf": "annotated.pdf",
+        "old_pdf": f"{case_prefix}old_{archive['old_filename']}",
+        "new_pdf": f"{case_prefix}new_{archive['new_filename']}",
+        "annotated_pdf": f"{case_prefix}annotated.pdf",
     }
 
     return FileResponse(

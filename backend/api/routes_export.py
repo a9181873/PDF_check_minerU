@@ -44,6 +44,7 @@ def _report_date_tag(created_at: str) -> str:
 
 def _generate_filename(prefix: str, report, extension: str) -> str:
     import os
+    import re
     from datetime import datetime
     
     old_base = Path(report.old_filename).stem if getattr(report, "old_filename", None) else ""
@@ -52,6 +53,12 @@ def _generate_filename(prefix: str, report, extension: str) -> str:
     common = os.path.commonprefix([old_base, new_base]).strip(" _-")
     if not common:
         common = report.project_id if getattr(report, "project_id", None) else "Unnamed"
+
+    case_number = getattr(report, "case_number", None)
+    if case_number:
+        safe_case = re.sub(r"[^\w.-]+", "_", str(case_number).strip(), flags=re.UNICODE).strip("._-")
+        if safe_case:
+            common = f"{safe_case}_{common}"
         
     audit_date = datetime.now().strftime("%Y%m%d")
     return f"{common}_{prefix}_{audit_date}.{extension}"

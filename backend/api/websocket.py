@@ -80,13 +80,21 @@ async def compare_progress_socket(websocket: WebSocket, task_id: str):
                 )
                 last_signature = signature
 
-            if state.status == "done" and state.result:
-                await websocket.send_json(
-                    {
-                        "event": "complete",
-                        "data": state.result.model_dump(mode="json"),
-                    }
-                )
+            if state.status == "done":
+                report = state.result
+                if report is None:
+                    from models.database import get_comparison_report
+                    report = get_comparison_report(task_id)
+
+                if report:
+                    await websocket.send_json(
+                        {
+                            "event": "complete",
+                            "data": report.model_dump(mode="json"),
+                        }
+                    )
+                else:
+                    await websocket.send_json({"event": "error", "data": {"message": "Result data not found"}})
                 break
 
             if state.status == "error":

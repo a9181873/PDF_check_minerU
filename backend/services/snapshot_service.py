@@ -35,6 +35,7 @@ def generate_comparison_snapshots(
     new_pdf_path: str,
     report: DiffReport,
     snapshot_base_dir: Path,
+    diff_pages_only: bool = True,
 ) -> Path:
     """Render both PDFs with diff overlays and save PNGs + metadata JSON.
 
@@ -43,8 +44,22 @@ def generate_comparison_snapshots(
     snap_dir = snapshot_base_dir / task_id
     snap_dir.mkdir(parents=True, exist_ok=True)
 
-    _render_pdf(old_pdf_path, report, bbox_side="old", snap_dir=snap_dir, prefix="old")
-    _render_pdf(new_pdf_path, report, bbox_side="new", snap_dir=snap_dir, prefix="new")
+    _render_pdf(
+        old_pdf_path,
+        report,
+        bbox_side="old",
+        snap_dir=snap_dir,
+        prefix="old",
+        diff_pages_only=diff_pages_only,
+    )
+    _render_pdf(
+        new_pdf_path,
+        report,
+        bbox_side="new",
+        snap_dir=snap_dir,
+        prefix="new",
+        diff_pages_only=diff_pages_only,
+    )
 
     metadata = {
         "task_id": task_id,
@@ -53,6 +68,7 @@ def generate_comparison_snapshots(
         "new_filename": report.new_filename,
         "total_diffs": report.total_diffs,
         "render_dpi": _DEFAULT_DPI,
+        "diff_pages_only": diff_pages_only,
         "highlight_color": "#FF00FF",
     }
     (snap_dir / "metadata.json").write_text(
@@ -68,6 +84,7 @@ def _render_pdf(
     bbox_side: str,
     snap_dir: Path,
     prefix: str,
+    diff_pages_only: bool,
 ) -> None:
     try:
         doc = fitz.open(pdf_path)
@@ -76,18 +93,23 @@ def _render_pdf(
         return
 
     mat = fitz.Matrix(_SCALE, _SCALE)
+    page_bboxes: dict[int, list] = {}
+    for item in report.items:
+        bbox = item.old_bbox if bbox_side == "old" else item.new_bbox
+        if bbox:
+            page_bboxes.setdefault(bbox.page, []).append(bbox)
 
-    for page_idx in range(len(doc)):
-        page_no = page_idx + 1
+    if diff_pages_only:
+        page_numbers = sorted(page for page in page_bboxes if 1 <= page <= len(doc))
+    else:
+        page_numbers = list(range(1, len(doc) + 1))
+
+    for page_no in page_numbers:
+        page_idx = page_no - 1
         page = doc[page_idx]
         page_height = page.rect.height
 
-        # Collect diff bboxes for this page
-        for item in report.items:
-            bbox = item.old_bbox if bbox_side == "old" else item.new_bbox
-            if not bbox or bbox.page != page_no:
-                continue
-
+        for bbox in page_bboxes.get(page_no, []):
             # Our BBox uses bottom-left origin; fitz uses top-left origin.
             fitz_rect = fitz.Rect(
                 bbox.x0,

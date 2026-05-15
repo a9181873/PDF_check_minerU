@@ -45,12 +45,12 @@ const AdminPage: React.FC = () => {
     if (updatingId) return;
     setUpdatingId(userId);
     try {
-      const payload: Record<string, unknown> = {};
+      const payload: { display_name?: string; password?: string; role?: string; is_active?: boolean } = {};
       if (editForm.display_name) payload.display_name = editForm.display_name;
       if (editForm.password) payload.password = editForm.password;
       if (editForm.role) payload.role = editForm.role;
       payload.is_active = editForm.is_active;
-      await authService.updateUser(userId, payload as any);
+      await authService.updateUser(userId, payload);
       setEditId(null);
       await loadUsers();
     } catch { setError('更新失敗'); }

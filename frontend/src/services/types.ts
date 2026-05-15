@@ -32,6 +32,7 @@ export interface DiffItem {
 
 export interface DiffReport {
   project_id: string;
+  case_number?: string | null;
   old_filename: string;
   new_filename: string;
   created_at: string;
@@ -96,6 +97,7 @@ export interface Project {
 export interface ComparisonInfo {
   id: string;
   project_id: string;
+  case_number: string | null;
   old_filename: string;
   new_filename: string;
   status: string;
@@ -104,6 +106,8 @@ export interface ComparisonInfo {
   error_message: string | null;
   old_markdown_path: string | null;
   new_markdown_path: string | null;
+  latest_reviewer: string | null;
+  latest_verified_at: string | null;
 }
 
 export interface ChecklistImportResponse {

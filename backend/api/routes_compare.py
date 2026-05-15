@@ -92,6 +92,7 @@ def _markdown_output_paths(task_id: str) -> tuple[Path, Path]:
 def _run_compare_task(
     task_id: str,
     project_id: str,
+    case_number: str | None,
     old_path: str,
     new_path: str,
     old_name: str,
@@ -131,28 +132,32 @@ def _run_compare_task(
             old_pdf_path=old_path,
             new_pdf_path=new_path,
         )
+        report.case_number = case_number.strip() if case_number else None
         if not report.summary:
             report.summary = f"parser_old={old_doc_engine}, parser_new={new_doc.raw_json.get('engine', 'unknown')}"
 
         save_diff_report(task_id, report)
+        del old_doc, new_doc
 
         _set_task_progress(task_id, "snapshotting", 90, "saving snapshots")
-        try:
-            from services.snapshot_service import generate_comparison_snapshots
-            settings.snapshots_dir.mkdir(parents=True, exist_ok=True)
-            snap_dir = generate_comparison_snapshots(
-                task_id=task_id,
-                old_pdf_path=old_path,
-                new_pdf_path=new_path,
-                report=report,
-                snapshot_base_dir=settings.snapshots_dir,
-            )
-            save_snapshot_dir(task_id, str(snap_dir))
-        except Exception as exc:
-            import logging
-            logging.getLogger(__name__).warning(
-                "Snapshot generation failed for task %s: %s", task_id, exc
-            )
+        if settings.generate_snapshots:
+            try:
+                from services.snapshot_service import generate_comparison_snapshots
+                settings.snapshots_dir.mkdir(parents=True, exist_ok=True)
+                snap_dir = generate_comparison_snapshots(
+                    task_id=task_id,
+                    old_pdf_path=old_path,
+                    new_pdf_path=new_path,
+                    report=report,
+                    snapshot_base_dir=settings.snapshots_dir,
+                    diff_pages_only=settings.snapshot_diff_pages_only,
+                )
+                save_snapshot_dir(task_id, str(snap_dir))
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Snapshot generation failed for task %s: %s", task_id, exc
+                )
 
         try:
             from services.snapshot_service import generate_diff_crops
@@ -174,7 +179,7 @@ def _run_compare_task(
             state.status = "done"
             state.progress_percent = 100
             state.current_step = "complete"
-            state.result = report
+            state.result = None
             state.error_message = None
 
         TASK_STORE.update(task_id, updater)
@@ -196,6 +201,7 @@ def _run_compare_task(
 @router.post("/upload", response_model=UploadResponse)
 async def upload_compare_files(
     background_tasks: BackgroundTasks,
+    case_number: str | None = Form(None),
     project_id: str | None = Form(None),
     old_pdf: UploadFile = File(...),
     new_pdf: UploadFile = File(...),
@@ -227,6 +233,7 @@ async def upload_compare_files(
         new_filename=new_pdf.filename or new_path.name,
         old_file_path=str(old_path),
         new_file_path=str(new_path),
+        case_number=case_number,
     )
 
     try:
@@ -240,6 +247,7 @@ async def upload_compare_files(
         _run_compare_task,
         task_id,
         resolved_project_id,
+        case_number,
         str(old_path),
         str(new_path),
         old_pdf.filename or old_path.name,
@@ -269,6 +277,7 @@ async def recompare(task_id: str, background_tasks: BackgroundTasks):
         _run_compare_task,
         task_id,
         comp.get("project_id", ""),
+        comp.get("case_number"),
         old_path,
         new_path,
         comp.get("old_filename", "old.pdf"),

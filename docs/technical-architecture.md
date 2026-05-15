@@ -105,11 +105,12 @@ Client                         Server
 graph LR
     A[PDF 上傳] --> P[Layer 1: PyMuPDF fitz<br/>內嵌文字層 + char_bboxes]
     P -->|is_image_pdf=true| PIX[直接進像素比對]
-    P -->|文字層存在| PAR{並行啟動}
+    P -->|文字層存在| PAR{MinerU 優先}
     PAR -->|有設 MINERU_API_URL| C[Layer 2a: MinerU REST API<br/>pipeline / chinese_cht]
-    PAR --> E[Layer 2b: Docling<br/>佈局分析 + Tesseract]
-    C -->|先完成者勝出| W((FIRST_COMPLETED))
-    E -->|先完成者勝出| W
+    PAR -->|未設定 MINERU_API_URL| E[Layer 2b: Docling<br/>佈局分析 + Tesseract]
+    C -->|成功| W((表格解析結果))
+    C -->|失敗/未設定| E[Layer 2b: Docling<br/>佈局分析 + Tesseract]
+    E -->|fallback| W
     W -->|兩者皆失敗| F[Layer 3: pdftotext<br/>poppler -layout]
     F -->|失敗| G[Layer 4: Tesseract OCR<br/>pdftoppm 200dpi → 全頁 OCR]
     W --> H[ParsedDocument]
@@ -117,7 +118,7 @@ graph LR
     G --> H
 ```
 
-> **並行策略（2026-05-04）**：Layer 2a 與 2b 同時啟動（`ThreadPoolExecutor(max_workers=2)`），取最先成功回傳的結果（`FIRST_COMPLETED`）。落敗的執行緒在背景繼續跑完但結果被丟棄（`shutdown(wait=False)`）。MinerU 的 300s timeout 不再阻塞 Docling 啟動。若 MinerU 未設定（`MINERU_API_URL` 為空），只提交 Docling，行為與舊版相同。
+> **解析策略（2026-05-16）**：預設採「準確率優先」：MinerU 成功時使用 MinerU，不再同時啟動 Docling，以降低 CPU/RAM 並避免成功路徑選到較不精準的 fallback。若需要偏速度的實驗模式，可設定 `ENABLE_DOCLING_PARALLEL=true`，此時才會同時啟動 MinerU 與 Docling，並用 `MINERU_PREFERRED_WAIT_SECONDS` 控制優先等待 MinerU 的秒數。
 
 #### Layer 1 — PyMuPDF（fitz）
 
@@ -377,6 +378,14 @@ else:
 - 小螢幕: 原始/修訂內容堆疊 (`grid-cols-1`)
 - 審核人員欄位自動帶入 `authUser.display_name`
 
+### 4.4 案號與留存 UX
+
+- 上傳頁在「專案設定」前提供可選 `case_number`，原有專案設定自動建議與手動修改流程不變
+- 最近比對紀錄可搜尋檔名、案號、專案 ID、最後審核人員
+- 留存歷史顯示案號、審核人員、確認數、標記數、備註
+- 審核紀錄若同一 `diff_item_id` 後續被修改，會顯示狀態、審核人員、備註的修改摘要
+- 「僅顯示待審差異」篩選只顯示 `reviewed=false` 的項目，避免漏看待審差異
+
 ## 5. 匯出格式
 
 | 格式 | 端點 | 說明 |
@@ -441,8 +450,11 @@ erDiagram
     comparisons {
         TEXT id PK
         TEXT project_id FK
+        TEXT case_number
         TEXT old_filename
         TEXT new_filename
+        TEXT old_hash
+        TEXT new_hash
         TEXT status
         TEXT diff_result_json
         TEXT created_at
@@ -463,10 +475,29 @@ erDiagram
         TEXT items_json
         TEXT imported_at
     }
+    pdf_archives {
+        TEXT id PK
+        TEXT old_hash
+        TEXT new_hash
+        TEXT case_number
+        TEXT old_archive_path
+        TEXT new_archive_path
+        TEXT annotated_archive_path
+    }
+    verification_sessions {
+        TEXT id PK
+        TEXT archive_id FK
+        TEXT comparison_id FK
+        TEXT case_number
+        TEXT reviewer
+        TEXT review_logs_json
+        TEXT verified_at
+    }
     projects ||--o{ comparisons : contains
     comparisons ||--o{ review_logs : has
     comparisons ||--o| checklists : has
     comparisons ||--o| resource_logs : monitored_by
+    pdf_archives ||--o{ verification_sessions : has
 ```
 
 ## 7. 硬體資源監控
@@ -561,6 +592,29 @@ docker compose up --build -d
 
 ---
 
+### 2026-05-16 — 案號留存、審核修改紀錄、穩定性與資源優化
+
+#### 新增/修改
+
+| 檔案 | 動作 | 說明 |
+|------|------|------|
+| `backend/models/database.py` | 修改 | 新增 `case_number`、`review_logs_json`，封存去重改為 `old_hash + new_hash + case_number` |
+| `backend/services/archive_service.py` | 修改 | 留存檔名前綴帶入案號，同 PDF 不同案號會分開封存 |
+| `backend/api/routes_archive.py` | 修改 | 歷史 API 回傳留存紀錄與審核修改 snapshot，無封存時也回傳空 `review_logs` |
+| `frontend/src/pages/UploadPage.tsx` | 修改 | 專案設定前新增案號欄位，最近比對紀錄可搜尋案號與審核人員 |
+| `frontend/src/components/VerificationHistoryModal.tsx` | 修改 | 顯示案號、審核人員、留存搜尋與審核修改內容 |
+| `frontend/src/stores/compareStore.ts` | 修改 | 修正「僅顯示待審」篩選邏輯，避免誤篩已審核項目 |
+| `frontend/src/components/PDFViewer.tsx` | 修改 | 可見頁 lazy render、減少大 PDF 載入閃爍與記憶體壓力 |
+
+#### UX 原則
+
+- 不改差異辨識核心，保留文字、表格、像素、圖片聯集比對能力
+- 案號是留存索引，不取代原有專案設定
+- 留存歷史以當時審核紀錄 snapshot 為準，後續修改可追蹤
+- 同一 PDF hash 在不同案號下視為不同案件，避免正式案件台帳混淆
+
+---
+
 ### 2026-05-04 — 三項效能優化 + 鄰近差異合併 + docker port 調整
 
 #### 新增/修改
@@ -569,7 +623,7 @@ docker compose up --build -d
 |------|------|------|
 | `backend/services/diff_service.py` | 修改 | **#5** `_merge_nearby_diffs()` 配對迴圈改為 sliding window：先按 `(page, y0)` 排序，當 `bj.y0 > bi.y1 + gap_threshold` 即 break，O(n²)→O(n log n + n·w) |
 | `backend/services/diff_service.py` | 修改 | **#4** `diff_pixels()` 新增兩階段掃描：Phase 1 以 72 DPI 快速找出有差異的頁（min\_area 等比縮放），Phase 2 只對差異頁做完整 200 DPI 分析 |
-| `backend/services/parser_service.py` | 修改 | **#2** `parse_pdf()` 表格解析改為 MinerU + Docling 並行（`ThreadPoolExecutor(max_workers=2)` + `FIRST_COMPLETED`）；取最先成功者，`shutdown(wait=False)` 讓落敗執行緒在背景完成，不阻塞主流程；MinerU 300s timeout 不再阻塞 Docling 啟動 |
+| `backend/services/parser_service.py` | 修改 | **#2** `parse_pdf()` 表格解析改為 MinerU 準確率優先：預設只跑 MinerU，失敗才用 Docling fallback；可透過 `ENABLE_DOCLING_PARALLEL=true` 開啟 MinerU + Docling 同時解析的速度模式 |
 | `backend/services/diff_service.py` | 修改 | 新增 `_merge_nearby_diffs()`：對空間鄰近的 TEXT/NUMBER diff 做 Union-Find 合併（gap ≤ 50pt） |
 | `docker-compose.yml` | 修改 | backend expose 改為 `ports: 8001:8000`；`internal` network 從 `external: true` 改為 `driver: bridge` |
 | `一鍵啟動PDF比對系統.bat` | 修改 | health check / 提示 URL / 自動開啟瀏覽器全改為 port 8001 |
@@ -581,7 +635,8 @@ docker compose up --build -d
 
 | 優化 | 情境 | 預期改善 |
 |------|------|---------|
-| #2 並行解析 | MinerU 回應慢或超時 | 解析時間縮短至 Docling 完成時間（不再等 300s timeout）|
+| #2 MinerU 準確率優先解析 | MinerU 正常回應 | 保留 MinerU 表格解析精度，且不額外啟動 Docling 消耗 CPU/RAM |
+| #2 可選並行解析 | MinerU 回應慢或超時 | 啟用 `ENABLE_DOCLING_PARALLEL=true` 時，最多只多等待 `MINERU_PREFERRED_WAIT_SECONDS`，之後採用 Docling fallback |
 | #4 動態 DPI | 僅 1-2 頁有差異的文件 | 像素比對時間降低 50–80% |
 | #5 Sliding Window | 單頁有大量細碎 diff | 合併步驟接近線性，避免二次方瓶頸 |
 

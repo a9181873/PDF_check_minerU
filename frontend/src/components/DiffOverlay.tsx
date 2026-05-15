@@ -14,7 +14,7 @@ interface DiffOverlayProps {
   showLabels?: boolean;
 }
 
-const getDiffColor = (_type: DiffType) => {
+const getDiffColor = () => {
   return 'diff-overlay-highlight';
 };
 
@@ -95,7 +95,7 @@ const DiffOverlay: React.FC<DiffOverlayProps> = ({
         const width = ((bbox.x1 - bbox.x0) / pdfPageWidth) * 100;
         const height = ((bbox.y1 - bbox.y0) / pdfPageHeight) * 100;
 
-        const colorClass = getDiffColor(diff.diff_type);
+        const colorClass = getDiffColor();
         const label = getDiffLabel(diff.diff_type);
         const isSelected = selectedDiffId === diff.id;
 

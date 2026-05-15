@@ -36,7 +36,10 @@ export const useCrossWindowSync = (taskId: string | null) => {
         break;
       }
       case 'DIFF_SELECT': {
-        const diff = msg.payload.diffId ? document.body.dispatchEvent(new CustomEvent('cross-window-diff-select', { detail: { diffId: msg.payload.diffId } })) : null;
+        setSelectedDiffId(msg.payload.diffId);
+        if (msg.payload.diffId) {
+          document.body.dispatchEvent(new CustomEvent('cross-window-diff-select', { detail: { diffId: msg.payload.diffId } }));
+        }
         const diffObj = getDiffById(msg.payload.diffId || '');
         if (diffObj) {
             openDiffPopup(diffObj);

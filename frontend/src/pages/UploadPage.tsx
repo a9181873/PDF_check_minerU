@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { isAxiosError } from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { Upload, File, Folder, AlertCircle, CheckCircle, XCircle, Clock, ChevronRight, Search, Download, LogOut, Settings, User, Trash2 } from 'lucide-react';
+import { Upload, File, Folder, AlertCircle, CheckCircle, XCircle, Clock, ChevronRight, Search, Download, LogOut, Settings, User, Trash2, Hash } from 'lucide-react';
 import { compareApi, projectApi, buildAuthedUrl } from '../services/api';
 import { ComparisonInfo } from '../services/types';
 import { useAuthStore } from '../stores/authStore';
@@ -12,7 +12,7 @@ function getSuggestedProjectName(oldName: string, newName: string): string {
   const b = stripExt(newName);
   let i = 0;
   while (i < a.length && i < b.length && a[i] === b[i]) i++;
-  let common = a.substring(0, i).replace(/[-_\s()（）]+$/, '').trim();
+  const common = a.substring(0, i).replace(/[-_\s()（）]+$/, '').trim();
   const today = new Date();
   const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
   const timeStr = `${String(today.getHours()).padStart(2, '0')}${String(today.getMinutes()).padStart(2, '0')}${String(today.getSeconds()).padStart(2, '0')}`;
@@ -24,6 +24,7 @@ const UploadPage: React.FC = () => {
   const { user: authUser, logout } = useAuthStore();
   const [oldFile, setOldFile] = useState<File | null>(null);
   const [newFile, setNewFile] = useState<File | null>(null);
+  const [caseNumber, setCaseNumber] = useState('');
   const [projectId, setProjectId] = useState('');
   const [projectIdUserEdited, setProjectIdUserEdited] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -45,7 +46,9 @@ const UploadPage: React.FC = () => {
     return recentComparisons.filter((comp) =>
       comp.old_filename.toLowerCase().includes(q) ||
       comp.new_filename.toLowerCase().includes(q) ||
-      comp.project_id.toLowerCase().includes(q)
+      comp.project_id.toLowerCase().includes(q) ||
+      (comp.case_number || '').toLowerCase().includes(q) ||
+      (comp.latest_reviewer || '').toLowerCase().includes(q)
     );
   }, [recentComparisons, historySearch]);
 
@@ -185,7 +188,12 @@ const UploadPage: React.FC = () => {
     setSuccess(null);
 
     try {
-      const result = await compareApi.uploadFiles(oldFile, newFile, projectId || undefined);
+      const result = await compareApi.uploadFiles(
+        oldFile,
+        newFile,
+        projectId || undefined,
+        caseNumber.trim() || undefined
+      );
       setSuccess('檔案上傳成功！正在進行比對分析...');
       
       // Redirect to compare page after a short delay (cancellable on unmount)
@@ -310,6 +318,25 @@ const UploadPage: React.FC = () => {
         {/* Upload form */}
         <div className="bg-white/95 rounded-[28px] shadow-large border border-white p-8 backdrop-blur">
           <form onSubmit={handleSubmit}>
+            {/* Case number */}
+            <div className="mb-6">
+              <div className="flex items-center space-x-2 mb-3">
+                <Hash className="text-gray-400" size={20} />
+                <h2 className="text-lg font-medium text-gray-900">案號 (選填)</h2>
+              </div>
+              <input
+                type="text"
+                value={caseNumber}
+                onChange={(e) => setCaseNumber(e.target.value)}
+                placeholder="輸入案號；留存時會作為檔名前綴"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                disabled={isUploading}
+              />
+              <p className="text-sm text-gray-500 mt-2">
+                有填案號時，未來存檔與下載檔名會帶入案號前綴，方便對應正式案件。
+              </p>
+            </div>
+
             {/* Project selection */}
             <div className="mb-8">
               <div className="flex items-center space-x-2 mb-3">
@@ -322,6 +349,7 @@ const UploadPage: React.FC = () => {
                 onChange={(e) => { setProjectId(e.target.value); setProjectIdUserEdited(true); }}
                 placeholder="上傳兩個檔案後將自動帶入共通名稱+核對日期時間"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                disabled={isUploading}
               />
               <p className="text-sm text-gray-500 mt-2">
                 選取兩個檔案後自動以共通檔名＋核對日期時間建議，可手動修改。
@@ -439,7 +467,7 @@ const UploadPage: React.FC = () => {
               type="text"
               value={historySearch}
               onChange={(e) => setHistorySearch(e.target.value)}
-              placeholder="搜尋檔案名稱..."
+              placeholder="搜尋檔案名稱、案號、審核人員..."
               className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50/80 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition-all text-sm"
             />
           </div>
@@ -469,6 +497,20 @@ const UploadPage: React.FC = () => {
 
                   {/* File names */}
                   <div className="flex-1 min-w-0 mr-3">
+                    <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                      {comp.case_number && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700 border border-primary-100">
+                          <Hash size={11} />
+                          {comp.case_number}
+                        </span>
+                      )}
+                      {comp.latest_reviewer && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-0.5 text-xs text-gray-600 border border-gray-200">
+                          <User size={11} />
+                          {comp.latest_reviewer}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center space-x-2 text-sm">
                       <span className="text-gray-400 flex-shrink-0">舊:</span>
                       <span className="text-gray-700 truncate font-medium">{comp.old_filename}</span>

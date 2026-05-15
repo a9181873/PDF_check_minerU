@@ -69,11 +69,15 @@ export const compareApi = {
   async uploadFiles(
     oldFile: File,
     newFile: File,
-    projectId?: string
+    projectId?: string,
+    caseNumber?: string
   ): Promise<UploadResponse> {
     const formData = new FormData();
     formData.append('old_pdf', oldFile);
     formData.append('new_pdf', newFile);
+    if (caseNumber) {
+      formData.append('case_number', caseNumber);
+    }
     if (projectId) {
       formData.append('project_id', projectId);
     }
@@ -214,7 +218,7 @@ export const archiveApi = {
 
   async getHistory(
     comparisonId: string
-  ): Promise<{ archive: ArchiveRecord | null; sessions: VerificationSession[] }> {
+  ): Promise<{ archive: ArchiveRecord | null; sessions: VerificationSession[]; review_logs: ReviewLogChange[] }> {
     const response = await api.get(`/api/archive/${comparisonId}/history`);
     return response.data;
   },
@@ -228,6 +232,7 @@ export interface ArchiveRecord {
   id: string;
   old_hash: string;
   new_hash: string;
+  case_number: string | null;
   old_filename: string;
   new_filename: string;
   old_archive_path: string;
@@ -241,12 +246,29 @@ export interface VerificationSession {
   id: string;
   archive_id: string;
   comparison_id: string;
+  case_number: string | null;
   reviewer: string | null;
   verified_at: string;
   total_diffs: number;
   confirmed: number;
   flagged: number;
   notes: string | null;
+  review_logs_json?: string | null;
+}
+
+export interface ReviewLogChange {
+  id: string;
+  comparison_id: string;
+  diff_item_id: string;
+  action: string;
+  reviewer: string | null;
+  note: string | null;
+  created_at: string;
+  previous_action: string | null;
+  previous_reviewer: string | null;
+  previous_note: string | null;
+  change_type: 'created' | 'modified';
+  change_summary: string;
 }
 
 export default api;

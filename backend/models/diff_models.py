@@ -39,6 +39,7 @@ class DiffItem(BaseModel):
 
 class DiffReport(BaseModel):
     project_id: str
+    case_number: str | None = None
     old_filename: str
     new_filename: str
     created_at: str
