@@ -318,45 +318,45 @@ const UploadPage: React.FC = () => {
         {/* Upload form */}
         <div className="bg-white/95 rounded-[28px] shadow-large border border-white p-8 backdrop-blur">
           <form onSubmit={handleSubmit}>
-            {/* Case number */}
-            <div className="mb-6">
-              <div className="flex items-center space-x-2 mb-3">
-                <Hash className="text-gray-400" size={20} />
-                <h2 className="text-lg font-medium text-gray-900">案號 (選填)</h2>
-              </div>
-              <input
-                type="text"
-                value={caseNumber}
-                onChange={(e) => setCaseNumber(e.target.value)}
-                placeholder="輸入案號；留存時會作為檔名前綴"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                disabled={isUploading}
-              />
-              <p className="text-sm text-gray-500 mt-2">
-                有填案號時，未來存檔與下載檔名會帶入案號前綴，方便對應正式案件。
-              </p>
-            </div>
+            {/* Case number + project selection */}
+            <div className="mb-5 rounded-2xl border border-gray-100 bg-gray-50/70 px-3 py-3">
+              <div className="grid grid-cols-1 lg:grid-cols-[0.85fr_1.35fr] gap-3">
+                <label className="flex items-center gap-2">
+                  <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium text-gray-800">
+                    <Hash className="text-gray-400" size={14} />
+                    案號 <span className="font-normal text-gray-400">選填</span>
+                  </span>
+                  <input
+                    type="text"
+                    value={caseNumber}
+                    onChange={(e) => setCaseNumber(e.target.value)}
+                    placeholder="留存檔名前綴"
+                    className="min-w-0 flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    disabled={isUploading}
+                  />
+                </label>
 
-            {/* Project selection */}
-            <div className="mb-8">
-              <div className="flex items-center space-x-2 mb-3">
-                <Folder className="text-gray-400" size={20} />
-                <h2 className="text-lg font-medium text-gray-900">專案設定 (選填)</h2>
+                <label className="flex items-center gap-2">
+                  <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium text-gray-800">
+                    <Folder className="text-gray-400" size={14} />
+                    專案設定 <span className="font-normal text-gray-400">選填</span>
+                  </span>
+                  <input
+                    type="text"
+                    value={projectId}
+                    onChange={(e) => { setProjectId(e.target.value); setProjectIdUserEdited(true); }}
+                    placeholder="上傳兩個檔案後自動帶入共通名稱+核對日期時間"
+                    className="min-w-0 flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    disabled={isUploading}
+                  />
+                </label>
               </div>
-              <input
-                type="text"
-                value={projectId}
-                onChange={(e) => { setProjectId(e.target.value); setProjectIdUserEdited(true); }}
-                placeholder="上傳兩個檔案後將自動帶入共通名稱+核對日期時間"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                disabled={isUploading}
-              />
-              <p className="text-sm text-gray-500 mt-2">
-                選取兩個檔案後自動以共通檔名＋核對日期時間建議，可手動修改。
+              <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                案號會作為留存/下載檔名前綴；專案設定仍會依檔名自動建議，也可手動修改。
               </p>
               {/* Reviewer info */}
               {authUser && (
-                <div className="mt-3 flex items-center gap-2 text-sm">
+                <div className="mt-2 flex items-center gap-2 text-xs">
                   <User size={14} className="text-gray-400" />
                   <span className="text-gray-500">審核人員：</span>
                   <span className="font-medium text-gray-800 bg-primary-50 px-2 py-0.5 rounded">{authUser.display_name}</span>

@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { isAxiosError } from 'axios';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertCircle, BarChart3, ChevronDown, ClipboardList, Contrast, Download, Eye, EyeOff, LogOut, Save, Settings, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { AlertCircle, ArrowLeft, BarChart3, ChevronDown, ClipboardList, Contrast, Download, Eye, EyeOff, LogOut, Save, Settings, ZoomIn, ZoomOut } from 'lucide-react';
 
 import ChecklistPanel from '../components/ChecklistPanel';
 import DiffListPanel from '../components/DiffListPanel';
@@ -492,9 +492,18 @@ const ComparePage: React.FC = () => {
     <div className="min-h-screen bg-[linear-gradient(180deg,_#f5f5f5_0%,_#edf3ee_100%)] flex flex-col">
       <header className="relative z-10 border-b border-[#dfe7e2] bg-white/90 px-6 pt-2 pb-2 backdrop-blur">
         {/* Row 1: Title */}
-        <div className="flex items-center gap-2.5 mb-1.5">
-          <span className="text-xs font-semibold text-gray-900">PDF 差異比對系統</span>
-          <div className="text-xs text-gray-400 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono">
+        <div className="flex flex-wrap items-center gap-2.5 mb-1.5">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="h-7 shrink-0 inline-flex items-center gap-1.5 px-2.5 rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            title="返回主畫面"
+          >
+            <ArrowLeft size={13} />
+            返回主畫面
+          </button>
+          <span className="shrink-0 text-xs font-semibold text-gray-900">PDF 差異比對系統</span>
+          <div className="max-w-full truncate text-xs text-gray-400 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono">
             {taskId}
           </div>
         </div>
@@ -559,18 +568,6 @@ const ComparePage: React.FC = () => {
 
           {/* Right group: actions + user */}
           <div className="flex items-center gap-1.5">
-            {/* 新比較 */}
-            <button
-              type="button"
-              onClick={() => navigate('/')}
-              className="h-8 inline-flex items-center gap-1 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              <Upload size={13} />
-              新比較
-            </button>
-
-            <div className="h-5 w-px bg-gray-200 mx-0.5" />
-
             {/* 下載匯出 */}
             <div className="relative" ref={exportMenuRef}>
               <button
