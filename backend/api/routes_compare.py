@@ -89,6 +89,19 @@ def _markdown_output_paths(task_id: str) -> tuple[Path, Path]:
     )
 
 
+def _find_uploaded_pdf(task_id: str, row, version: str) -> Path | None:
+    upload_dir = settings.old_upload_dir if version == "old" else settings.new_upload_dir
+    original_filename = row["old_filename"] if version == "old" else row["new_filename"]
+
+    expected_name = f"{task_id}_{Path(original_filename).name}"
+    expected_path = upload_dir / expected_name
+    if expected_path.exists():
+        return expected_path
+
+    candidates = sorted(upload_dir.glob(f"{task_id}_*.pdf"))
+    return candidates[0] if candidates else None
+
+
 def _run_compare_task(
     task_id: str,
     project_id: str,
@@ -478,20 +491,10 @@ async def download_pdf(task_id: str, version: str):
     if not row:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    # Determine upload directory
-    upload_dir = settings.old_upload_dir if normalized == "old" else settings.new_upload_dir
     original_filename = row["old_filename"] if normalized == "old" else row["new_filename"]
-    
-    # Look for the file with task_id prefix
-    expected_name = f"{task_id}_{Path(original_filename).name}"
-    expected_path = upload_dir / expected_name
-    if expected_path.exists():
-        return FileResponse(expected_path, media_type="application/pdf", filename=original_filename)
-    
-    # Fallback: search for any file with task_id prefix
-    candidates = list(upload_dir.glob(f"{task_id}_*.pdf"))
-    if candidates:
-        return FileResponse(candidates[0], media_type="application/pdf", filename=original_filename)
+    pdf_path = _find_uploaded_pdf(task_id, row, normalized)
+    if pdf_path:
+        return FileResponse(pdf_path, media_type="application/pdf", filename=original_filename)
 
     raise HTTPException(status_code=404, detail="PDF file not found")
 
@@ -501,7 +504,7 @@ _DIFF_ID_RE = re.compile(r"^d\d{3,}$")
 
 @router.get("/{task_id}/crop/{diff_id}/{side}")
 async def get_diff_crop(task_id: str, diff_id: str, side: str):
-    """Return a cropped PNG of an IMAGE_DIFF region from the old/new PDF.
+    """Return a cropped PNG of a diff region from the old/new PDF.
 
     Generated post-compare by snapshot_service.generate_diff_crops.
     """
@@ -518,6 +521,38 @@ async def get_diff_crop(task_id: str, diff_id: str, side: str):
 
     crop_path = settings.crops_dir / task_id / f"{diff_id}_{normalized}.png"
     if not crop_path.exists():
-        raise HTTPException(status_code=404, detail="Crop not found")
+        report = get_comparison_report(task_id)
+        if not report:
+            raise HTTPException(status_code=404, detail="Comparison report not found")
+
+        target = next((item for item in report.items if item.id == diff_id), None)
+        if not target:
+            raise HTTPException(status_code=404, detail="Diff item not found")
+
+        bbox = target.old_bbox if normalized == "old" else target.new_bbox
+        if not bbox:
+            raise HTTPException(status_code=404, detail="Crop not available for this side")
+
+        old_pdf_path = _find_uploaded_pdf(task_id, row, "old")
+        new_pdf_path = _find_uploaded_pdf(task_id, row, "new")
+        if not old_pdf_path or not new_pdf_path:
+            raise HTTPException(status_code=404, detail="Source PDF not found")
+
+        try:
+            from services.snapshot_service import generate_diff_crops
+
+            settings.crops_dir.mkdir(parents=True, exist_ok=True)
+            generate_diff_crops(
+                task_id=task_id,
+                old_pdf_path=str(old_pdf_path),
+                new_pdf_path=str(new_pdf_path),
+                report=report,
+                crops_base_dir=settings.crops_dir,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail="Crop generation failed") from exc
+
+        if not crop_path.exists():
+            raise HTTPException(status_code=404, detail="Crop not found")
 
     return FileResponse(crop_path, media_type="image/png")

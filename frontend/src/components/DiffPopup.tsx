@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle, Copy, ExternalLink, Flag, Maximize2, Minus, Plus, RotateCcw, X } from 'lucide-react';
+import { CheckCircle, Copy, ExternalLink, Eye, EyeOff, Flag, Maximize2, Minus, Plus, RotateCcw, X } from 'lucide-react';
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
 
 import { buildAuthedUrl } from '../services/api';
@@ -90,14 +90,18 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
   const [note, setNote] = useState('');
   const [oldCropFailed, setOldCropFailed] = useState(false);
   const [newCropFailed, setNewCropFailed] = useState(false);
+  const [showCropPreview, setShowCropPreview] = useState(false);
   const [lightbox, setLightbox] = useState<{ url: string; label: string } | null>(null);
 
   const isImageDiff = diff.diff_type === DiffType.IMAGE_DIFF;
-  const canFetchCrop = taskId && isImageDiff;
+  const canFetchCrop = !!taskId;
   const oldCropUrl = diff.old_image_base64 || (canFetchCrop && diff.old_bbox ? buildAuthedUrl(`/api/compare/${taskId}/crop/${diff.id}/old`) : null);
   const newCropUrl = diff.new_image_base64 || (canFetchCrop && diff.new_bbox ? buildAuthedUrl(`/api/compare/${taskId}/crop/${diff.id}/new`) : null);
-  const showOldImage = !!oldCropUrl && !oldCropFailed;
-  const showNewImage = !!newCropUrl && !newCropFailed;
+  const hasOldCropTarget = !!diff.old_image_base64 || (canFetchCrop && !!diff.old_bbox);
+  const hasNewCropTarget = !!diff.new_image_base64 || (canFetchCrop && !!diff.new_bbox);
+  const hasCropTarget = hasOldCropTarget || hasNewCropTarget;
+  const showOldImage = showCropPreview && !!oldCropUrl && !oldCropFailed;
+  const showNewImage = showCropPreview && !!newCropUrl && !newCropFailed;
 
   useEffect(() => {
     if (!lightbox) return;
@@ -120,6 +124,32 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
 
   const handleCopy = (text: string) => {
     void navigator.clipboard.writeText(text);
+  };
+
+  const handleToggleCropPreview = () => {
+    setShowCropPreview((current) => {
+      if (current) {
+        setLightbox(null);
+      }
+      return !current;
+    });
+  };
+
+  const getEmptyMessage = (
+    side: 'old' | 'new',
+    hasSideCropTarget: boolean,
+    cropFailed: boolean,
+  ) => {
+    if (!showCropPreview && hasSideCropTarget) {
+      return '可顯示區域截圖';
+    }
+    if (showCropPreview && hasSideCropTarget && cropFailed) {
+      return '無法載入截圖';
+    }
+    if (isImageDiff) {
+      return side === 'old' ? '無原始文字（純視覺差異）' : '無修訂文字（純視覺差異）';
+    }
+    return side === 'old' ? '無原始內容' : '無修訂內容';
   };
 
   return (
@@ -176,6 +206,20 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
                 信度: {(diff.confidence * 100).toFixed(1)}%
               </span>
             ) : null}
+            {hasCropTarget ? (
+              <button
+                type="button"
+                onClick={handleToggleCropPreview}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  showCropPreview
+                    ? 'border-gray-300 bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100'
+                }`}
+              >
+                {showCropPreview ? <EyeOff size={13} /> : <Eye size={13} />}
+                {showCropPreview ? '隱藏截圖' : '顯示截圖'}
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -223,7 +267,7 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
               ) : null}
               {!diff.old_value && !showOldImage ? (
                 <p className="text-sm text-gray-500 italic">
-                  {isImageDiff ? (oldCropFailed || !oldCropUrl ? '無法載入截圖' : '無原始文字（純視覺差異）') : '無原始內容'}
+                  {getEmptyMessage('old', hasOldCropTarget, oldCropFailed || (showCropPreview && !oldCropUrl))}
                 </p>
               ) : null}
             </div>
@@ -272,7 +316,7 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
               ) : null}
               {!diff.new_value && !showNewImage ? (
                 <p className="text-sm text-gray-500 italic">
-                  {isImageDiff ? (newCropFailed || !newCropUrl ? '無法載入截圖' : '無修訂文字（純視覺差異）') : '無修訂內容'}
+                  {getEmptyMessage('new', hasNewCropTarget, newCropFailed || (showCropPreview && !newCropUrl))}
                 </p>
               ) : null}
             </div>
