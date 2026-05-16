@@ -112,7 +112,7 @@ const LoginPage: React.FC = () => {
         </div>
 
         <p className="mt-6 text-center text-sm text-gray-500">
-          預設管理員帳號: admin / admin123
+          預設測試帳號密碼: TEST / TEST123
         </p>
       </div>
     </div>

@@ -489,28 +489,33 @@ const UploadPage: React.FC = () => {
                   className="group flex items-center p-3 bg-gray-50 hover:bg-primary-50 rounded-xl border border-gray-100 hover:border-primary-100 transition-all hover:shadow-sm"
                 >
                   {/* Date */}
-                  <div className="flex-shrink-0 w-28 mr-3">
-                    <span className="text-xs font-medium text-gray-500 bg-white px-2 py-1 rounded-md shadow-sm border border-gray-100 block text-center">
-                      {new Date(comp.created_at).toLocaleDateString('zh-TW', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </span>
+                  <div className="flex-shrink-0 w-32 mr-3">
+                    <div className="rounded-lg border border-gray-100 bg-white px-2 py-1.5 shadow-sm">
+                      <span className="block text-center text-xs font-semibold leading-tight text-gray-600">
+                        {new Date(comp.created_at).toLocaleDateString('zh-TW', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <div className="mt-1 flex items-center justify-center gap-1 text-[11px] leading-tight text-gray-500">
+                        <User size={11} className="flex-shrink-0 text-gray-400" />
+                        <span
+                          className="truncate"
+                          title={`審核人員：${comp.latest_reviewer || '尚未審核'}`}
+                        >
+                          審核人員：{comp.latest_reviewer || '尚未審核'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   {/* File names */}
                   <div className="flex-1 min-w-0 mr-3">
-                    <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                      {comp.case_number && (
+                    {comp.case_number && (
+                      <div className="mb-1 flex flex-wrap items-center gap-1.5">
                         <span className="inline-flex items-center gap-1 rounded-md bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700 border border-primary-100">
                           <Hash size={11} />
                           {comp.case_number}
                         </span>
-                      )}
-                      {comp.latest_reviewer && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-0.5 text-xs text-gray-600 border border-gray-200">
-                          <User size={11} />
-                          {comp.latest_reviewer}
-                        </span>
-                      )}
-                    </div>
+                      </div>
+                    )}
                     <div className="flex items-center space-x-2 text-sm">
                       <span className="text-gray-400 flex-shrink-0">舊:</span>
                       <span className="text-gray-700 truncate font-medium">{comp.old_filename}</span>
