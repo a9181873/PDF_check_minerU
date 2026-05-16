@@ -1,0 +1,36 @@
+.git
+.gitignore
+
+# Local Python environments and caches
+.venv
+venv
+**/.venv
+**/venv
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Node and frontend build artifacts
+node_modules
+**/node_modules
+frontend/dist
+frontend/dist-ssr
+
+# Runtime data and generated outputs
+runtime
+backend/runtime
+uploads
+exports
+archives
+snapshots
+crops
+benchmarks
+
+# Local OS/editor files
+.DS_Store
+.idea
+.vscode
+

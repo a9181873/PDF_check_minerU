@@ -1,296 +1,86 @@
-# PDF Check
+# PDF Check MinerU
 
-保險 EDM / PDF 差異比對系統。專案由 `FastAPI + MinerU + Docling + React + react-pdf + SQLite` 組成，目標是把「新舊 PDF 的文字與數字差異」轉成可審核、可搜尋、可匯出的工作流，而不是做像素級美術比對。
+PDF Check MinerU 是一套用來比對「舊版 PDF」與「新版 PDF」差異的本地端審核工具。它會把 PDF 解析成文字、表格和位置資訊，再把新增、刪除、文字修改、數字修改標在畫面上，讓審核人員可以逐筆確認、留下紀錄，最後匯出報告或封存。
 
-> [!TIP]
-> **最新更新 (2026-05-08)**: 核心比對引擎升級，導入 **SSIM 子區域變更定位** 與 **區域性 Tesseract OCR**，大幅提升圖片內文字變動（如：費率表、說明圖）的偵測精準度與自動讀取能力。
+這個專案特別適合保險 DM、條款、費率表、簡章、公告等需要反覆改版與人工審核的 PDF。
 
-## 專案目標
+## 一句話說明
 
-- 上傳舊版與新版 PDF，建立一筆比較任務
-- 以 MinerU（主）或 Docling（備援）解析文字區塊與表格位置，產生結構化中介資料
-- 用段落級 diff 比對出新增、刪除、文字修改、數值修改
-- 表格支援 **cell-level diff**：精確標記到單一儲存格，整表大幅變動時自動聚合為一筆整表替換
-- 在前端灰階 PDF 上疊加彩色標記，協助審核
-- 提供 Markdown、標註 PDF、Excel 等匯出能力
-- 透過 WebSocket 回報背景任務進度
-- **PDF 驗證封存**：比對完成後可封存版本紀錄，支援多次核驗歷史查詢
+把兩份 PDF 丟進系統，系統會找出差異，讓人員在畫面上確認，並保存「誰在什麼時間審了什麼」。
 
-## 系統架構
+## 適合誰使用
 
-```text
-Browser
-  ├─ UploadPage: 上傳 PDF、建立任務
-  ├─ ComparePage: 差異檢視、搜尋、核對清單、匯出
-  ├─ VerificationHistoryModal: 封存核驗歷史查詢
-  └─ react-pdf/pdf.js: PDF 渲染與座標對位
-        │
-        ├─ REST API (/api/*)
-        └─ WebSocket (/ws/compare/{task_id})
-              │
-FastAPI
-  ├─ routes_auth.py: 帳號登入、使用者管理 (JWT)
-  ├─ routes_compare.py: 任務建立、狀態查詢、結果與 PDF/Markdown 下載
-  ├─ routes_review.py: 差異審核與摘要
-  ├─ routes_checklist.py: 核對清單匯入與更新
-  ├─ routes_export.py: 匯出標註 PDF / Excel / TXT
-  ├─ routes_project.py: 專案列表與比較歷史
-  ├─ routes_archive.py: PDF 封存與核驗歷史
-  └─ websocket.py: 即時進度推播（含記憶體遺失 fallback）
-        │
-Services
-  ├─ parser_service.py: MinerU（主）/ Docling / PyMuPDF / pdftotext fallback 鏈（MinerU 優先並行解析）
-  ├─ diff_service.py: 段落 diff、cell-level 表格 diff（含70%聚合策略）
-  │    ├─ 像素比對：動態 DPI、Sliding Window NCC、自適應 NCC 門檻
-  │    ├─ SSIM 子區域變更定位：精確找出圖片內文字修改位置
-  │    └─ 鄰近差異合併邏輯
-  ├─ archive_service.py: PDF SHA-256 雜湊、封存複製、核驗紀錄
-  ├─ checklist_service.py: CSV/Excel 匯入與自動匹配
-  ├─ export_service.py: PDF / Excel 匯出
-  └─ coord_transformer.py: PDF 座標轉換工具
-        │
-MinerU API (獨立容器)
-  └─ mineru-api:18080  pipeline backend（100% 地端，繁體中文優化）
-        │
-Persistence
-  ├─ SQLite: projects / comparisons / review_logs / users / pdf_archives / verification_sessions
-  ├─ uploads: 原始 PDF
-  ├─ exports: 匯出物與 markdown
-  ├─ archives: 封存 PDF（依 archive_id 子目錄）
-  └─ TASK_STORE / CHECKLIST_STORE: 執行中任務與暫時記憶體狀態
-```
+| 角色 | 可以做什麼 |
+|------|------------|
+| 審核人員 | 上傳新舊 PDF、查看差異、標記確認或異常、填寫備註 |
+| 管理者 | 管理帳號、查看留存紀錄、匯出審核資料 |
+| 開發/維運人員 | 部署 Docker、調整解析設定、檢查資源用量 |
 
-## 技術棧
+## 主要功能
 
-### Backend（Python 3.11+）
+- 上傳兩份 PDF 進行比對
+- 支援案號，匯出與封存檔名可加上案號前綴
+- 專案設定可自動建議，也可手動修改
+- 在 PDF 畫面上標示差異位置
+- 搜尋差異內容、頁碼、審核人員、案號與備註
+- 審核每一筆差異，記錄狀態、審核人員與備註
+- 若審核紀錄被修改，保留修改前後摘要
+- 匯出標註 PDF、Excel、審核紀錄 TXT/CSV
+- 留存 PDF 與核驗歷史，之後可查詢當時的審核結果
+- 使用 MinerU 優先解析 PDF，Docling 作為備援
 
-#### Web 框架 / Web Framework
+## 使用流程
 
-| 套件 | 版本 | 中文說明 | English Description | 來源 |
-|------|------|----------|---------------------|------|
-| `fastapi` | ≥0.110 | 高效能非同步 REST API 框架，提供路由、依賴注入、自動產生 OpenAPI 文件 | High-performance async REST API framework with routing, dependency injection, and auto OpenAPI docs | [fastapi.tiangolo.com](https://fastapi.tiangolo.com) |
-| `uvicorn` | ≥0.27 | ASGI server，負責運行 FastAPI 並支援 WebSocket 雙向通訊 | ASGI server that runs FastAPI and handles WebSocket connections | [github.com/encode/uvicorn](https://github.com/encode/uvicorn) |
-| `pydantic` | ≥2.6 | 資料模型驗證與序列化，定義 `DiffItem`、`BBox` 等所有核心型別 | Data model validation and serialization; defines all core types like `DiffItem` and `BBox` | [docs.pydantic.dev](https://docs.pydantic.dev) |
-| `pydantic-settings` | ≥2.2 | 從環境變數或 `.env` 安全載入設定（`MINERU_API_URL`、`DATA_DIR` 等） | Type-safe loading of settings from environment variables or `.env` files | [github.com/pydantic/pydantic-settings](https://github.com/pydantic/pydantic-settings) |
-| `python-multipart` | ≥0.0.9 | 解析 `multipart/form-data` 上傳請求，讓 FastAPI 能接收 PDF 檔案 | Parses multipart/form-data upload requests so FastAPI can receive PDF files | [github.com/andrew-d/python-multipart](https://github.com/andrew-d/python-multipart) |
+1. 登入系統。
+2. 在上傳頁輸入案號，這是選填欄位。
+3. 選擇舊版 PDF 與新版 PDF。
+4. 專案設定會依檔名自動建議，也可以自己改。
+5. 按下開始比對。
+6. 進入比對畫面後，逐筆確認差異。
+7. 需要時匯出報告或留存 PDF。
+8. 之後可從最近比對紀錄或核驗歷史查詢。
 
-#### PDF 解析 / PDF Parsing
+## 快速啟動
 
-| 套件 | 版本 | 中文說明 | English Description | 來源 |
-|------|------|----------|---------------------|------|
-| `MinerU 3.x` | — | 主要解析器，以深度學習模型（DocLayout-YOLO）辨識版面並輸出結構化 JSON；cell-level 表格、繁體中文優化；透過 REST API 呼叫獨立 Docker 容器 | Primary parser using DL models (DocLayout-YOLO) to detect layout and export structured JSON; optimized for Traditional Chinese and table cells | [github.com/opendatalab/MinerU](https://github.com/opendatalab/MinerU) |
-| `docling` | ≥2.0 | MinerU 不可用時的備援解析器，提供 `cell_bboxes` 精確儲存格座標 | Fallback parser when MinerU is unavailable; provides `cell_bboxes` for precise cell coordinates | [github.com/DS4SD/docling](https://github.com/DS4SD/docling) |
-| `pymupdf` (fitz) | ≥1.23 | PDF 備援解析、像素渲染（`get_pixmap`）、標註 PDF 匯出（繪製彩色矩形）、嵌入圖片提取 | PDF fallback parsing, pixel rendering (`get_pixmap`), annotated PDF export (colored rectangles), embedded image extraction | [pymupdf.readthedocs.io](https://pymupdf.readthedocs.io) |
-| `lxml` | ≥4.9 | 解析 MinerU 輸出的 HTML 表格（含 rowspan/colspan），轉換為 DataFrame | Parses MinerU's HTML table output (with rowspan/colspan) into DataFrames | [lxml.de](https://lxml.de) |
+### Windows
 
-#### 影像分析 / Image Analysis
-
-| 套件 | 版本 | 中文說明 | English Description | 來源 |
-|------|------|----------|---------------------|------|
-| `Pillow` | （pymupdf 依賴） | 圖片格式轉換、裁切、二值化預處理（供 Tesseract OCR 使用） | Image format conversion, cropping, and binarization preprocessing (for Tesseract OCR) | [python-pillow.org](https://python-pillow.org) |
-| `imagehash` | ≥4.3 | 計算感知哈希（pHash），偵測 PDF 嵌入圖片的內容替換與微調 | Computes perceptual hash (pHash) to detect content changes in embedded PDF images | [github.com/JohannesBuchner/imagehash](https://github.com/JohannesBuchner/imagehash) |
-| `numpy` | （依賴自動安裝） | 像素陣列運算，計算 NCC（正規化相關係數）與 SSIM（結構相似度） | Pixel array operations for NCC (Normalized Cross-Correlation) and SSIM (Structural Similarity) computation | [numpy.org](https://numpy.org) |
-| `scipy` | （依賴自動安裝） | `ndimage.label` 連通元件分析（標記差異區域）、`uniform_filter`（SSIM 滑動窗口） | Connected component labeling for diff regions (`ndimage.label`), sliding window SSIM (`uniform_filter`) | [scipy.org](https://scipy.org) |
-| `tesseract` | 系統安裝 | 開源 OCR 引擎，用於讀取光柵化圖片內的文字和數字（像素 diff fallback） | Open-source OCR engine for reading text and numbers inside rasterized images (pixel diff fallback) | [github.com/tesseract-ocr/tesseract](https://github.com/tesseract-ocr/tesseract) |
-
-#### 資料處理 / Data Processing
-
-| 套件 | 版本 | 中文說明 | English Description | 來源 |
-|------|------|----------|---------------------|------|
-| `pandas` | ≥2.0 | DataFrame 作為表格 diff 的比較單元；也用於 checklist CSV/Excel 讀寫 | DataFrame as comparison unit for table diff; also handles checklist CSV/Excel I/O | [pandas.pydata.org](https://pandas.pydata.org) |
-| `openpyxl` | ≥3.1 | 產生多工作表 Excel 報表（diffs / checklist / summary）並匯入 checklist Excel 檔 | Generates multi-sheet Excel reports (diffs/checklist/summary) and imports checklist Excel files | [openpyxl.readthedocs.io](https://openpyxl.readthedocs.io) |
-| `requests` | ≥2.31 | 呼叫 MinerU 容器 REST API（`POST /predict`），傳送 PDF 並取回結構化 JSON | Calls MinerU container REST API (`POST /predict`) to send PDFs and retrieve structured JSON | [docs.python-requests.org](https://docs.python-requests.org) |
-| `psutil` | ≥5.9 | 即時監控 CPU 使用率、記憶體占用，提供系統資源狀態 API | Real-time CPU and memory usage monitoring for the system resource status API | [github.com/giampaolo/psutil](https://github.com/giampaolo/psutil) |
-| `sqlite3` | 標準庫 | 儲存比較結果、審核紀錄、使用者帳號、PDF 封存與核驗歷史 | Stores comparison results, review logs, user accounts, PDF archives, and verification history | Python 標準庫 |
-| `hashlib` | 標準庫 | 計算 SHA-256 用於 PDF 封存去重，相同版本組合不重複儲存 | Computes SHA-256 for PDF archive deduplication; identical version pairs are not stored twice | Python 標準庫 |
-
-#### 測試 / Testing
-
-| 套件 | 版本 | 中文說明 | English Description | 來源 |
-|------|------|----------|---------------------|------|
-| `pytest` | ≥8.0 | 單元測試框架，覆蓋 diff 邏輯、markdown 產出與座標轉換 | Unit test framework covering diff logic, markdown output, and coordinate transformation | [pytest.org](https://pytest.org) |
-
----
-
-### MinerU 服務
-
-[MinerU](https://github.com/opendatalab/MinerU) 是上海 AI Lab 開源的高精度文件解析引擎，以深度學習模型（DocLayout-YOLO、LayoutLMv3）辨識標題、段落、表格、公式、圖片等版面元素，並輸出帶座標的結構化 JSON。
-
-在本系統中：
-
-- 以獨立 Docker 容器（`mineru-api:pipeline`）執行，透過 REST API 提供服務
-- 使用 `pipeline` backend，**100% 地端，無需聯網**，模型存於 Docker volume `mineru_model_cache`。首次建立映像檔或重置時會自動下載以下核心模型（約 5-8GB）：
-  1. **版面佈局分析模型**（如 `PP-DocLayoutV2` 等）：用來分析與辨識文件中的不同區塊結構，如純文字、標題、圖片、表格及註腳。
-  2. **數學公式識別模型 (MFR)**（如 `unimernet_hf_small`）：精準將 PDF 中的數學方程式轉換成 LaTeX 語法。
-  3. **PDF-Extract-Kit 核心組件**：負責協調底層光學字元辨識 (OCR)、表格辨識與上述模型，將複雜排版的高解析度 PDF 轉化為乾淨結構化的 Markdown。
-- 設定 `lang_list=chinese_cht` 確保繁體中文輸出品質
-- Backend 透過環境變數 `MINERU_API_URL` 連接，未設定時自動回退至 Docling
-
----
-
-### Frontend（Node 20+）
-
-#### UI 核心 / UI Core
-
-| 套件 | 版本 | 中文說明 | English Description | 來源 |
-|------|------|----------|---------------------|------|
-| `react` | ^19.2.4 | 宣告式 UI 函式庫，所有元件以函式元件 + Hooks 撰寫 | Declarative UI library; all components use function components and Hooks | [react.dev](https://react.dev) |
-| `react-dom` | ^19.2.4 | 將 React 元件渲染至瀏覽器 DOM | Renders React components to the browser DOM | [react.dev](https://react.dev) |
-| `react-router-dom` | ^7.14.0 | SPA 路由管理，含 route-level lazy loading（`UploadPage` / `ComparePage`） | SPA routing with route-level lazy loading for `UploadPage` and `ComparePage` | [reactrouter.com](https://reactrouter.com) |
-| `typescript` | ~6.0.2 | 靜態型別檢查，確保元件 props、API 回傳值的型別安全 | Static type checking for component props and API response type safety | [typescriptlang.org](https://www.typescriptlang.org) |
-
-#### PDF 渲染 / PDF Rendering
-
-| 套件 | 版本 | 中文說明 | English Description | 來源 |
-|------|------|----------|---------------------|------|
-| `react-pdf` | ^10.4.1 | 以 `pdf.js` 渲染 PDF 頁面為 Canvas，支援連續捲動、頁面尺寸取得 | Renders PDF pages to Canvas using `pdf.js`; supports continuous scrolling and page dimension queries | [github.com/wojtekmaj/react-pdf](https://github.com/wojtekmaj/react-pdf) |
-| `react-zoom-pan-pinch` | ^4.0.3 | PDF 縮放與平移手勢（滾輪縮放、拖曳平移、觸控支援） | Zoom and pan gestures for PDF (scroll-to-zoom, drag-to-pan, touch support) | [github.com/prc5/react-zoom-pan-pinch](https://github.com/prc5/react-zoom-pan-pinch) |
-
-#### 狀態管理 / State Management
-
-| 套件 | 版本 | 中文說明 | English Description | 來源 |
-|------|------|----------|---------------------|------|
-| `zustand` | ^5.0.12 | 輕量全域狀態管理，管理 diff 列表、選取狀態、核對清單、灰階切換 | Lightweight global state management for diff list, selection state, checklist, and grayscale toggle | [github.com/pmndrs/zustand](https://github.com/pmndrs/zustand) |
-
-#### 網路請求 / Networking
-
-| 套件 | 版本 | 中文說明 | English Description | 來源 |
-|------|------|----------|---------------------|------|
-| `axios` | ^1.15.0 | HTTP 客戶端，負責 REST API 呼叫與 Blob 下載（匯出 PDF / Excel） | HTTP client for REST API calls and Blob downloads (PDF/Excel exports) | [axios-http.com](https://axios-http.com) |
-
-#### 樣式與圖示 / Styling & Icons
-
-| 套件 | 版本 | 中文說明 | English Description | 來源 |
-|------|------|----------|---------------------|------|
-| `tailwindcss` | ^3.4.0 | Utility-first CSS 框架，所有元件樣式以 class 組合而非自訂 CSS | Utility-first CSS framework; all component styles are composed with classes, not custom CSS | [tailwindcss.com](https://tailwindcss.com) |
-| `lucide-react` | ^1.8.0 | 一致風格的 SVG 圖示庫，用於按鈕、狀態指示、工具列 | Consistent SVG icon library for buttons, status indicators, and toolbar | [lucide.dev](https://lucide.dev) |
-| `postcss` + `autoprefixer` | — | CSS 後處理：自動加入瀏覽器相容前綴（`-webkit-` 等） | CSS post-processing: auto-adds browser compatibility prefixes | [postcss.org](https://postcss.org) |
-
-#### 建構工具 / Build Tooling
-
-| 套件 | 版本 | 中文說明 | English Description | 來源 |
-|------|------|----------|---------------------|------|
-| `vite` | ^8.0.4 | 前端開發伺服器（HMR）與生產打包，設定了 `/api`、`/ws`、`/health` proxy | Frontend dev server (HMR) and production bundler; configured with `/api`, `/ws`, `/health` proxy | [vitejs.dev](https://vitejs.dev) |
-| `@vitejs/plugin-react` | ^6.0.1 | Vite 的 React 插件，提供 Babel/SWC 快速重新整理（Fast Refresh） | Vite plugin for React with Babel/SWC Fast Refresh | [github.com/vitejs/vite-plugin-react](https://github.com/vitejs/vite-plugin-react) |
-
-## 目前功能範圍
-
-### 已完成
-
-- PDF 上傳與背景比對任務
-- WebSocket 進度更新（含任務從記憶體遺失後的 fallback 重建）
-- Diff 結果查詢
-- 差異搜尋與定位
-- 灰階 PDF + 彩色疊圖標註（DiffOverlay 精確定位優化）
-- 核對清單匯入與人工更新
-- Markdown 匯出
-- 標註 PDF 匯出
-- Excel 審核報表匯出
-- 審核紀錄 TXT 匯出（人類可讀格式）
-- 專案列表與比較紀錄查詢（含搜尋與列表呈現）
-- Docker 與一鍵啟動腳本
-- 前端 route-level 與 component-level code-splitting
-- **帳號密碼管理機制** — JWT 認證、登入頁面、帳號管理頁面、審核自動帶入帳號
-- **響應式 DiffPopup** — 內容修改框依瀏覽器解析度自適應，底部按鈕永遠可見
-- **四路聯集比對引擎** — 整合文字、表格、像素、嵌入圖片 (pHash) 的全方位比對
-- **零漏報優化 (Zero-Miss Tuning)** — 調降像素門檻與面積，小區域自適應 NCC (0.70)，確保人為修改無所遁形
-- **SSIM 子區域變更定位** — 利用 Structural Similarity 精確定位圖片內的差異子區域，搭配 Tesseract OCR 讀出文字
-- **MinerU 準確率優先解析** — 預設 MinerU 成功即採用 MinerU，避免額外啟動 Docling 消耗 CPU/RAM；可用 `ENABLE_DOCLING_PARALLEL=true` 開啟實驗性並行解析
-- **Sliding Window 差異合併** — 鄰近 diff 自動聚合，避免 UI 被碎片化標記淹沒
-- **動態 DPI 像素比對** — 依頁面內容密度自適應渲染解析度
-- **案號留存** — 上傳頁可輸入案號；專案設定流程維持原樣，案號會成為封存與匯出檔名前綴
-- **PDF 驗證封存** — 比對完成後一鍵封存原始 PDF 與標註 PDF，以 `old_hash + new_hash + case_number` 去重，避免同 PDF 不同案號互相覆蓋
-- **核驗歷史查詢** — `VerificationHistoryModal` 顯示案號、審核者、確認數、標記數、備注，並可搜尋留存紀錄
-- **審核修改紀錄** — 若同一差異項目的審核狀態、審核人員或備註被修改，歷史紀錄會顯示修改摘要
-- **專案設定審核人員** — 在上傳頁面即時顯示當前審核者，並記錄至審核日誌中
-
-### 目前限制
-
-- checklist 會持久化到 SQLite，但 `CHECKLIST_STORE` 仍保留作為執行中快取
-- 審核 summary 以每個 `diff_item_id` 最新一筆 `review_logs` 為準
-- 封存去重以 `old_hash + new_hash + case_number` 為準；未填案號時視為空案號案例
-- 若本機開發未指定 `DATA_DIR`，建議明確設定 runtime 路徑
-- MinerU cell bbox 目前由整表 bbox 推算（MinerU API 不提供單格座標），前端標記精確到整格欄位而非像素
-
-## 目錄結構
+雙擊：
 
 ```text
-PDF_check/
-├── backend/
-│   ├── api/
-│   │   ├── routes_auth.py
-│   │   ├── routes_compare.py
-│   │   ├── routes_review.py
-│   │   ├── routes_checklist.py
-│   │   ├── routes_export.py
-│   │   ├── routes_project.py
-│   │   ├── routes_archive.py
-│   │   └── websocket.py
-│   ├── models/
-│   ├── services/
-│   │   ├── parser_service.py
-│   │   ├── diff_service.py
-│   │   ├── archive_service.py
-│   │   ├── checklist_service.py
-│   │   ├── export_service.py
-│   │   └── coord_transformer.py
-│   ├── tests/
-│   ├── main.py
-│   ├── config.py
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend/
-│   ├── public/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── DiffOverlay.tsx
-│   │   │   ├── DiffPopup.tsx
-│   │   │   ├── PDFViewer.tsx
-│   │   │   ├── SyncScrollContainer.tsx
-│   │   │   ├── ChecklistPanel.tsx
-│   │   │   └── VerificationHistoryModal.tsx
-│   │   ├── pages/
-│   │   ├── services/
-│   │   ├── stores/
-│   │   ├── App.tsx
-│   │   └── main.tsx
-│   ├── package.json
-│   └── vite.config.ts
-├── docs/
-├── samples/
-├── docker-compose.yml
-├── start-mac.command
-├── stop-mac.command
-├── 一鍵啟動PDF比對系統.bat
-└── 一鍵停止PDF比對系統.bat
+一鍵啟動PDF比對系統.bat
 ```
 
-## 啟動方式
+停止服務時雙擊：
 
-### 一鍵啟動 / 停止
+```text
+一鍵停止PDF比對系統.bat
+```
 
-- **Windows啟動**: 雙擊 `一鍵啟動PDF比對系統.bat`
-- **Windows停止**: 雙擊 `一鍵停止PDF比對系統.bat`
-- **macOS啟動**: 雙擊 `start-mac.command`
-- **macOS停止**: 雙擊 `stop-mac.command`
+### macOS
 
-啟動腳本會先檢查 Docker 是否存在與是否啟動，再執行 `docker compose up -d`，接著輪詢確認服務可用後才自動開啟畫面。
+雙擊：
 
-### Docker 啟動
+```text
+start-mac.command
+```
+
+停止服務時雙擊：
+
+```text
+stop-mac.command
+```
+
+### Docker
 
 ```bash
-cd /path/to/PDF_check
 docker compose up --build -d
 ```
 
-首次 build 時 MinerU image 會自動下載 pipeline 模型（約 5-8GB），之後模型快取在 `mineru_model_cache` volume，重建不需重複下載。
+啟動後打開：
 
-啟動後：
-
-- 前端入口: `http://localhost:8000`
-- API 基底: `http://localhost:8000/api`
-- 健康檢查: `http://localhost:8000/health`
-- MinerU API（內網）: `http://mineru-api:18080`（僅 backend 可存取）
+```text
+http://localhost:8001
+```
 
 停止：
 
@@ -298,309 +88,277 @@ docker compose up --build -d
 docker compose down
 ```
 
-### 環境變數
+第一次啟動會下載 MinerU 模型，檔案較大，可能需要一段時間。模型會存在 Docker volume 裡，之後重建通常不用重新下載。
 
-| 變數 | 預設值 | 說明 |
-|------|--------|------|
-| `MINERU_API_URL` | `http://mineru-api:18080` | MinerU REST API 位址；空值 = 停用 MinerU，回退至 Docling |
-| `ENABLE_DOCLING_PARALLEL` | `false` | 是否讓 MinerU 與 Docling 同時解析；預設關閉以降低 CPU/RAM 並避免成功路徑選到較不精準的 fallback |
-| `MINERU_PREFERRED_WAIT_SECONDS` | `30` | 啟用 Docling 並行時，優先等待 MinerU 的秒數；調低偏速度，調高偏表格解析準確率 |
-| `GENERATE_SNAPSHOTS` | `true` | 比對完成後產生稽核用 snapshot PNG |
-| `SNAPSHOT_DIFF_PAGES_ONLY` | `true` | snapshot 只渲染有差異頁，降低 CPU 與磁碟使用 |
-| `DATA_DIR` | `/app/runtime` | Runtime 資料目錄 |
-| `OCR_LANGS` | `chi_tra+chi_sim+eng` | Docling OCR 語言（備援用） |
-| `DEBUG` | `false` | 開啟 debug 模式 |
+## 初次登入
 
-## 本機開發
+系統第一次啟動時會建立 `admin` 管理者帳號。
 
-### Backend
+密碼來源：
+
+- 若有設定 `DEFAULT_ADMIN_PASSWORD`，就使用該密碼。
+- 若沒有設定，系統會自動產生密碼並寫入 runtime 目錄的 `.initial_admin_password`。
+
+第一次登入後，建議立刻到帳號管理頁修改密碼，並刪除 `.initial_admin_password`。
+
+Docker 環境可用以下方式讀取初始密碼：
 
 ```bash
-cd /path/to/PDF_check/backend
+docker exec pdf-check-minerU cat /app/runtime/.initial_admin_password
+```
+
+## 系統怎麼判斷差異
+
+簡化版流程如下：
+
+```text
+上傳 PDF
+  -> 解析文字、表格、圖片與座標
+  -> 比對舊版與新版內容
+  -> 產生差異清單
+  -> 在 PDF 畫面上標示位置
+  -> 人工審核與留存紀錄
+```
+
+系統不是單純用肉眼截圖比對。它會同時看幾種資料：
+
+- 文字內容是否新增、刪除或修改
+- 數字是否變更
+- 表格儲存格是否變更
+- 圖片或掃描區域是否有差異
+- PDF 上的座標位置，讓差異可以被標在正確頁面
+
+## 重要設定
+
+| 變數 | 預設值 | 白話說明 |
+|------|--------|----------|
+| `MINERU_API_URL` | `http://mineru-api-minerU:18080` | MinerU 解析服務位置 |
+| `DATA_DIR` | `/app/runtime` | 上傳檔案、資料庫、匯出檔案存放位置 |
+| `OCR_LANGS` | `chi_tra+chi_sim+eng` | OCR 使用繁中、簡中與英文 |
+| `ENABLE_DOCLING_PARALLEL` | `false` | 是否同時跑 Docling；預設關閉以節省 CPU/RAM |
+| `MINERU_PREFERRED_WAIT_SECONDS` | `30` | 若開啟並行解析，優先等待 MinerU 的秒數 |
+| `GENERATE_SNAPSHOTS` | `true` | 比對完成後是否產生頁面快照 |
+| `SNAPSHOT_DIFF_PAGES_ONLY` | `true` | 只為有差異的頁面產生快照 |
+| `JWT_SECRET` | 自動產生 | 登入 token 加密用密鑰 |
+| `DEFAULT_ADMIN_PASSWORD` | 空 | 初始 admin 密碼，建議正式部署時自行設定 |
+
+## 資料會存在哪裡
+
+Docker 部署時，資料會存在 Docker volume，容器重啟後不會消失。
+
+主要資料：
+
+| 資料 | 用途 |
+|------|------|
+| SQLite database | 專案、比對紀錄、審核紀錄、帳號、封存紀錄 |
+| uploads | 原始上傳 PDF |
+| exports | 匯出 PDF、Excel、TXT、CSV |
+| archive | 留存用 PDF 與核驗歷史 |
+| snapshots | 稽核用頁面快照 |
+| model cache | MinerU / Hugging Face / ModelScope 模型快取 |
+
+## 資料來源與隱私邊界
+
+| 來源 | 內容 | 是否外傳 |
+|------|------|----------|
+| 使用者上傳 | 舊版 PDF、新版 PDF、核對清單 CSV/Excel | 不會主動外傳，保存在本機/伺服器 runtime |
+| 使用者輸入 | 案號、專案設定、審核狀態、審核備註 | 不會主動外傳，寫入 SQLite |
+| MinerU 模型 | PDF 版面解析模型 | 第一次建置可能下載模型；解析時在本機/容器內執行 |
+| Python/npm 套件 | 系統執行需要的開源套件 | 安裝或建置時從套件來源下載 |
+| 匯出檔案 | 標註 PDF、Excel、TXT、CSV | 由使用者自行下載與保存 |
+
+正式使用時，建議把伺服器放在公司可控網路內，並定期備份 runtime volume。
+
+## 推薦硬體
+
+以 1 到 3 人同時使用作為一般情境。
+
+| 情境 | 建議規格 |
+|------|----------|
+| 輕量測試 | 4 核 CPU、16GB RAM、100GB SSD |
+| 1 到 3 人穩定使用 | 4 到 8 核 CPU、24GB RAM、200GB 以上 SSD |
+| 較大 PDF 或多人同時使用 | 8 核以上 CPU、32GB RAM、512GB 以上 SSD |
+
+說明：
+
+- MinerU 模型較吃記憶體。
+- PDF 頁數多、圖片多、表格多時，CPU 和 RAM 需求會上升。
+- GPU 不是必要，但若部署環境支援 CUDA，MinerU 解析速度通常會更好。
+
+## 開發與測試
+
+### 後端
+
+正式服務依賴：
+
+```bash
+cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-export DATA_DIR=/path/to/PDF_check/runtime
-# 可選：指向本機執行中的 MinerU，留空則退回 Docling
-export MINERU_API_URL=http://localhost:18080
 uvicorn main:app --reload --host 0.0.0.0 --port 8001
 ```
 
-若不啟動 MinerU 容器，省略 `MINERU_API_URL` 即可，解析器自動退回 Docling。
-
-### Frontend
+測試依賴另外安裝，避免把 pytest 放進正式 runtime image：
 
 ```bash
-cd /path/to/PDF_check/frontend
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+### 前端
+
+```bash
+cd frontend
 npm ci
 npm run dev
 ```
 
-Vite 已設定 proxy（本機開發 backend port 為 8001）：
-
-- `/api` -> `http://localhost:8001`
-- `/ws` -> `ws://localhost:8001`
-- `/health` -> `http://localhost:8001`
-
-## 推薦硬體規格
-
-以 **3 人同時操作**為評估基準。MinerU 模型只載入一次常駐，解析任務會再疊加 PyMuPDF / Docling / 像素比對記憶體。OCI 實測（2026-05-15，4 OCPU ARM / 23.4GB RAM，15 筆 `resource_logs`）顯示 backend 單任務 RSS 峰值最高約 **3.4GB**、平均峰值約 **1.9GB**、CPU 峰值可接近 **4 核滿載**；因此建議以 **24GB RAM 作為 3 人穩定使用基準**，16GB 視為輕量或 1-2 人使用下限。
-
-### 個人電腦（需安裝 Docker Desktop）
-
-| 平台 | 等級 | 規格 | 備注 |
-|------|------|------|------|
-| **Windows** | 基本 | i5 第 12 代以上 / Ryzen 5 5600 以上・**24GB** DDR4/DDR5・512GB NVMe + 256GB 資料碟 | 3 人穩定使用基準；16GB 僅建議 1-2 人或輕量 PDF |
-| **Windows** | 最佳 | i7 第 12 代以上 / Ryzen 7 7700 以上・**32GB** DDR5・1TB NVMe + 512GB 資料碟・RTX 4060（選配） | 完全流暢，GPU 可加速 MinerU 3-5× |
-| **macOS** | 基本 | Mac mini M4 / MacBook Pro M3（8 核心）・**24GB** 統一記憶體・512GB SSD | 3 人穩定使用基準；16GB 建議降低同時任務數 |
-| **macOS** | 最佳 | Mac mini M4 Pro / MacBook Pro M4 Pro（12 核心）・**32GB** 統一記憶體・512GB SSD | 流暢無壓力，無需外接 GPU |
-
-### 雲端（3 人同時操作，月費隨用隨付）
-
-| 平台 | 等級 | 規格 | 參考月費 | 備注 |
-|------|------|------|---------|------|
-| **OCI Always Free** | — | 4 OCPU ARM + 24GB・200GB 磁碟 | **$0** | ARM 架構；MinerU 需確認相容性，可用 Docling fallback |
-| **OCI E4 Flex** | 基本 | 4 OCPU x86 + **24GB**・256GB Block Vol | 依區域計價 | 3 人穩定使用基準，完整支援 MinerU |
-| **OCI E4 Flex** | 最佳 | 8 OCPU x86 + **32GB**・512GB Block Vol | **~$181** | — |
-| **Azure D-series v5** | 基本 | `D8s_v5` 8 vCPU + **32GB**・512GB Premium SSD | ~$280–350 | 適合已用微軟企業生態 |
-| **Azure D-series v5** | 最佳 | `D16s_v5` 16 vCPU + **64GB**・1TB Premium SSD | 依區域計價 | 高頻/多任務 |
-| **GCP n2-standard** | 基本 | `n2-standard-8` 8 vCPU + **32GB**・512GB pd-ssd | ~$260–320 | 適合已用 Google Workspace |
-| **GCP n2-standard** | 最佳 | `n2-standard-16` 16 vCPU + **64GB**・1TB pd-ssd | 依區域計價 | 高頻/多任務 |
-
-> 各雲端平台建議 Ubuntu 22.04 LTS；儲存選 SSD 等級（OCI Balanced、Azure Premium SSD、GCP pd-ssd），避免 HDD 造成 MinerU 模型載入卡頓。
-
-### 磁碟規劃（封存功能，每筆封存存 3 份 PDF）
-
-| 使用頻率 | 每月新增封存 | 建議資料碟總量 |
-|----------|------------|--------------|
-| 輕度（偶爾比對） | ~30 筆 | 256GB |
-| 一般（每日作業） | ~100 筆 | 512GB |
-| 高頻（密集改版） | ~300 筆 | 1TB+ |
-
-> MinerU 模型首次下載約 5–8GB，快取於 Docker volume 後重建不需重複下載。GPU（CUDA 8GB+ VRAM）可將 MinerU 解析速度提升 3–5×，非必要但推薦大型 DM 場景。
-
-## 核心資料流
-
-### 1. 上傳與任務建立
-
-前端呼叫：
-
-- `POST /api/compare/upload`
-
-表單欄位：
-
-- `old_pdf`
-- `new_pdf`
-- `project_id` 可選
-
-後端會：
-
-- 檢查副檔名是否為 PDF
-- 在 `uploads/old` 與 `uploads/new` 寫入原始檔
-- 建立 `comparisons` 資料列
-- 建立 `TASK_STORE` 任務狀態
-- 用 `BackgroundTasks` 進入解析與 diff 流程
-
-### 2. 解析流程
-
-`backend/services/parser_service.py` 採多層 fallback 鏈（MinerU 優先並行解析）：
-
-1. **MinerU**（預設，若 `MINERU_API_URL` 已設定）— REST API 呼叫，`pipeline` backend，`lang_list=chinese_cht`
-2. `Docling`（MinerU 不可用時自動切換）
-3. `PyMuPDF`
-4. `pdftotext`
-
-MinerU 輸出 `content_list`（JSON）包含每個文字區塊與表格的座標（top-left origin）；系統自動轉換為底部原點座標以統一後續處理。表格輸出含完整 rowspan/colspan HTML，解析為 DataFrame 後存入 `ParsedTable`。
-
-輸出中介資料型別：
-
-- `ParsedDocument`
-- `ParsedParagraph`
-- `ParsedTable`（含 `cell_bboxes` 若 Docling 路徑）
-- `BBox`
-
-所有 bbox 會標準化為 PDF bottom-left 座標系，方便後端匯出與前端疊圖共用。
-
-### 3. Diff 流程
-
-`backend/services/diff_service.py` 包含段落 diff 與 **cell-level 表格 diff**：
-
-- 先正規化段落文字（NFKC + 去除零寬字元）
-- 用 `SequenceMatcher` 比較 old/new 段落序列
-- `replace` 時再做逐段配對
-- 透過 regex 判斷是否含數值，分成 `number_modified` 與 `text_modified`
-- `insert/delete` 轉成 `added/deleted`
-- **Cell-level 表格 diff**：逐格比較 DataFrame，產生精確到儲存格的 `DiffItem`
-- **70% 聚合策略**：若變更格數 ≥ 70% 則合併為一筆「整表替換」diff，避免 UI 被百筆小 diff 淹沒
-- **Sliding Window 鄰近差異合併**：鄰近 bbox 自動聚合，避免碎片化標記
-- **動態 DPI 像素比對**：依內容密度選擇合適渲染解析度
-- **自適應 NCC 門檻**：小區域（<2000px）採寬鬆 0.70，大區域採嚴格 0.94，降低小文字漏報
-- **SSIM 子區域定位**（`_ssim_map` + `_locate_image_changes`）：用 Structural Similarity 精確定位圖片內差異，再以 Tesseract OCR 讀出前後文字
-- **嵌入圖片比對**：pHash 偵測圖片替換、尺寸變更或內容微調
-- 最後依頁碼與座標排序並編成 `d001`, `d002`, ...
-- **聯集策略**：文字 diff + 表格 diff + 像素 diff + 圖片 diff 取聯集，確保無遺漏任何變更
-
-### 4. PDF 封存與核驗流程
-
-`backend/services/archive_service.py`：
-
-- 計算 SHA-256 雜湊，封存去重鍵為 `old_hash + new_hash + case_number`
-- 同一組 PDF 若使用不同案號，會建立不同封存紀錄，避免下載檔名或歷史紀錄錯用前一個案號
-- 複製原始 PDF 與標註 PDF 至 `archives/{archive_id}/`，有案號時檔名前綴會帶入案號
-- 每次核驗建立 `verification_sessions` 紀錄（案號、審核者、確認數、標記數、備注）
-- 核驗時會保存當下的審核操作 snapshot；若審核紀錄有修改，會產生 `change_summary`
-- 前端 `VerificationHistoryModal` 可搜尋案號、審核人員、備註與審核修改內容
-
-### 5. 前端渲染
-
-前端比對頁由 `frontend/src/pages/ComparePage.tsx` 驅動：
-
-- `SearchBar` 提供搜尋與差異列表
-- `SyncScrollContainer` 控制雙欄同步滾動
-- `PDFViewer` 用 `react-pdf` 顯示 PDF
-- `DiffOverlay` 把 diff bbox 疊在當前頁（精確定位優化）
-- `DiffPopup` 處理審核與標記問題
-- `ChecklistPanel` / `ChecklistUpload` 處理核對清單
-- `VerificationHistoryModal` 顯示封存核驗歷史
-
-目前已做兩層 code-splitting：
-
-- 路由層: `UploadPage` / `ComparePage`
-- 元件層: `PDFViewer` / `ChecklistUpload` / `DiffPopup`
-
-這樣首頁不會先載入 PDF runtime，只有進入比對頁才會載入 `react-pdf` 與 `pdfjs`。
-
-## API 摘要
-
-### Compare
-
-- `POST /api/compare/upload` — 表單欄位包含 `old_pdf`、`new_pdf`、可選 `project_id`、可選 `case_number`
-- `GET /api/compare/{task_id}/status`
-- `GET /api/compare/{task_id}/result`
-- `GET /api/compare/{task_id}/markdown`
-- `GET /api/compare/{task_id}/markdown/{old|new}`
-- `GET /api/compare/{task_id}/pdf/{old|new}`
-- `WS /ws/compare/{task_id}`
-
-### Review
-
-- `POST /api/review/{comparison_id}/confirm`
-- `GET /api/review/{comparison_id}/summary`
-
-### Checklist
-
-- `POST /api/checklist/{comparison_id}/import`
-- `GET /api/checklist/{comparison_id}`
-- `PATCH /api/checklist/{comparison_id}/{item_id}`
-
-### Export
-
-- `GET /api/export/{comparison_id}/pdf`
-- `GET /api/export/{comparison_id}/excel`
-- `GET /api/export/{comparison_id}/report`
-- `GET /api/export/{comparison_id}/log`
-- `GET /api/export/{comparison_id}/log-csv`
-- `GET /api/export/{comparison_id}/log-txt`
-
-### Archive（封存與核驗）
-
-- `POST /api/archive/{comparison_id}/verify` — 封存比對並建立核驗紀錄
-- `GET /api/archive/{comparison_id}/history` — 查詢比對的封存與核驗歷史
-- `GET /api/archive/by-archive/{archive_id}/sessions` — 查詢封存下的所有核驗 session
-- `GET /api/archive/files/{archive_id}/{file_type}` — 下載封存的 PDF（`old_pdf` / `new_pdf` / `annotated_pdf`）
-
-### Project
-
-- `GET /api/projects`
-- `POST /api/projects`
-- `GET /api/projects/{project_id}/comparisons`
-
-### Auth
-
-- `POST /api/auth/login` — 帳號密碼登入
-- `GET /api/auth/me` — 取得登入使用者資訊
-- `GET /api/auth/users` — 列出所有帳號 (admin)
-- `POST /api/auth/users` — 建立帳號 (admin)
-- `PUT /api/auth/users/{id}` — 修改帳號 (admin)
-- `DELETE /api/auth/users/{id}` — 刪除帳號 (admin)
-
-## 資料儲存
-
-### SQLite
-
-由 `backend/models/database.py` 建立並維護：
-
-- `projects`
-- `comparisons`（含 `case_number` / `old_hash` / `new_hash` 欄位）
-- `review_logs`
-- `checklists`
-- `users` — 帳號密碼管理 (pbkdf2 雜湊)
-- `pdf_archives` — 封存紀錄（`old_hash + new_hash + case_number` 去重、archive_id 目錄對應）
-- `verification_sessions` — 每次核驗的快照（案號、審核者、確認數、標記數、審核紀錄 snapshot）
-
-### Runtime 檔案
-
-典型目錄：
-
-- `runtime/uploads/old`
-- `runtime/uploads/new`
-- `runtime/exports`
-- `runtime/exports/markdown`
-- `runtime/archives/{archive_id}/`
-- `runtime/app.db`
-
-Docker compose 會把這些資料掛進 volume，避免容器重啟後消失。
-
-## 匯出能力
-
-`backend/services/export_service.py` 提供：
-
-- 標註 PDF
-  - 在新版 PDF 上以彩色矩形標示 bbox
-  - annotation note 寫入 diff 類型與 old/new 值
-- Excel 報表
-  - `diffs` 工作表
-  - `checklist` 工作表
-  - `summary` 工作表
-- Review Report PDF
-  - comparison 摘要
-  - diff 統計
-  - checklist 統計
-  - diff / checklist 細項清單
-- Review Log JSON
-  - 完整 diff / checklist / review_logs 原始資料
-  - 適合留存、串接、技術追查
-- Review Log CSV
-  - 每筆審核動作一列
-  - 補上 diff 內容與 matched checklist item
-  - 適合直接開 Excel 檢視
-
-## 驗證方式
-
-### Frontend
+檢查：
 
 ```bash
-cd /path/to/PDF_check/frontend
-npm run build
 npm run lint
+npm run build
 ```
 
-### Backend
+## 專業詞彙中英對照
 
-```bash
-cd /path/to/PDF_check/backend
-pytest
+| 中文 | English | 白話說明 |
+|------|---------|----------|
+| 差異比對 | Diff / Difference Comparison | 找出兩份文件哪裡不一樣 |
+| 解析器 | Parser | 把 PDF 內容拆成文字、表格、圖片與座標的工具 |
+| 光學字元辨識 | OCR, Optical Character Recognition | 從圖片或掃描頁面讀出文字 |
+| 座標框 | Bounding Box, BBox | PDF 上某段文字或表格的位置範圍 |
+| 結構化資料 | Structured Data | 讓程式能理解的文字、表格、頁碼、座標資料 |
+| 備援 | Fallback | 主要方法失敗時，自動改用下一個方法 |
+| 雜湊 | Hash | 用一串固定長度的值代表檔案內容，常用來判斷檔案是否相同 |
+| 封存 | Archive | 保存當時的 PDF、審核結果與核驗紀錄 |
+| 核驗歷史 | Verification History | 每次留存與審核狀態的歷史紀錄 |
+| 感知雜湊 | Perceptual Hash, pHash | 用來判斷圖片看起來是否相似 |
+| 結構相似度 | SSIM, Structural Similarity | 比較兩張圖片結構是否相似的方法 |
+| 正規化相關係數 | NCC, Normalized Cross-Correlation | 用來比對小區域影像是否相似 |
+| WebSocket | WebSocket | 讓前端即時收到比對進度 |
+| REST API | REST API | 前端呼叫後端功能的 HTTP 介面 |
+| Runtime | Runtime | 系統執行時產生與使用的資料，例如上傳檔、資料庫、匯出檔 |
+| CI | Continuous Integration | 自動跑測試與檢查的流程 |
+
+## 套件與資料來源
+
+### 後端套件
+
+| 套件 | 版本設定 | 用途 | 為什麼使用 | 來源 |
+|------|----------|------|------------|------|
+| FastAPI | `>=0.110` | 後端 API 框架 | 開發速度快，內建 OpenAPI 文件，適合檔案上傳、背景任務與審核 API | https://fastapi.tiangolo.com |
+| Uvicorn | `>=0.27` | 執行 FastAPI 的 ASGI server | 支援非同步請求與 WebSocket，讓比對進度可以即時回傳前端 | https://www.uvicorn.org |
+| Pydantic | `>=2.6` | 資料驗證與型別模型 | 可在資料進出 API 時先檢查格式，降低錯誤資料寫入審核紀錄的風險 | https://docs.pydantic.dev |
+| pydantic-settings | `>=2.2` | 從環境變數讀取設定 | 讓本機、Docker、OCI 可以用同一份程式搭配不同設定部署 | https://docs.pydantic.dev/latest/concepts/pydantic_settings |
+| python-multipart | `>=0.0.9` | 接收 PDF 上傳表單 | FastAPI 接收 PDF 檔案上傳時需要它解析 multipart form data | https://github.com/Kludex/python-multipart |
+| Docling | `>=2.0` | PDF 解析備援 | MinerU 不可用時仍能解析 PDF，避免服務完全中斷 | https://github.com/docling-project/docling |
+| pandas | `>=2.0` | 表格資料處理 | 表格差異需要逐列逐欄比較，pandas 適合處理這類結構化資料 | https://pandas.pydata.org |
+| openpyxl | `>=3.1` | Excel 匯入與匯出 | 審核人員常用 Excel 檢視報表，也支援匯入核對清單 | https://openpyxl.readthedocs.io |
+| PyMuPDF | `>=1.23` | PDF 讀取、渲染、標註匯出 | 可直接處理 PDF 頁面、座標與標註，是產生標註 PDF 的核心工具 | https://pymupdf.readthedocs.io |
+| psutil | `>=5.9` | CPU/RAM 資源監控 | 可觀察比對期間硬體用量，協助評估推薦規格與穩定性 | https://github.com/giampaolo/psutil |
+| imagehash | `>=4.3` | 圖片感知雜湊比對 | PDF 內有圖片或掃描區塊時，可偵測看起來相似但內容被改過的圖片 | https://github.com/JohannesBuchner/imagehash |
+| requests | `>=2.31` | 呼叫 MinerU API | 後端需要把 PDF 傳給 MinerU 容器，並取回解析結果 | https://requests.readthedocs.io |
+| lxml | `>=4.9` | 解析 HTML 表格 | MinerU 可能回傳 HTML 表格，lxml 可正確處理 rowspan/colspan 等複雜表格 | https://lxml.de |
+| pytest | `>=9.0.3,<10` | 測試工具，只放在開發/CI 環境 | 用來確認差異比對、匯出與資料留存沒有被改壞；不放入正式 runtime image | https://pytest.org |
+
+### 前端套件
+
+| 套件 | 版本設定 | 用途 | 為什麼使用 | 來源 |
+|------|----------|------|------------|------|
+| React | `^19.2.4` | 前端 UI | 適合建立互動式審核畫面，例如差異列表、PDF 檢視器、彈窗與搜尋 | https://react.dev |
+| React DOM | `^19.2.4` | 將 React 畫到瀏覽器 | React 網頁應用的必要執行層 | https://react.dev |
+| React Router | `^7.14.0` | 頁面路由 | 讓登入、上傳、比對、帳號管理等頁面清楚分開 | https://reactrouter.com |
+| React PDF | `^10.4.1` | 在瀏覽器顯示 PDF | 可把 PDF 頁面渲染到網頁上，讓差異標記能直接疊在文件上 | https://github.com/wojtekmaj/react-pdf |
+| react-zoom-pan-pinch | `^4.0.3` | PDF 縮放與拖曳 | 審核細小文字或表格時，需要穩定的縮放與平移操作 | https://github.com/BetterTyped/react-zoom-pan-pinch |
+| Zustand | `^5.0.12` | 前端狀態管理 | 比 Redux 輕量，足以管理目前差異、頁面、搜尋與審核狀態 | https://zustand-demo.pmnd.rs |
+| Axios | `^1.15.0` | 呼叫後端 API | 支援一般 JSON 請求與 Blob 檔案下載，適合匯出 PDF/Excel | https://axios-http.com |
+| Tailwind CSS | `^3.4.0` | 前端樣式 | 用一致的工具類別快速維持表單、按鈕、列表與工具列樣式 | https://tailwindcss.com |
+| Lucide React | `^1.8.0` | 圖示 | 圖示風格一致，讓返回、下載、搜尋、設定等操作更容易辨識 | https://lucide.dev |
+| Vite | `^8.0.4` | 前端開發與打包 | 啟動快、打包快，適合 React 專案日常開發與正式部署 | https://vite.dev |
+| TypeScript | `~6.0.2` | 型別檢查 | 可提早發現 API 欄位、元件 props、狀態資料不一致的問題 | https://www.typescriptlang.org |
+| ESLint | `^9.39.4` | 程式碼檢查 | 幫助維持程式碼品質，避免常見 React Hooks 與未使用變數問題 | https://eslint.org |
+
+### 解析模型與系統工具
+
+| 名稱 | 用途 | 為什麼使用 | 來源 |
+|------|------|------------|------|
+| MinerU | 主要 PDF 解析器，輸出文字、表格與版面資訊 | 對複雜 PDF、中文文件與表格解析較適合，是目前準確率優先的主解析器 | https://github.com/opendatalab/MinerU |
+| ModelScope model cache | MinerU 模型快取來源之一 | 模型下載後快取，可避免每次重建都重新下載大型模型 | https://www.modelscope.cn |
+| Hugging Face cache | 部分 Python/模型工具可能使用的模型快取路徑 | 保留常見模型快取位置，方便未來擴充或備援工具使用 | https://huggingface.co |
+| Tesseract OCR | 圖片文字辨識 | 當文字藏在圖片或掃描區塊時，可協助讀出圖片中的字 | https://github.com/tesseract-ocr/tesseract |
+| Poppler | PDF 工具組，提供部分 PDF 處理能力 | 是許多 PDF 工具常用底層元件，可補足 PDF 轉換與處理能力 | https://poppler.freedesktop.org |
+| SQLite | 本地資料庫 | 不需額外架資料庫服務，適合單機部署並保存審核與封存紀錄 | https://www.sqlite.org |
+| Docker | 容器化部署 | 把後端、前端與 MinerU 包在固定環境，降低不同電腦部署差異 | https://www.docker.com |
+
+## 下一步優化方向
+
+原則：準確率最重要。速度與省資源的優化，不能讓差異辨識能力下降；若有取捨，應保留可開關設定，讓管理者依文件類型選擇。
+
+### 優先做：讓準確率可量測
+
+| 優先 | 建議 | 為什麼 |
+|------|------|--------|
+| P0 | 建立黃金測試集 | 收集真實保險 DM、條款、費率表，人工標出正確差異，之後每次改程式都能檢查有沒有漏報 |
+| P0 | 加入準確率報表 | 記錄命中、漏報、誤報、頁碼錯誤、座標偏移，讓「比較準」變成可量化指標 |
+| P0 | 保存解析中介資料 | 留下 MinerU/Docling 解析出的文字、表格、座標，方便追查為什麼某筆差異有抓到或沒抓到 |
+| P0 | 建立疑難 PDF 回歸測試 | 把曾經抓不準的案例固定成測試樣本，避免之後優化速度時不小心讓準確率倒退 |
+| P1 | 對審核結果做回饋學習 | 人工標成誤判或異常的紀錄，可用來調整門檻與規則 |
+| P1 | 強化表格欄列對齊 | 保險文件常改費率表，表格準確率會直接影響整體可信度 |
+
+### 再做：更快，但不犧牲準確
+
+| 優先 | 建議 | 為什麼 |
+|------|------|--------|
+| P1 | 依 PDF hash 快取解析結果 | 同一份 PDF 被重複比對時，不必重新解析，可大幅節省時間 |
+| P1 | 先做頁級變更偵測 | 先判斷哪些頁可能有變，再把重型 OCR/SSIM 放到可疑頁面 |
+| P1 | 把 snapshot 改成可控產生 | 預設可只在留存或匯出時產生，降低平常比對的等待時間 |
+| P2 | 對大 PDF 做任務佇列 | 限制同時解析數，避免多人同時使用時互相搶 CPU/RAM |
+| P2 | 前端延遲載入重型元件 | 只有進入比對頁才載入 PDF runtime，首頁維持快速開啟 |
+
+### 同步做：更省資源
+
+| 優先 | 建議 | 為什麼 |
+|------|------|--------|
+| P0 | 正式 runtime 移除測試工具 | `pytest` 只放 `requirements-dev.txt`，降低正式容器套件數與資安掃描噪音 |
+| P0 | 補齊 `.dockerignore` | 排除 `.venv`、runtime、dist、node_modules，避免 Docker build context 從 KB 變成 GB |
+| P1 | 預設 MinerU 優先、Docling 備援 | 避免每次都同時跑兩套解析器，節省 CPU/RAM；遇到疑難文件再開並行 |
+| P1 | 只對疑似圖片差異跑 OCR | OCR 成本高，集中在必要區域可省資源 |
+| P1 | 只保存必要 snapshot | 有差異頁優先保存，完整快照改成使用者需要時再產生 |
+| P2 | 建立資源用量儀表 | 長期記錄每次任務的頁數、耗時、CPU、RAM，作為硬體規格調整依據 |
+| P2 | 規劃 CPU-only / GPU profile | 目前保留 Torch/CUDA 相關依賴，方便未來 GPU 機器使用；若要做 CPU-only 精簡版，需先確認準確率不受影響 |
+
+### 建議執行順序
+
+1. 先做黃金測試集與準確率報表。
+2. 補齊疑難 PDF 回歸測試，避免辨識能力倒退。
+3. 再做 PDF hash 解析快取。
+4. 接著做頁級變更偵測，讓重型解析只跑在必要頁面。
+5. 最後做任務佇列、資源儀表與 CPU-only/GPU profile 規劃，提升多人使用穩定性並保留未來 GPU 彈性。
+
+## 專案結構
+
+```text
+backend/                  後端 API、PDF 解析、比對、匯出、資料庫
+frontend/                 前端畫面
+mineru/                   MinerU API 容器設定
+docs/                     深入技術文件
+samples/                  測試或範例檔案
+docker-compose.yml        本機或伺服器部署設定
+.dockerignore             Docker build 排除清單，避免把本機快取與測試環境打包
+start-mac.command         macOS 一鍵啟動
+stop-mac.command          macOS 一鍵停止
+一鍵啟動PDF比對系統.bat    Windows 一鍵啟動
+一鍵停止PDF比對系統.bat    Windows 一鍵停止
 ```
 
-目前測試覆蓋：
+## 更多文件
 
-- diff 邏輯
-- markdown 產出
-- 座標轉換
-
-## 文件索引
-
-- 開發手冊: `docs/dev-handbook.md`
-- 技術架構: `docs/technical-architecture.md`
-- 效能量測: `docs/performance-benchmark.md`
-- Docker 快速啟動: `DEPLOY.md`
+- 開發手冊：`docs/dev-handbook.md`
+- 技術架構：`docs/technical-architecture.md`
+- 效能量測：`docs/performance-benchmark.md`
+- Docker 快速啟動：`DEPLOY.md`

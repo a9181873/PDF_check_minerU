@@ -11,4 +11,3 @@ psutil>=5.9
 imagehash>=4.3
 requests>=2.31
 lxml>=4.9
-pytest>=8.0
