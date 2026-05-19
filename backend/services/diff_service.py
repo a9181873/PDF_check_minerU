@@ -8,6 +8,7 @@ from models.diff_models import DiffItem, DiffType, BBox
 from services.parser_service import ParsedDocument, ParsedParagraph, ParsedTable
 
 NUMBER_PATTERN = re.compile(r"\d+(?:\.\d+)?%?")
+_ELLIPSIS = "..."
 
 # Characters that should be stripped or unified before comparison to prevent
 # false-positive diffs caused by font encoding quirks, ligature substitutions,
@@ -81,6 +82,12 @@ def _guess_diff_type(old_value: str | None, new_value: str | None) -> DiffType:
     if old_value and not new_value:
         return DiffType.DELETED
     return DiffType.ADDED
+
+
+def _clip_text(text: str | None, max_len: int = 200) -> str | None:
+    if not text:
+        return None
+    return text[:max_len] + _ELLIPSIS if len(text) > max_len else text
 
 
 @dataclass
@@ -485,8 +492,9 @@ def diff_pixels(
             if not mask.any():
                 continue
 
-            # Morphological dilation merges pixels within ~4px proximity
-            dilated = ndimage.binary_dilation(mask, structure=struct, iterations=4)
+            # Morphological dilation merges glyph strokes without swallowing
+            # nearby, unrelated edits across dense EDM paragraphs/tables.
+            dilated = ndimage.binary_dilation(mask, structure=struct, iterations=1)
             labeled, n_regions = ndimage.label(dilated)
 
             for rid in range(1, n_regions + 1):
@@ -699,9 +707,8 @@ def diff_pixels(
                 context_label = f"Page {page_no} 圖形差異 ({actual_px:,} px)"
 
                 if ot or nt:
-                    MAX_LEN = 200
-                    old_text = (ot[:MAX_LEN] + "…") if len(ot) > MAX_LEN else (ot or None)
-                    new_text = (nt[:MAX_LEN] + "…") if len(nt) > MAX_LEN else (nt or None)
+                    old_text = _clip_text(ot)
+                    new_text = _clip_text(nt)
                     diff_type = DiffType.TEXT_MODIFIED
                     context_label = f"Page {page_no} 內容變更"
                 elif is_large_region:
@@ -1043,7 +1050,7 @@ def _sort_key(item: DiffItem) -> tuple[int, float]:
     return (bbox.page, -bbox.y1)
 
 
-def _merge_nearby_diffs(items: list[DiffItem], gap_threshold: float = 50.0) -> list[DiffItem]:
+def _merge_nearby_diffs(items: list[DiffItem], gap_threshold: float = 18.0) -> list[DiffItem]:
     """Merge spatially adjacent TEXT/NUMBER diffs on the same page.
 
     Prevents a single logical change (e.g. "Control NO : 2312-2512-0P2")
@@ -1104,6 +1111,10 @@ def _merge_nearby_diffs(items: list[DiffItem], gap_threshold: float = 50.0) -> l
                 break  # v_gap already exceeds threshold; subsequent items only farther
             h_gap = max(0.0, max(bi.x0 - bj.x1, bj.x0 - bi.x1))
             v_gap = max(0.0, max(bi.y0 - bj.y1, bj.y0 - bi.y1))
+            union_w = max(bi.x1, bj.x1) - min(bi.x0, bj.x0)
+            union_h = max(bi.y1, bj.y1) - min(bi.y0, bj.y0)
+            if union_w > 240 or union_h > 80:
+                continue
             if math.sqrt(h_gap ** 2 + v_gap ** 2) <= gap_threshold:
                 union(i, j)
 
@@ -1220,8 +1231,16 @@ def merge_diff_results(
                 bj = _get_bbox(merged[j])
                 if not bj:
                     continue
-                # If j is fully inside i, and i is larger, remove j
+                # If j is fully inside i, keep the more reviewable/local marker
+                # when the outer marker is just a coarse visual/table region.
                 if _contains(bi, bj) and _area(bi) > _area(bj) * 1.2:
+                    area_i = _area(bi)
+                    area_j = _area(bj)
+                    inner_is_text = merged[j].diff_type in {DiffType.TEXT_MODIFIED, DiffType.NUMBER_MODIFIED}
+                    outer_is_visual = merged[i].diff_type == DiffType.IMAGE_DIFF
+                    if inner_is_text and (outer_is_visual or area_i > area_j * 8):
+                        to_remove.add(i)
+                        break
                     to_remove.add(j)
         if to_remove:
             merged = [item for idx, item in enumerate(merged) if idx not in to_remove]
