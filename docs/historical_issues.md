@@ -26,3 +26,16 @@
 
 ## 5. 早期移機手冊 (已作廢)
 - 早期移機需要手動操作 Docker image load，現已整合至 `DEPLOY.md` 並提供 `一鍵啟動PDF比對系統.bat`，自動化處理 Docker 的啟動與網頁開啟。
+
+## 6. 2026-05-20 圖片型 PDF 頁尾漏抓與 OCR 亂碼修正
+- **問題**：`fa358c6` 之後過度依賴較小的視覺 component / NCC 過濾，導致台灣人壽 EDM 第 2 頁右下角版號與 `Control No.` 漏抓；同時局部 OCR 仍可能把亂碼當成一般文字差異顯示。
+- **重要事實**：
+  - 該案例兩份 PDF 都是 image-only PDF，PyMuPDF 文字層為 0。
+  - 第 2 頁頁尾右側有 `2162` changed pixels，`Control No.` 區域最大 component 有 `1086 px`，不是沒變。
+  - 正確結果必須抓到 `2301-2501-OP2-0043` -> `OP-2407-2607-0503`。
+- **解決方案**：
+  - 恢復 broad visual scan，`diff_pixels()` 的 connected-component dilation 維持 `iterations=4`。
+  - 新增 header/footer protected OCR pass，優先抽取 `Version`、`Control No.` 等高價值欄位。
+  - OCR 只有在可靠或符合 priority pattern 時才進入 `old_value/new_value`，否則保留為 image diff，避免 UI 顯示亂碼。
+  - 保留 MinerU + Docling 預設並行解析，不再誤寫成 Docling 僅備援。
+- **完整護欄**：見 `docs/pdf_diff_guardrails.md`。未來修改 PDF diff/OCR/部署前，必須先看該文件。
