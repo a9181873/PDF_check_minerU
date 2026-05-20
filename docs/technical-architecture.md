@@ -118,7 +118,7 @@ graph LR
     G --> H
 ```
 
-> **解析策略（2026-05-16）**：預設採「準確率優先」：MinerU 成功時使用 MinerU，不再同時啟動 Docling，以降低 CPU/RAM 並避免成功路徑選到較不精準的 fallback。若需要偏速度的實驗模式，可設定 `ENABLE_DOCLING_PARALLEL=true`，此時才會同時啟動 MinerU 與 Docling，並用 `MINERU_PREFERRED_WAIT_SECONDS` 控制優先等待 MinerU 的秒數。
+> **解析策略（2026-05-20 修正）**：回到 MinerU 版原本的並行解析思路。文字層存在時，表格解析預設同時啟動 MinerU 與 Docling；`MINERU_PREFERRED_WAIT_SECONDS=0` 時誰先產生有效表格就先採用。MinerU 提供較完整的中文表格內容，Docling 提供 cell-level bbox，兩者互補；若其中一方失敗，另一方仍可補上。
 
 #### Layer 1 — PyMuPDF（fitz）
 
@@ -149,7 +149,7 @@ graph LR
 
 #### Layer 2b — Docling
 
-MinerU 不可用或失敗時的備案，也是本地端的主要 AI 佈局分析器。
+Docling 會與 MinerU 並行運算，用來補足 cell-level bbox；當 MinerU 不可用或失敗時，也會成為解析備案。
 
 | 項目 | 說明 |
 |------|------|
@@ -623,7 +623,7 @@ docker compose up --build -d
 |------|------|------|
 | `backend/services/diff_service.py` | 修改 | **#5** `_merge_nearby_diffs()` 配對迴圈改為 sliding window：先按 `(page, y0)` 排序，當 `bj.y0 > bi.y1 + gap_threshold` 即 break，O(n²)→O(n log n + n·w) |
 | `backend/services/diff_service.py` | 修改 | **#4** `diff_pixels()` 新增兩階段掃描：Phase 1 以 72 DPI 快速找出有差異的頁（min\_area 等比縮放），Phase 2 只對差異頁做完整 200 DPI 分析 |
-| `backend/services/parser_service.py` | 修改 | **#2** `parse_pdf()` 表格解析改為 MinerU 準確率優先：預設只跑 MinerU，失敗才用 Docling fallback；可透過 `ENABLE_DOCLING_PARALLEL=true` 開啟 MinerU + Docling 同時解析的速度模式 |
+| `backend/services/parser_service.py` | 修改 | **#2** `parse_pdf()` 表格解析維持 MinerU + Docling 預設並行；`ENABLE_DOCLING_PARALLEL=true`、`MINERU_PREFERRED_WAIT_SECONDS=0` 時回到誰先產生有效表格就先採用 |
 | `backend/services/diff_service.py` | 修改 | 新增 `_merge_nearby_diffs()`：對空間鄰近的 TEXT/NUMBER diff 做 Union-Find 合併（gap ≤ 50pt） |
 | `docker-compose.yml` | 修改 | backend expose 改為 `ports: 8001:8000`；`internal` network 從 `external: true` 改為 `driver: bridge` |
 | `一鍵啟動PDF比對系統.bat` | 修改 | health check / 提示 URL / 自動開啟瀏覽器全改為 port 8001 |
@@ -635,8 +635,8 @@ docker compose up --build -d
 
 | 優化 | 情境 | 預期改善 |
 |------|------|---------|
-| #2 MinerU 準確率優先解析 | MinerU 正常回應 | 保留 MinerU 表格解析精度，且不額外啟動 Docling 消耗 CPU/RAM |
-| #2 可選並行解析 | MinerU 回應慢或超時 | 啟用 `ENABLE_DOCLING_PARALLEL=true` 時，最多只多等待 `MINERU_PREFERRED_WAIT_SECONDS`，之後採用 Docling fallback |
+| #2 MinerU + Docling 並行解析 | 表格、格子座標需要互補 | 同時取得 MinerU 的中文表格解析與 Docling 的 cell-level bbox，降低單一路徑漏抓風險 |
+| #2 優先等待設定 | 需要偏向 MinerU 或偏向速度 | `MINERU_PREFERRED_WAIT_SECONDS=0` 表示誰先有效就先用；調高可偏向等待 MinerU |
 | #4 動態 DPI | 僅 1-2 頁有差異的文件 | 像素比對時間降低 50–80% |
 | #5 Sliding Window | 單頁有大量細碎 diff | 合併步驟接近線性，避免二次方瓶頸 |
 

@@ -9,6 +9,17 @@ from services.parser_service import ParsedDocument, ParsedParagraph, ParsedTable
 
 NUMBER_PATTERN = re.compile(r"\d+(?:\.\d+)?%?")
 _ELLIPSIS = "..."
+_CONTROL_NO_RE = re.compile(
+    r"C[o0]ntr[o0][l1I]\s*(?:N[o0]\.?)?\s*[:\uFF1A]?\s*([A-Z]{0,4}-?\d{2,4}(?:-[A-Z0-9]{2,}){2,5})",
+    re.IGNORECASE,
+)
+_CONTROL_NO_FALLBACK_RE = re.compile(
+    r"\b((?:[A-Z]{1,4}-)?\d{4}-\d{4}-[A-Z0-9]{2,5}-\d{3,5})\b",
+    re.IGNORECASE,
+)
+_VERSION_DATE_RE = re.compile(r"(?:[<\(\uFF08\u300A\u00AB]\s*)?((?:20)?\d{2,3}\.\d{2})(?:\s*[>\)\uFF09\u300B\u00BB])?")
+_CJK_RE = re.compile(r"[\u3400-\u9fff]")
+_PRIVATE_USE_RE = re.compile(r"[\ue000-\uf8ff\ufffd]")
 
 # Characters that should be stripped or unified before comparison to prevent
 # false-positive diffs caused by font encoding quirks, ligature substitutions,
@@ -88,6 +99,156 @@ def _clip_text(text: str | None, max_len: int = 200) -> str | None:
     if not text:
         return None
     return text[:max_len] + _ELLIPSIS if len(text) > max_len else text
+
+
+def _sanitize_ocr_text(text: str | None) -> str:
+    if not text:
+        return ""
+    text = unicodedata.normalize("NFKC", text)
+    text = text.replace("\u00AB", "\u300A").replace("\u00BB", "\u300B")
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _clean_control_no(value: str) -> str:
+    value = value.upper()
+    value = re.sub(r"\s*-\s*", "-", value)
+    value = re.sub(r"[^A-Z0-9-]", "", value)
+    return value.strip("-")
+
+
+def _extract_priority_ocr_text(text: str | None) -> str | None:
+    """Extract high-value document-control fields from OCR text."""
+    clean = _sanitize_ocr_text(text)
+    if not clean:
+        return None
+
+    parts: list[str] = []
+
+    version_matches = [m for m in _VERSION_DATE_RE.findall(clean) if m]
+    if version_matches:
+        parts.append(f"Version: {version_matches[-1]}")
+
+    control = None
+    match = _CONTROL_NO_RE.search(clean)
+    if match:
+        control = _clean_control_no(match.group(1))
+    else:
+        match = _CONTROL_NO_FALLBACK_RE.search(clean)
+        if match:
+            control = _clean_control_no(match.group(1))
+
+    if control:
+        parts.append(f"Control No: {control}")
+
+    return "; ".join(parts) if parts else None
+
+
+def _has_meaningful_ocr_pattern(text: str | None) -> bool:
+    if _extract_priority_ocr_text(text):
+        return True
+    clean = _sanitize_ocr_text(text)
+    return bool(re.search(r"\d{2,}(?:[-./]\d{2,})+", clean))
+
+
+def _is_reliable_ocr_text(text: str | None) -> bool:
+    """Reject obvious local OCR garbage before it reaches the UI."""
+    clean = _sanitize_ocr_text(text)
+    if not clean:
+        return False
+    if _extract_priority_ocr_text(clean):
+        return True
+
+    chars = [ch for ch in clean if not ch.isspace()]
+    if len(chars) < 6:
+        return False
+
+    bad_count = sum(
+        1
+        for ch in chars
+        if _PRIVATE_USE_RE.match(ch) or ch in "[]{}#@^_=+~`|\\"
+    )
+    meaningful_count = sum(
+        1
+        for ch in chars
+        if ch.isalnum() or _CJK_RE.match(ch) or ch in ".,:;/%()-\u3001\uFF0C\u3002\uFF1A\uFF1B\uFF08\uFF09\u300A\u300B"
+    )
+
+    if bad_count / max(len(chars), 1) > 0.12:
+        return False
+    if meaningful_count / max(len(chars), 1) < 0.60:
+        return False
+
+    return bool(_CJK_RE.search(clean) or re.search(r"\d", clean) or len(clean) >= 12)
+
+
+def _is_reliable_ocr_pair(old_text: str | None, new_text: str | None) -> bool:
+    if _has_meaningful_ocr_pattern(old_text) or _has_meaningful_ocr_pattern(new_text):
+        return True
+    return _is_reliable_ocr_text(old_text) and _is_reliable_ocr_text(new_text)
+
+
+def _ocr_pixmap_text(pix, *, lang: str = "chi_tra+eng", psm: str = "6") -> str:
+    try:
+        import os as _os
+        import subprocess
+        import tempfile
+
+        import numpy as np
+        from PIL import Image as _PILImage
+    except ImportError:
+        return ""
+
+    try:
+        pil_img = _PILImage.frombytes("L", (pix.width, pix.height), pix.samples)
+        if pil_img.height < 120:
+            scale = max(1, 120 // max(pil_img.height, 1) + 1)
+            pil_img = pil_img.resize(
+                (pil_img.width * scale, pil_img.height * scale),
+                _PILImage.LANCZOS,
+            )
+
+        pil_arr = np.array(pil_img)
+        thresh = int(pil_arr.mean()) - 20
+        thresh = max(80, min(thresh, 200))
+        pil_img = _PILImage.fromarray(((pil_arr > thresh) * 255).astype(np.uint8))
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            pil_img.save(f.name)
+            tmp_path = f.name
+
+        try:
+            result = subprocess.run(
+                ["tesseract", tmp_path, "stdout", "-l", lang, "--psm", psm, "--oem", "1"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            return _sanitize_ocr_text(result.stdout)
+        except Exception:
+            return ""
+        finally:
+            try:
+                _os.unlink(tmp_path)
+            except Exception:
+                pass
+    except Exception:
+        return ""
+
+
+def _ocr_page_region(page, rect, *, zoom: float = 4.0, lang: str = "chi_tra+eng", psm: str = "6") -> str:
+    try:
+        import fitz
+
+        pix = page.get_pixmap(
+            matrix=fitz.Matrix(zoom, zoom),
+            clip=rect,
+            colorspace=fitz.csGRAY,
+        )
+    except Exception:
+        return ""
+    return _ocr_pixmap_text(pix, lang=lang, psm=psm)
 
 
 @dataclass
@@ -449,6 +610,98 @@ def diff_pixels(
                     result.append(w[4])
             return " ".join(result).strip()
 
+        def _priority_header_footer_diffs(page_old, page_new, page_no: int, mask) -> list[DiffItem]:
+            """Protected OCR pass for high-value header/footer fields."""
+            page_w = float(page_new.rect.width)
+            page_h = float(page_new.rect.height)
+            pt_to_px = dpi / 72.0
+            protected_regions = [
+                ("header", fitz.Rect(0, 0, page_w, page_h * 0.12)),
+                ("footer", fitz.Rect(0, page_h * 0.88, page_w, page_h)),
+            ]
+            out: list[DiffItem] = []
+
+            for label, rect in protected_regions:
+                r0 = max(0, int(rect.y0 * pt_to_px))
+                r1 = min(mask.shape[0], int(rect.y1 * pt_to_px))
+                c0 = max(0, int(rect.x0 * pt_to_px))
+                c1 = min(mask.shape[1], int(rect.x1 * pt_to_px))
+                if r1 <= r0 or c1 <= c0:
+                    continue
+
+                sub_mask = mask[r0:r1, c0:c1]
+                changed_px = int(sub_mask.sum())
+                if changed_px <= 0:
+                    continue
+
+                labeled, n_regions = ndimage.label(
+                    ndimage.binary_dilation(sub_mask, structure=struct, iterations=1)
+                )
+                component_boxes: list[tuple[int, int, int, int, int]] = []
+                max_component_px = 0
+                for rid in range(1, n_regions + 1):
+                    region = labeled == rid
+                    component_px = int((sub_mask & region).sum())
+                    max_component_px = max(max_component_px, component_px)
+                    if component_px < 25:
+                        continue
+                    rows, cols = np.where(region)
+                    if rows.size == 0 or cols.size == 0:
+                        continue
+                    component_boxes.append((
+                        int(cols.min()) + c0,
+                        int(rows.min()) + r0,
+                        int(cols.max()) + c0 + 1,
+                        int(rows.max()) + r0 + 1,
+                        component_px,
+                    ))
+
+                if changed_px < 300 and max_component_px < 150:
+                    continue
+
+                old_raw = _ocr_page_region(page_old, rect, zoom=4.0, lang="chi_tra+eng", psm="6")
+                new_raw = _ocr_page_region(page_new, rect, zoom=4.0, lang="chi_tra+eng", psm="6")
+                old_priority = _extract_priority_ocr_text(old_raw)
+                new_priority = _extract_priority_ocr_text(new_raw)
+                if not old_priority and not new_priority:
+                    continue
+                if _deep_normalize(old_priority or "") == _deep_normalize(new_priority or ""):
+                    continue
+
+                if component_boxes:
+                    x0_px = min(b[0] for b in component_boxes)
+                    y0_px = min(b[1] for b in component_boxes)
+                    x1_px = max(b[2] for b in component_boxes)
+                    y1_px = max(b[3] for b in component_boxes)
+                    pad_x = int(16 * pt_to_px)
+                    pad_y = int(6 * pt_to_px)
+                    x0_pt = max(0.0, (x0_px - pad_x) / pt_to_px)
+                    x1_pt = min(page_w, (x1_px + pad_x) / pt_to_px)
+                    y0_top_pt = max(0.0, (y0_px - pad_y) / pt_to_px)
+                    y1_top_pt = min(page_h, (y1_px + pad_y) / pt_to_px)
+                else:
+                    x0_pt, y0_top_pt, x1_pt, y1_top_pt = rect.x0, rect.y0, rect.x1, rect.y1
+
+                bbox = BBox(
+                    page=page_no,
+                    x0=x0_pt,
+                    y0=page_h - y1_top_pt,
+                    x1=x1_pt,
+                    y1=page_h - y0_top_pt,
+                )
+                out.append(DiffItem(
+                    id="",
+                    diff_type=_guess_diff_type(old_priority, new_priority),
+                    old_value=old_priority,
+                    new_value=new_priority,
+                    old_bbox=bbox,
+                    new_bbox=bbox,
+                    context=f"Page {page_no} {label} control/version",
+                    confidence=0.98,
+                ))
+
+            return out
+
         # ── Phase 1: quick scan at 72 DPI to find pages with differences ──
         # Avoids full-resolution rendering for pages that are identical,
         # which is the common case for documents where only 1-2 pages changed.
@@ -492,9 +745,12 @@ def diff_pixels(
             if not mask.any():
                 continue
 
-            # Morphological dilation merges glyph strokes without swallowing
-            # nearby, unrelated edits across dense EDM paragraphs/tables.
-            dilated = ndimage.binary_dilation(mask, structure=struct, iterations=1)
+            items.extend(_priority_header_footer_diffs(page_old, page_new, page_no, mask))
+
+            # Broad scan: connect nearby glyph strokes into review candidates,
+            # matching the older behavior that caught footer/control numbers.
+            # Fine-grained splitting/merge control happens later.
+            dilated = ndimage.binary_dilation(mask, structure=struct, iterations=4)
             labeled, n_regions = ndimage.label(dilated)
 
             for rid in range(1, n_regions + 1):
@@ -629,7 +885,10 @@ def diff_pixels(
                 # (a) Neither side has native text, OR
                 # (b) Small region with at least one side missing text — likely a
                 #     digit/glyph baked into a raster image (e.g. infographic numbers).
-                should_ocr = (not ot and not nt) or (is_small_region and (not ot or not nt))
+                should_ocr = (
+                    not is_large_region
+                    and ((not ot and not nt) or (is_small_region and (not ot or not nt)))
+                )
                 if should_ocr:
                     try:
                         import subprocess, tempfile, os as _os
@@ -692,10 +951,23 @@ def diff_pixels(
                         if old_stripped and new_stripped and old_stripped == new_stripped:
                             continue
 
-                        # Only use OCR results if BOTH sides produced text.
-                        if ocr_old_raw and ocr_new_raw:
-                            ot = ocr_old_raw
-                            nt = ocr_new_raw
+                        priority_old = _extract_priority_ocr_text(ocr_old_raw)
+                        priority_new = _extract_priority_ocr_text(ocr_new_raw)
+
+                        # Only expose OCR text when it is reliable. Otherwise
+                        # keep the crop as visual evidence and avoid UI garbage.
+                        has_native_text_layer = bool(old_words or new_words)
+                        if priority_old or priority_new:
+                            ot = priority_old or _sanitize_ocr_text(ocr_old_raw)
+                            nt = priority_new or _sanitize_ocr_text(ocr_new_raw)
+                        elif (
+                            has_native_text_layer
+                            and ocr_old_raw
+                            and ocr_new_raw
+                            and _is_reliable_ocr_pair(ocr_old_raw, ocr_new_raw)
+                        ):
+                            ot = _sanitize_ocr_text(ocr_old_raw)
+                            nt = _sanitize_ocr_text(ocr_new_raw)
 
                     except Exception:
                         pass  # OCR unavailable or timed out → fall through
@@ -1006,6 +1278,17 @@ def diff_images(
                                    _deep_normalize(old_text).replace(" ", "") == \
                                    _deep_normalize(new_text).replace(" ", ""):
                                     continue
+                                priority_old = _extract_priority_ocr_text(old_text)
+                                priority_new = _extract_priority_ocr_text(new_text)
+                                if priority_old or priority_new:
+                                    old_text = priority_old or _sanitize_ocr_text(old_text)
+                                    new_text = priority_new or _sanitize_ocr_text(new_text)
+                                elif _is_reliable_ocr_pair(old_text, new_text):
+                                    old_text = _sanitize_ocr_text(old_text)
+                                    new_text = _sanitize_ocr_text(new_text)
+                                else:
+                                    old_text = ""
+                                    new_text = ""
                                 has_text = bool(old_text or new_text)
                                 items.append(DiffItem(
                                     id="",
@@ -1134,6 +1417,8 @@ def _merge_nearby_diffs(items: list[DiffItem], gap_threshold: float = 18.0) -> l
             -(it.new_bbox or it.old_bbox).y1,
             (it.new_bbox or it.old_bbox).x0,
         ))
+        priority_group = [it for it in group if "control/version" in (it.context or "")]
+        value_group = priority_group or group
 
         old_parts, new_parts, bboxes = [], [], []
         best_conf = 0.0
@@ -1141,11 +1426,12 @@ def _merge_nearby_diffs(items: list[DiffItem], gap_threshold: float = 18.0) -> l
         ctx_set: set[str] = set()
         keep_img_old = keep_img_new = None
 
-        for it in group:
+        for it in value_group:
             if it.old_value:
                 old_parts.append(it.old_value)
             if it.new_value:
                 new_parts.append(it.new_value)
+        for it in group:
             b = it.new_bbox or it.old_bbox
             if b:
                 bboxes.append(b)
@@ -1176,7 +1462,11 @@ def _merge_nearby_diffs(items: list[DiffItem], gap_threshold: float = 18.0) -> l
             new_bbox=union_bbox,
             old_image_base64=keep_img_old,
             new_image_base64=keep_img_new,
-            context=next(iter(ctx_set)) if ctx_set else "N/A",
+            context=(
+                priority_group[0].context
+                if priority_group
+                else (next(iter(ctx_set)) if ctx_set else "N/A")
+            ),
             confidence=best_conf,
         ))
 

@@ -35,11 +35,10 @@ class Settings(BaseSettings):
     # MinerU REST API endpoint (empty = disabled, falls back to Docling)
     # Example: "http://mineru-api:18080" (docker-compose internal) or "http://localhost:18080"
     mineru_api_url: str = ""
-    # Keep the accuracy-first path cheap: MinerU is the primary table parser.
-    # Docling parallel fallback is opt-in because running both on every PDF
-    # increases CPU/RAM and may choose the less accurate parser on slow MinerU.
-    enable_docling_parallel: bool = False
-    mineru_preferred_wait_seconds: float = 30.0
+    # Match the original MinerU build behavior: run MinerU and Docling together
+    # for table parsing so a slow MinerU call does not block Docling's cell boxes.
+    enable_docling_parallel: bool = True
+    mineru_preferred_wait_seconds: float = 0.0
 
     # Snapshot PNGs are audit convenience artifacts. Rendering every page is CPU
     # expensive, so default to pages that actually contain diffs.

@@ -33,6 +33,8 @@ services:
       OCR_LANGS: chi_tra+chi_sim+eng
       DEBUG: 'false'
       MINERU_API_URL: 'http://mineru-api-minerU:18080'
+      ENABLE_DOCLING_PARALLEL: 'true'
+      MINERU_PREFERRED_WAIT_SECONDS: '0'
     volumes:
       - backend_runtime_minerU:/app/runtime
       - backend_hf_cache_minerU:/app/.cache/huggingface

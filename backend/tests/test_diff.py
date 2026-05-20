@@ -1,5 +1,10 @@
 from models.diff_models import BBox, DiffItem, DiffType
-from services.diff_service import generate_diff_report, merge_diff_results
+from services.diff_service import (
+    _extract_priority_ocr_text,
+    _is_reliable_ocr_text,
+    generate_diff_report,
+    merge_diff_results,
+)
 from services.parser_service import ParsedDocument, ParsedParagraph
 
 
@@ -90,6 +95,53 @@ def test_merge_keeps_local_text_diff_inside_large_visual_region():
     assert len(merged) == 1
     assert merged[0].diff_type == DiffType.TEXT_MODIFIED
     assert merged[0].old_value == "old clause"
+
+
+def test_extracts_priority_control_no_from_noisy_footer_ocr():
+    old_text = "??023.02?? Control No : 2301-2501-OP2-0043 TTT"
+    new_text = "??024.07?? Control No : OP-2407-2607-0503 TTT"
+
+    assert _extract_priority_ocr_text(old_text) == (
+        "Version: 023.02; Control No: 2301-2501-OP2-0043"
+    )
+    assert _extract_priority_ocr_text(new_text) == (
+        "Version: 024.07; Control No: OP-2407-2607-0503"
+    )
+
+
+def test_ocr_garbage_without_priority_pattern_is_not_reliable_text():
+    garbage = "?啁鈭箏ˊ?唬?摰? ### [PAYV 選 1 說 了"
+
+    assert not _is_reliable_ocr_text(garbage)
+
+
+def test_footer_control_no_diff_survives_large_visual_dedup():
+    large_region = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_value=None,
+        new_value=None,
+        old_bbox=BBox(page=2, x0=300, y0=0, x1=590, y1=90),
+        new_bbox=BBox(page=2, x0=300, y0=0, x1=590, y1=90),
+        context="Page 2 footer visual change",
+        confidence=0.95,
+    )
+    footer_control = DiffItem(
+        id="",
+        diff_type=DiffType.NUMBER_MODIFIED,
+        old_value="Version: 2023.02; Control No: 2301-2501-OP2-0043",
+        new_value="Version: 2024.07; Control No: OP-2407-2607-0503",
+        old_bbox=BBox(page=2, x0=445, y0=18, x1=565, y1=36),
+        new_bbox=BBox(page=2, x0=445, y0=18, x1=565, y1=36),
+        context="Page 2 footer control/version",
+        confidence=0.98,
+    )
+
+    merged = merge_diff_results([footer_control], [], [large_region])
+
+    assert len(merged) == 1
+    assert merged[0].diff_type == DiffType.NUMBER_MODIFIED
+    assert "OP-2407-2607-0503" in (merged[0].new_value or "")
 
 
 def test_merge_nearby_diffs_does_not_join_distant_page_regions():
