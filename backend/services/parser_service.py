@@ -66,6 +66,14 @@ def _synthetic_paragraph_bbox(page: int, line_index: int, total_lines: int) -> B
     )
 
 
+def _span_text(span: dict) -> str:
+    text = str(span.get("text") or "")
+    if text:
+        return text
+    chars = span.get("chars") or []
+    return "".join(str(ch.get("c") or "") for ch in chars)
+
+
 def _bbox_from_docling(
     *,
     page_no: int,
@@ -420,7 +428,7 @@ def _parse_via_fitz(pdf_path: Path) -> ParsedDocument:
                                 )
                                 line_char_bboxes.append(c_bbox)
 
-                        text = str(span.get("text", ""))
+                        text = _span_text(span)
                         if text:
                             parts.append(text)
 

@@ -10,15 +10,18 @@ from services.parser_service import ParsedDocument, ParsedParagraph, ParsedTable
 NUMBER_PATTERN = re.compile(r"\d+(?:\.\d+)?%?")
 _ELLIPSIS = "..."
 _CONTROL_NO_RE = re.compile(
-    r"C[o0]ntr[o0][l1I]\s*(?:N[o0]\.?)?\s*[:\uFF1A]?\s*([A-Z]{0,4}-?\d{2,4}(?:-[A-Z0-9]{2,}){2,5})",
+    r"C[o0]ntr[o0][l1I]\s*(?:N[o0]\.?)?\s*[:\uFF1A]?\s*([A-Z]{0,4}-?\d{2,4}(?:-[A-Z0-9]{2,}){1,5})",
     re.IGNORECASE,
 )
 _CONTROL_NO_FALLBACK_RE = re.compile(
     r"\b((?:[A-Z]{1,4}-)?\d{4}-\d{4}-[A-Z0-9]{2,5}-\d{3,5})\b",
     re.IGNORECASE,
 )
-_VERSION_DATE_RE = re.compile(r"(?:[<\(\uFF08\u300A\u00AB]\s*)?((?:20)?\d{2,3}\.\d{2})(?:\s*[>\)\uFF09\u300B\u00BB])?")
+_BRACKETED_VERSION_DATE_RE = re.compile(r"[<\(\uFF08\u300A\u00AB]\s*((?:20)?\d{2,3}\.\d{2})\s*[>\)\uFF09\u300B\u00BB]")
+_VERSION_DATE_RE = re.compile(r"\b((?:20)?\d{2,3}\.\d{2})\b")
 _CJK_RE = re.compile(r"[\u3400-\u9fff]")
+_CJK_RUN_RE = re.compile(r"[\u3400-\u9fff]{6,}")
+_UPPER_BRACKET_NOISE_RE = re.compile(r"\[[A-Z]{2,}")
 _PRIVATE_USE_RE = re.compile(r"[\ue000-\uf8ff\ufffd]")
 
 # Characters that should be stripped or unified before comparison to prevent
@@ -101,6 +104,42 @@ def _clip_text(text: str | None, max_len: int = 200) -> str | None:
     return text[:max_len] + _ELLIPSIS if len(text) > max_len else text
 
 
+def _word_text(words) -> str:
+    return " ".join(str(w[4]) for w in words if len(w) > 4 and w[4]).strip()
+
+
+def _word_union_rect(words) -> tuple[float, float, float, float] | None:
+    boxes = [w[:4] for w in words if len(w) >= 4]
+    if not boxes:
+        return None
+    return (
+        min(float(b[0]) for b in boxes),
+        min(float(b[1]) for b in boxes),
+        max(float(b[2]) for b in boxes),
+        max(float(b[3]) for b in boxes),
+    )
+
+
+def _same_native_text_is_rendering_noise(
+    old_words,
+    new_words,
+    *,
+    tolerance_pt: float = 2.0,
+) -> bool:
+    old_text = _deep_normalize(_word_text(old_words))
+    new_text = _deep_normalize(_word_text(new_words))
+    if not old_text or not new_text or old_text != new_text:
+        return False
+
+    old_rect = _word_union_rect(old_words)
+    new_rect = _word_union_rect(new_words)
+    if not old_rect or not new_rect:
+        return True
+
+    deltas = [abs(a - b) for a, b in zip(old_rect, new_rect)]
+    return max(deltas) <= tolerance_pt
+
+
 def _sanitize_ocr_text(text: str | None) -> str:
     if not text:
         return ""
@@ -124,12 +163,6 @@ def _extract_priority_ocr_text(text: str | None) -> str | None:
     if not clean:
         return None
 
-    parts: list[str] = []
-
-    version_matches = [m for m in _VERSION_DATE_RE.findall(clean) if m]
-    if version_matches:
-        parts.append(f"Version: {version_matches[-1]}")
-
     control = None
     match = _CONTROL_NO_RE.search(clean)
     if match:
@@ -139,6 +172,14 @@ def _extract_priority_ocr_text(text: str | None) -> str | None:
         if match:
             control = _clean_control_no(match.group(1))
 
+    parts: list[str] = []
+
+    version_matches = [m for m in _BRACKETED_VERSION_DATE_RE.findall(clean) if m]
+    if not version_matches and control:
+        version_matches = [m for m in _VERSION_DATE_RE.findall(clean) if m]
+    if version_matches:
+        parts.append(f"Version: {version_matches[-1]}")
+
     if control:
         parts.append(f"Control No: {control}")
 
@@ -146,10 +187,42 @@ def _extract_priority_ocr_text(text: str | None) -> str | None:
 
 
 def _has_meaningful_ocr_pattern(text: str | None) -> bool:
-    if _extract_priority_ocr_text(text):
-        return True
-    clean = _sanitize_ocr_text(text)
-    return bool(re.search(r"\d{2,}(?:[-./]\d{2,})+", clean))
+    return bool(_extract_priority_ocr_text(text))
+
+
+def _has_dense_numeric_ocr_signal(clean: str) -> bool:
+    chars = [ch for ch in clean if not ch.isspace()]
+    if not chars:
+        return False
+
+    digit_count = sum(ch.isdigit() for ch in chars)
+    if digit_count < 4:
+        return False
+
+    numeric_tokens = re.findall(r"\d[\d,./%:-]*", clean)
+    substantial_tokens = [
+        token
+        for token in numeric_tokens
+        if sum(ch.isdigit() for ch in token) >= 2
+    ]
+    return len(substantial_tokens) >= 2 and digit_count / len(chars) >= 0.25
+
+
+def _has_strong_ocr_text_signal(clean: str) -> bool:
+    return bool(_CJK_RUN_RE.search(clean) or _has_dense_numeric_ocr_signal(clean))
+
+
+def _looks_fragmented_ocr(clean: str) -> bool:
+    lines = [line.strip() for line in clean.splitlines() if line.strip()]
+    if len(lines) < 4:
+        return False
+
+    short_lines = 0
+    for line in lines:
+        compact = "".join(ch for ch in line if not ch.isspace())
+        if len(compact) <= 2:
+            short_lines += 1
+    return short_lines / len(lines) >= 0.55
 
 
 def _is_reliable_ocr_text(text: str | None) -> bool:
@@ -159,6 +232,8 @@ def _is_reliable_ocr_text(text: str | None) -> bool:
         return False
     if _extract_priority_ocr_text(clean):
         return True
+    if _UPPER_BRACKET_NOISE_RE.search(clean):
+        return False
 
     chars = [ch for ch in clean if not ch.isspace()]
     if len(chars) < 6:
@@ -180,7 +255,10 @@ def _is_reliable_ocr_text(text: str | None) -> bool:
     if meaningful_count / max(len(chars), 1) < 0.60:
         return False
 
-    return bool(_CJK_RE.search(clean) or re.search(r"\d", clean) or len(clean) >= 12)
+    if _looks_fragmented_ocr(clean) and not _has_dense_numeric_ocr_signal(clean):
+        return False
+
+    return _has_strong_ocr_text_signal(clean)
 
 
 def _is_reliable_ocr_pair(old_text: str | None, new_text: str | None) -> bool:
@@ -607,8 +685,8 @@ def diff_pixels(
             result = []
             for w in words_list:
                 if rect.intersects(fitz.Rect(w[:4])):
-                    result.append(w[4])
-            return " ".join(result).strip()
+                    result.append(w)
+            return result
 
         def _priority_header_footer_diffs(page_old, page_new, page_no: int, mask) -> list[DiffItem]:
             """Protected OCR pass for high-value header/footer fields."""
@@ -655,9 +733,6 @@ def diff_pixels(
                         int(rows.max()) + r0 + 1,
                         component_px,
                     ))
-
-                if changed_px < 300 and max_component_px < 150:
-                    continue
 
                 old_raw = _ocr_page_region(page_old, rect, zoom=4.0, lang="chi_tra+eng", psm="6")
                 new_raw = _ocr_page_region(page_new, rect, zoom=4.0, lang="chi_tra+eng", psm="6")
@@ -780,6 +855,25 @@ def diff_pixels(
                 is_small_region = actual_px < 2000
                 ncc_threshold = 0.70 if is_small_region else 0.94
 
+                # Native text position changes are real review targets. Let
+                # them pass through the visual NCC noise filter so the later
+                # text+bbox comparison can report them.
+                fx0 = float(c0) * scale_to_pt
+                fx1 = float(c1 - 1) * scale_to_pt
+                fy0 = float(r0) * scale_to_pt
+                fy1 = float(r1 - 1) * scale_to_pt
+                pre_search_rect = fitz.Rect(fx0, fy0, fx1, fy1) + (-3, -3, 3, 3)
+                pre_old_word_hits = _words_in_rect(old_words, pre_search_rect)
+                pre_new_word_hits = _words_in_rect(new_words, pre_search_rect)
+                preserve_native_position_change = False
+                if pre_old_word_hits and pre_new_word_hits:
+                    pre_old_text = _deep_normalize(_word_text(pre_old_word_hits))
+                    pre_new_text = _deep_normalize(_word_text(pre_new_word_hits))
+                    preserve_native_position_change = (
+                        bool(pre_old_text and pre_new_text and pre_old_text == pre_new_text)
+                        and not _same_native_text_is_rendering_noise(pre_old_word_hits, pre_new_word_hits)
+                    )
+
                 patch_old = arr_old[r0:r1, c0:c1].astype(np.float64)
                 patch_new = arr_new[r0:r1, c0:c1].astype(np.float64)
                 if patch_old.size >= 100:
@@ -827,14 +921,10 @@ def diff_pixels(
                         if best_ncc > ncc_threshold:
                             break
 
-                    if best_ncc > ncc_threshold:
+                    if best_ncc > ncc_threshold and not preserve_native_position_change:
                         continue
 
                 # PDF points in fitz's top-left origin (Y grows down)
-                fx0 = float(c0) * scale_to_pt
-                fx1 = float(c1 - 1) * scale_to_pt
-                fy0 = float(r0) * scale_to_pt
-                fy1 = float(r1 - 1) * scale_to_pt
                 # BBox model stores bottom-left origin
                 bbox = BBox(
                     page=page_no,
@@ -854,17 +944,22 @@ def diff_pixels(
                 fitz_rect = fitz.Rect(fx0, fy0, fx1, fy1)
                 search_rect = fitz_rect + (-3, -3, 3, 3)
 
-                ot = _words_in_rect(old_words, search_rect)
-                nt = _words_in_rect(new_words, search_rect)
+                old_word_hits = _words_in_rect(old_words, search_rect)
+                new_word_hits = _words_in_rect(new_words, search_rect)
+                ot = _word_text(old_word_hits)
+                nt = _word_text(new_word_hits)
+                same_text_moved = False
 
-                # ── Tier 1: native text layer comparison ──────────────────
+                # Tier 1: native text layer comparison
                 if ot and nt:
                     on = _deep_normalize(ot)
                     nn = _deep_normalize(nt)
                     if on and nn and on == nn:
-                        continue  # identical text → rendering noise, suppress
+                        if _same_native_text_is_rendering_noise(old_word_hits, new_word_hits):
+                            continue  # identical text/rendering noise, suppress
+                        same_text_moved = True
 
-                # ── Tier 2: local OCR fallback (outline-text PDFs) ────────
+                # Tier 2: local OCR fallback (outline-text PDFs)
                 # Triggered when NEITHER side has a native text layer in the
                 # diff region.
                 #
@@ -956,16 +1051,10 @@ def diff_pixels(
 
                         # Only expose OCR text when it is reliable. Otherwise
                         # keep the crop as visual evidence and avoid UI garbage.
-                        has_native_text_layer = bool(old_words or new_words)
                         if priority_old or priority_new:
                             ot = priority_old or _sanitize_ocr_text(ocr_old_raw)
                             nt = priority_new or _sanitize_ocr_text(ocr_new_raw)
-                        elif (
-                            has_native_text_layer
-                            and ocr_old_raw
-                            and ocr_new_raw
-                            and _is_reliable_ocr_pair(ocr_old_raw, ocr_new_raw)
-                        ):
+                        elif ocr_old_raw and ocr_new_raw and _is_reliable_ocr_pair(ocr_old_raw, ocr_new_raw):
                             ot = _sanitize_ocr_text(ocr_old_raw)
                             nt = _sanitize_ocr_text(ocr_new_raw)
 
@@ -982,7 +1071,7 @@ def diff_pixels(
                     old_text = _clip_text(ot)
                     new_text = _clip_text(nt)
                     diff_type = DiffType.TEXT_MODIFIED
-                    context_label = f"Page {page_no} 內容變更"
+                    context_label = f"Page {page_no} text position changed" if same_text_moved else f"Page {page_no} 內容變更"
                 elif is_large_region:
                     # Large region with no text = table/layout structural change.
                     # Report as IMAGE_DIFF WITH screenshots (don't suppress).
@@ -1351,7 +1440,8 @@ def _merge_nearby_diffs(items: list[DiffItem], gap_threshold: float = 18.0) -> l
     non_mergeable: list[DiffItem] = []
     for item in items:
         bbox = item.new_bbox or item.old_bbox
-        if bbox and item.diff_type in _MERGEABLE:
+        is_priority_control = "control/version" in (item.context or "")
+        if bbox and item.diff_type in _MERGEABLE and not is_priority_control:
             mergeable.append(item)
         else:
             non_mergeable.append(item)

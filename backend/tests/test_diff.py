@@ -1,7 +1,9 @@
 from models.diff_models import BBox, DiffItem, DiffType
 from services.diff_service import (
     _extract_priority_ocr_text,
+    _is_reliable_ocr_pair,
     _is_reliable_ocr_text,
+    _same_native_text_is_rendering_noise,
     generate_diff_report,
     merge_diff_results,
 )
@@ -68,6 +70,24 @@ def test_generate_diff_report_detects_added_paragraph():
     assert report.items[0].diff_type == DiffType.ADDED
 
 
+def _word(x0: float, y0: float, x1: float, y1: float, text: str):
+    return (x0, y0, x1, y1, text, 0, 0, 0)
+
+
+def test_same_native_text_with_stable_bbox_is_rendering_noise():
+    old_words = [_word(10, 20, 80, 32, "Clause")]
+    new_words = [_word(10.5, 20.5, 80.5, 32.5, "Clause")]
+
+    assert _same_native_text_is_rendering_noise(old_words, new_words)
+
+
+def test_same_native_text_with_moved_bbox_is_content_position_change():
+    old_words = [_word(10, 20, 80, 32, "Clause")]
+    new_words = [_word(35, 20, 105, 32, "Clause")]
+
+    assert not _same_native_text_is_rendering_noise(old_words, new_words)
+
+
 def test_merge_keeps_local_text_diff_inside_large_visual_region():
     large_region = DiffItem(
         id="",
@@ -109,10 +129,49 @@ def test_extracts_priority_control_no_from_noisy_footer_ocr():
     )
 
 
+def test_extracts_short_priority_control_no_formats():
+    old_text = "《2026.02》 Control No : OP-2602-0081"
+    new_text = "《2026.05》 Control No : 2605-OP-0029"
+
+    assert _extract_priority_ocr_text(old_text) == (
+        "Version: 2026.02; Control No: OP-2602-0081"
+    )
+    assert _extract_priority_ocr_text(new_text) == (
+        "Version: 2026.05; Control No: 2605-OP-0029"
+    )
+
+
+def test_priority_ocr_does_not_treat_table_amount_as_version():
+    table_noise = "OU | 77 109,972.00 | 975.18 | 189,576.40 | 0.00"
+
+    assert _extract_priority_ocr_text(table_noise) is None
+
+
 def test_ocr_garbage_without_priority_pattern_is_not_reliable_text():
-    garbage = "?啁鈭箏ˊ?唬?摰? ### [PAYV 選 1 說 了"
+    garbage = "### [PAYV ??1"
 
     assert not _is_reliable_ocr_text(garbage)
+
+
+def test_ocr_pair_rejects_fragmented_garbage():
+    old_text = "A\n1\nB XX )\nC"
+    new_text = "X\n\nY\n[PAYV\nZ 1"
+
+    assert not _is_reliable_ocr_pair(old_text, new_text)
+
+
+def test_reliable_ocr_pair_allows_dense_numeric_table_text():
+    old_text = "109,972.00 189,576.40 238,425.27 39,156.77"
+    new_text = "345,414.00 346,620.00 348,618.00 321,411.00"
+
+    assert _is_reliable_ocr_pair(old_text, new_text)
+
+
+def test_reliable_ocr_pair_can_be_used_for_image_only_local_text():
+    old_text = "海外突發疾病醫療相關給付金額 上限調整"
+    new_text = "突發疾病醫療相關給付金額 上限調整"
+
+    assert _is_reliable_ocr_pair(old_text, new_text)
 
 
 def test_footer_control_no_diff_survives_large_visual_dedup():
@@ -142,6 +201,35 @@ def test_footer_control_no_diff_survives_large_visual_dedup():
     assert len(merged) == 1
     assert merged[0].diff_type == DiffType.NUMBER_MODIFIED
     assert "OP-2407-2607-0503" in (merged[0].new_value or "")
+
+
+def test_priority_control_diff_does_not_merge_with_nearby_text():
+    footer_control = DiffItem(
+        id="",
+        diff_type=DiffType.NUMBER_MODIFIED,
+        old_value="Version: 2026.02; Control No: OP-2602-0081",
+        new_value="Version: 2026.05; Control No: 2605-OP-0029",
+        old_bbox=BBox(page=6, x0=506, y0=11, x1=590, y1=40),
+        new_bbox=BBox(page=6, x0=506, y0=11, x1=590, y1=40),
+        context="Page 6 footer control/version",
+        confidence=0.98,
+    )
+    nearby_text = DiffItem(
+        id="",
+        diff_type=DiffType.TEXT_MODIFIED,
+        old_value="old nearby footer text",
+        new_value="new nearby footer text",
+        old_bbox=BBox(page=6, x0=420, y0=15, x1=500, y1=35),
+        new_bbox=BBox(page=6, x0=420, y0=15, x1=500, y1=35),
+        context="Page 6 footer text",
+        confidence=0.90,
+    )
+
+    merged = merge_diff_results([footer_control, nearby_text], [], None)
+
+    assert len(merged) == 2
+    assert any("2605-OP-0029" in (item.new_value or "") for item in merged)
+    assert any(item.new_value == "new nearby footer text" for item in merged)
 
 
 def test_merge_nearby_diffs_does_not_join_distant_page_regions():

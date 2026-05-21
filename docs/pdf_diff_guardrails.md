@@ -69,6 +69,69 @@ footer: number_modified ... 'Version: 2023.02; Control No: 2301-2501-OP2-0043' -
 garbage_text_count: 0
 ```
 
+## 2026-05-21 Native Text + OCR Reliability Update
+
+This update fixed two regressions that looked opposite but share one rule: decide from the PDF structure first, then use text and location together.
+
+### Cases That Must Keep Passing
+
+1. Image-only Taiwan Life EDMs:
+   - `baoxinanxin`: must not expose OCR fragments such as `[PAYV` as text.
+   - `fengshouai`: page 6 footer-right must detect:
+     - Old: `Version: 2026.02; Control No: OP-2602-0081`
+     - New: `Version: 2026.05; Control No: 2605-OP-0029`
+2. Native-text PDF:
+   - `callcard_back`: must be treated as `text_pdf`, not image-only.
+   - Text diffs such as removed `海外` and changed benefit wording must remain visible.
+3. Product DM image-only PDFs:
+   - Footer `Control No.` / version changes must survive deduplication.
+   - Table/currency OCR like `975.18` must not be mistaken for `Version`.
+
+### Implementation Rules
+
+- PyMuPDF `rawdict` spans can omit `span["text"]` while still containing `span["chars"][].c`; parser code must join chars as a fallback before declaring a PDF image-only.
+- `Control No.` extraction must support short formats such as `OP-2602-0081` and mixed formats such as `2605-OP-0029`.
+- Bracketed version dates are high priority; loose date-like values should only be accepted with a detected control number.
+- Local OCR for normal image-only diff regions is allowed only when the pair has a strong signal:
+  - priority footer/header field, or
+  - a long CJK run, or
+  - dense numeric table text.
+- Reject fragmented short-line OCR and obvious uppercase bracket noise before it reaches `old_value` / `new_value`.
+- Large layout/table movements remain visual diffs unless a protected priority field or reliable local text is present.
+- For native text PDFs, same text with the same bbox is rendering noise; same text with a clearly moved bbox is a position/content-layout change and must not be suppressed.
+- `control/version` priority items should not be proximity-merged with nearby ordinary text because that can hide the neighboring text difference.
+- Header/footer priority OCR should run whenever the protected band has any visual change. Do not block it with high pixel/component thresholds; OCR extraction itself decides whether a priority value exists.
+
+### Diagnostic Workflow
+
+Do not diagnose these cases with bare host Python. Host Python may lack `fitz`, `tesseract`, `pdftotext`, or `pdftoppm`, while OCI runs inside the backend image.
+
+Use the container-backed diagnostic script so local checks match OCI dependencies:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\diagnose-pdf-samples.ps1
+```
+
+Expected 2026-05-21 sample summaries:
+
+```text
+baoxinanxin: image_pdf; only footer text should remain; no [PAYV] ordinary text
+fengshouai: image_pdf; includes page 6 text_modified plus footer number_modified
+callcard_back: text_pdf; native text diffs visible
+auto:美保發: image_pdf; footer number_modified visible
+auto:臻美利: image_pdf; footer number_modified visible; no false Version: 975.18
+```
+
+Reviewer conclusions from this pass:
+
+- PDF-content review: current split is correct; image-only EDMs should be handled by pixel/OCR guardrails, while native text PDFs should keep text-layer diffs.
+- Algorithm review: keep tests for same-text movement, small footer priority OCR, and priority-vs-nearby-text merge behavior.
+- Environment/model review: do not use bare host Python as the truth source; use the backend container. Do not introduce PaddleOCR or another local model unless fixed samples prove better recall without garbage text.
+
+### Model Guidance
+
+MinerU and Docling are already the intended parallel parsers. Do not add another local model just to mask OCR noise. Add a new local OCR/layout model only after a fixed sample suite proves it improves text recall without reintroducing garbage text or hiding protected footer/header changes.
+
 ## MinerU + Docling Parsing Rule
 
 The original MinerU version used parallel table parsing. Keep that behavior.
