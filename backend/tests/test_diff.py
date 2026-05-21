@@ -70,6 +70,31 @@ def test_generate_diff_report_detects_added_paragraph():
     assert report.items[0].diff_type == DiffType.ADDED
 
 
+def test_generate_diff_report_hides_wording_only_change():
+    old_doc = ParsedDocument(
+        pages=1,
+        paragraphs=[_paragraph("本公司負責給付")],
+        tables=[],
+        raw_json={},
+    )
+    new_doc = ParsedDocument(
+        pages=1,
+        paragraphs=[_paragraph("本契約負責給付")],
+        tables=[],
+        raw_json={},
+    )
+
+    report = generate_diff_report(
+        project_id="p001",
+        old_filename="old.pdf",
+        new_filename="new.pdf",
+        old_doc=old_doc,
+        new_doc=new_doc,
+    )
+
+    assert report.total_diffs == 0
+
+
 def _word(x0: float, y0: float, x1: float, y1: float, text: str):
     return (x0, y0, x1, y1, text, 0, 0, 0)
 
@@ -230,6 +255,65 @@ def test_priority_control_diff_does_not_merge_with_nearby_text():
     assert len(merged) == 2
     assert any("2605-OP-0029" in (item.new_value or "") for item in merged)
     assert any(item.new_value == "new nearby footer text" for item in merged)
+
+
+def test_image_only_diff_is_suppressed():
+    image_only = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_value=None,
+        new_value=None,
+        old_bbox=BBox(page=1, x0=20, y0=80, x1=560, y1=760),
+        new_bbox=BBox(page=1, x0=20, y0=80, x1=560, y1=760),
+        context="Page 1 表格/版面變更",
+        confidence=0.95,
+    )
+    text_change = DiffItem(
+        id="",
+        diff_type=DiffType.TEXT_MODIFIED,
+        old_value="舊內容",
+        new_value="新內容",
+        old_bbox=BBox(page=2, x0=40, y0=400, x1=200, y1=418),
+        new_bbox=BBox(page=2, x0=40, y0=400, x1=200, y1=418),
+        context="Page 2",
+        confidence=0.9,
+    )
+
+    merged = merge_diff_results([text_change], [], [image_only])
+
+    assert all(item.diff_type != DiffType.IMAGE_DIFF for item in merged)
+    assert len(merged) == 1
+    assert merged[0].diff_type == DiffType.TEXT_MODIFIED
+
+
+def test_overlapping_text_diffs_in_tall_cell_merge_into_one_block():
+    # Two token-level diffs that share the same tall paragraph bbox (height 120
+    # exceeds the 80pt merge cap) — they overlap, so they must still collapse.
+    box = dict(page=1, x0=50, x1=250, y0=600, y1=720)
+    first = DiffItem(
+        id="",
+        diff_type=DiffType.TEXT_MODIFIED,
+        old_value="甲",
+        new_value="乙",
+        old_bbox=BBox(**box),
+        new_bbox=BBox(**box),
+        context="Page 1 table cell",
+        confidence=0.85,
+    )
+    second = DiffItem(
+        id="",
+        diff_type=DiffType.TEXT_MODIFIED,
+        old_value="丙",
+        new_value="丁",
+        old_bbox=BBox(**box),
+        new_bbox=BBox(**box),
+        context="Page 1 table cell",
+        confidence=0.85,
+    )
+
+    merged = merge_diff_results([first, second], [], None)
+
+    assert len(merged) == 1
 
 
 def test_merge_nearby_diffs_does_not_join_distant_page_regions():

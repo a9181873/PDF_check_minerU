@@ -82,6 +82,21 @@ def _contains_number(text: str | None) -> bool:
         return False
     return bool(NUMBER_PATTERN.search(text))
 
+
+def _extract_numbers(text: str | None) -> list[str]:
+    if not text:
+        return []
+    return NUMBER_PATTERN.findall(_deep_normalize(text))
+
+
+def _numbers_changed(old_value: str | None, new_value: str | None) -> bool:
+    """True when the multiset of numeric tokens differs between the two sides.
+
+    Drives the "wording-only" filter: if every number is identical (or there are
+    none on either side), the change is purely non-numeric text and is dropped.
+    """
+    return sorted(_extract_numbers(old_value)) != sorted(_extract_numbers(new_value))
+
 def is_meaningful_diff(old_val: str | None, new_val: str | None) -> bool:
     v1 = _deep_normalize(old_val or "")
     v2 = _deep_normalize(new_val or "")
@@ -618,6 +633,19 @@ def diff_tables(old_tables: list[ParsedTable], new_tables: list[ParsedTable]) ->
     return diff_items
 
 
+def _clip_to_common_shape(a, b):
+    """Crop two 2-D pixel arrays to their shared top-left region.
+
+    Pages that are nominally the same size can rasterize to dimensions that
+    differ by a pixel from rounding (e.g. 843 vs 842 px tall). Cropping to the
+    common shape lets the element-wise diff proceed without a numpy broadcast
+    error that would otherwise abort the whole comparison.
+    """
+    h = min(a.shape[0], b.shape[0])
+    w = min(a.shape[1], b.shape[1])
+    return a[:h, :w], b[:h, :w]
+
+
 def diff_pixels(
     old_pdf_path: str,
     new_pdf_path: str,
@@ -788,6 +816,7 @@ def diff_pixels(
             _pn = doc_new[_pi].get_pixmap(matrix=_scan_mat, colorspace=fitz.csGRAY)
             _ao = np.frombuffer(_po.samples, dtype=np.uint8).reshape(_po.height, _po.width)
             _an = np.frombuffer(_pn.samples, dtype=np.uint8).reshape(_pn.height, _pn.width)
+            _ao, _an = _clip_to_common_shape(_ao, _an)
             _scan_mask = np.abs(_ao.astype(np.int16) - _an.astype(np.int16)) > threshold
             if int(_scan_mask.sum()) >= _scan_min_area:
                 _diff_pages.add(_pi)
@@ -813,6 +842,7 @@ def diff_pixels(
             arr_new = np.frombuffer(pix_new.samples, dtype=np.uint8).reshape(
                 pix_new.height, pix_new.width
             )
+            arr_old, arr_new = _clip_to_common_shape(arr_old, arr_new)
 
             diff = np.abs(arr_old.astype(np.int16) - arr_new.astype(np.int16))
             mask = diff > threshold
@@ -1486,6 +1516,22 @@ def _merge_nearby_diffs(items: list[DiffItem], gap_threshold: float = 18.0) -> l
             v_gap = max(0.0, max(bi.y0 - bj.y1, bj.y0 - bi.y1))
             union_w = max(bi.x1, bj.x1) - min(bi.x0, bj.x0)
             union_h = max(bi.y1, bj.y1) - min(bi.y0, bj.y0)
+
+            # Overlapping / stacked diffs always collapse into one block, even
+            # past the size caps. A tall table cell often yields many
+            # token-level boxes that share the same paragraph bbox, so they pile
+            # up on top of each other; merging them is what the reviewer wants.
+            inter_w = min(bi.x1, bj.x1) - max(bi.x0, bj.x0)
+            inter_h = min(bi.y1, bj.y1) - max(bi.y0, bj.y0)
+            if inter_w > 0 and inter_h > 0:
+                smaller = min(
+                    (bi.x1 - bi.x0) * (bi.y1 - bi.y0),
+                    (bj.x1 - bj.x0) * (bj.y1 - bj.y0),
+                )
+                if smaller <= 0 or (inter_w * inter_h) / smaller >= 0.5:
+                    union(i, j)
+                    continue
+
             if union_w > 240 or union_h > 80:
                 continue
             if math.sqrt(h_gap ** 2 + v_gap ** 2) <= gap_threshold:
@@ -1625,10 +1671,32 @@ def merge_diff_results(
         if to_remove:
             merged = [item for idx, item in enumerate(merged) if idx not in to_remove]
 
+    # Drop image-only (pure visual) diffs — they are noise for content review.
+    # Text / number / added / deleted changes still carry their values, so only
+    # markers whose sole signal is a visual delta are removed.
+    merged = [item for item in merged if item.diff_type != DiffType.IMAGE_DIFF]
+
     merged = sorted(merged, key=_sort_key)
     for index, item in enumerate(merged, start=1):
         item.id = f"d{index:03d}"
     return merged
+
+
+def _drop_non_numeric_modifications(items: list[DiffItem]) -> list[DiffItem]:
+    """Keep added/removed blocks and any change whose numbers differ; drop
+    wording-only edits that carry no numeric change.
+
+    Added/deleted items are structural presence changes (a whole new or removed
+    block) and are kept regardless, since they are not "text differences" in the
+    modify-in-place sense the reviewer asked to suppress.
+    """
+    kept: list[DiffItem] = []
+    for item in items:
+        if item.diff_type in (DiffType.ADDED, DiffType.DELETED):
+            kept.append(item)
+        elif _numbers_changed(item.old_value, item.new_value):
+            kept.append(item)
+    return kept
 
 
 def generate_diff_report(
@@ -1674,6 +1742,13 @@ def generate_diff_report(
         merged_items = merge_diff_results(text_diffs, table_diffs, pixel_diffs_fb, img_diffs)
         pxc = len(pixel_diffs_fb) if pixel_diffs_fb else 0
         summary = f"text_pdf; text={len(text_diffs)}, table={len(table_diffs)}, pixel={pxc}, img={imgc}"
+
+    # Final content filter: drop wording-only edits (no numeric change), keeping
+    # number changes and structural add/remove. Re-number ids after filtering so
+    # they stay sequential (d001, d002, …).
+    merged_items = _drop_non_numeric_modifications(merged_items)
+    for index, item in enumerate(merged_items, start=1):
+        item.id = f"d{index:03d}"
 
     return DiffReport(
         project_id=project_id,
