@@ -39,3 +39,88 @@
   - OCR 只有在可靠或符合 priority pattern 時才進入 `old_value/new_value`，否則保留為 image diff，避免 UI 顯示亂碼。
   - 保留 MinerU + Docling 預設並行解析，不再誤寫成 Docling 僅備援。
 - **完整護欄**：見 `docs/pdf_diff_guardrails.md`。未來修改 PDF diff/OCR/部署前，必須先看該文件。
+
+## 7. 2026-05-22 辨識召回稽核：影像型 PDF 大段內容變更會被靜默丟棄
+
+專家團隊調查（目標：讓審核人員清晰、快速辨識兩份 PDF 差異）。對象為 4 份台灣人壽 DM，兩組改版對：
+新保安心（1120209/FINAL → 20240701）、鳳守愛防癌（20260213 → 20260506）。皆為 image-only PDF。
+
+### 各對的真實差異（ground truth，逐頁人工比對）
+- 新保安心：
+  - p1 商品文號 `112年2月9日…1110152342號` → `113年7月1日…11304921175號`（文字+數字）。
+  - **p2 身故/喪葬段新增整句**：「訂立本契約時，以受監護宣告尚未撤銷者為被保險人，其身故保險金變更為喪葬費用保險金。」
+  - p2 註1/註2 用語改寫、投保規則表字距（多為排版）。
+  - p2 頁尾 `2023.02 / 2301-2501-OP2-0043` → `2024.07 / OP-2407-2607-0503`。
+- 鳳守愛：
+  - p2 資訊圖「**24**年增長超過4.2倍」→「**28**年增長超過4.2倍」（數字，嵌在點陣圖內）。
+  - p6 頁尾 `2026.02 / OP-2602-0081` → `2026.05 / 2605-OP-0029`。
+  - p1/p3/p4/p5 實質相同。
+
+### 召回稽核結論（會不會被顯示）
+- 會抓到：兩組頁尾 Version/Control No（受保護 OCR → NUMBER_MODIFIED）；鳳守愛 p2 `24→28`（diff_images SSIM+OCR，CJK 長串通過可靠性檢查）。
+- **會被漏掉（最關鍵破口）**：新保安心 p2 新增的整句條款。它是大段 CJK，命中 `is_large_region`（`diff_service.py` 約 line 1003）→ 不做 OCR → 標成 IMAGE_DIFF → 在 `merge_diff_results`（約 line 1677）被全數丟棄。審核清單上看不到這條最重要的內容變更。
+- 注意：先前一度誤判「影像型 PDF 全部歸零」並不正確；頁尾與高信號小區塊會存活。真正風險集中在「大區塊」與「OCR 不可靠」的真實內容變更。
+
+### 核心張力（已知設計，非單純 bug）
+`diff_service.py` 約 line 1677（丟棄所有 IMAGE_DIFF）與約 line 1685 `_drop_non_numeric_modifications`（只留新增/刪除與數字有變）是刻意的降噪策略。
+副作用：整段新增、純文字條款改寫（無數字變化）會一併被丟。降噪 vs 不漏真改在影像型 DM 上直接衝突。
+
+### 已驗證的兩個確定 bug
+1. **MinerU content_list bbox 為 0–1000 正規化**，但 `parser_service.py` `_mineru_bbox_to_bbox`（約 line 136）當點座標用 → 表格框會畫錯位置。已用 repo 內 20 個 `*_content_list.json` 驗證：xmax/ymax 一致落在 968–983，與頁數/內容無關。影像型不走 MinerU 故主情境未爆，但文字型 PDF 表格標記會偏移。修法：x*=page_w/1000、y*=page_h/1000 後再翻 Y；或改用 `middle.json` 的像素座標。
+2. **整表替換消失**：表格 ≥70% 變更時產生單一 item，其 old_value==new_value（同一句「整表替換」字串），隨後被 `_drop_non_numeric_modifications` 丟掉（`diff_service.py` 約 line 578 ↔ 1697）→ 大改費率表整個不見。
+
+### 決議方向（2026-05-22）
+- **採「加 MinerU 影像 OCR 召回層」**：影像型 PDF 也跑 MinerU `parse_method=ocr, lang_list=chinese_cht, table_enable=true, formula_enable=false`，取得區域文字+座標，做位置對齊文字比對，作為現有像素/頁尾護欄之後的「召回層」（不取代、不繞過護欄；原始 footer/Control-No、dilation iterations=4 一律不動）。MinerU 文字僅用於補既有像素變更區的 old/new，且必須通過既有可靠性檢查（`_is_reliable_ocr_pair`、priority pattern、長 CJK / dense numeric），不得單獨成為 TEXT_MODIFIED。
+- 風險：中。失敗模式：無框表格虛構儲存格、新舊區塊重切導致 bbox 對不上、版面 reflow 產生位置型雜訊、延遲增加。
+- **驗證**：使用者會把這 4 份 PDF 放入 `samples/`，再以容器內 `scripts/diagnose-pdf-samples.ps1` 跑真實回歸。必過底線（見 `pdf_diff_guardrails.md`）：`baoxinanxin` 不得出現 `[PAYV` 亂碼；兩組頁尾 Version/Control No 必須仍偵測到；`臻美利` 不得出現假 `Version: 975.18`。
+- 旁支低風險修正（可先做）：上述兩個確定 bug；前端/回應加「已抑制 N 筆視覺變更」提示，避免靜默漏報。
+
+### 實作狀態（2026-05-22）
+- 已完成且通過單元測試（backend/tests 全套 39 passed；host 無 fitz/tesseract，故僅跑不依賴它們的純邏輯）：
+  - Fix #1：`parser_service._mineru_bbox_to_bbox` 改為以頁面尺寸把 0–1000 正規化座標縮回點座標（新增 `_get_page_sizes_fitz`，`_parse_via_mineru` 改收 `page_sizes`）。測試見 `tests/test_parser_service.py`。
+  - Fix #2：`diff_service._diff_table_cells` 的整表替換 item 改帶入實際變更樣本，使其在非數字過濾後存活；數字表標為 NUMBER_MODIFIED。測試見 `tests/test_table_diff.py`。
+  - 召回層演算法：`diff_service.diff_positioned_paragraphs` + `_bbox_iou`（位置對齊、IoU 配對、可靠性閘擋亂碼）；`parser_service.parse_image_pdf_via_mineru_ocr`（MinerU `parse_method=ocr`）。測試見 `tests/test_image_text_recall.py`（5 例：IoU、找回新增條款、數字變更、擋 `[PAYV` 亂碼、同位同字不報）。
+  - 整合：`generate_diff_report` 影像路徑在開關開啟時跑召回層；box-in-box 去重把 ADDED/DELETED 視為內容（避免被粗略視覺框吃掉）。
+- 開關：`ENABLE_IMAGE_TEXT_RECALL`（`config.enable_image_text_recall`，預設 **false**）。compose 已加該 env（預設 false）。關閉時行為與改動前完全相同 → 零回歸風險。
+- **尚待驗證（需容器 + MinerU 服務）**：host 無 fitz/tesseract/Docker，無法端到端驗證。請在容器內：
+  1. 把 `ENABLE_IMAGE_TEXT_RECALL=true` 設到 `backend-minerU`，確認 `mineru-api-minerU` healthy。
+  2. 把要測的 PDF（4 份附件樣本，或 `商品DM/美保發`、`商品DM/臻美利` 兩組 1130101→1130418）放到掃描根目錄，跑 `scripts/diagnose-pdf-samples.ps1`。
+  3. 必過底線：`baoxinanxin` p2 新增條款（監護宣告）應以 ADDED 區塊出現且**無** `[PAYV` 亂碼；`fengshouai` p2 `24→28`、兩組頁尾 Version/Control No 仍須偵測；`臻美利` 不得出現假 `Version: 975.18`。
+  4. 依結果調 `diff_positioned_paragraphs` 的 `iou_threshold` 與可靠性閘；確認召回未引入亂碼或重複後，才把預設開關打開。
+
+### 容器回歸結果（2026-05-22，召回層啟用）
+環境：`docker run` 接 `pdf_check_mineru_internal` 網路、`ENABLE_IMAGE_TEXT_RECALL=true`、`MINERU_API_URL=...:18080`，掛載本機改過的 repo，對 `商品DM/美保發`、`商品DM/臻美利`（皆 1130101→1130418，image_pdf=True）跑 `scripts/diagnose_pdf_samples.py`。MinerU `/health 200`、tesseract 5.5.0。
+
+達成（召回層的價值，符合「不漏真改」目標）：
+- 臻美利 p2/p3/p4 找回整段新增「註3：本商品於部分保單年度有基本保險金額對應之身故/完全失能保險金給付逐年遞減之特性…」——這是現行像素路徑會判 IMAGE_DIFF 後丟棄、審核最該看到的揭露新增。
+- 兩組頁尾版本/文號變更皆正確：美保發 `2024.01/2312-2512-OP2-0300`→`2024.04/OP-2404-2604-0238`；臻美利 `…OP2-0274`→`…0234`。
+- 無 `[PAYV` 類亂碼進入結果（可靠性閘有效）。
+
+仍有的誤報（為什麼維持預設關閉的原因，待調）：
+1. **OCR 標點不穩定**：同一句「宣告利率3.90%」在新舊兩份各自 OCR 後一邊讀成「3,90%」（逗點 vs 句點），被判 NUMBER_MODIFIED（臻美利 d002/d005/d007）。根因：兩份是各自獨立 OCR，標點層級雜訊不一致。
+2. **區塊重切誤報**：相同內容因新舊 OCR 段落切分不同 → bbox 配不上 → 誤報 ADDED/DELETED（美保發 d003 客服電話行；臻美利 d008 公式塊）。
+
+已實作的調整（2026-05-22 二次，`diff_positioned_paragraphs` 改為逐頁處理）：
+- **降 OCR 誤報（針對「頁面其實大致相同」）**：
+  - `_recall_norm`：比對前移除數字間的逗點/句點（`3.90`↔`3,90`→`390`），吸收 OCR 小數/千分位漂移 → 解 FP#1。
+  - 區塊配對加「文字相似度回退」（`_BLOCK_REMATCH_RATIO=0.60`）：IoU 配不上時，用文字相似度再配一次；同文字移位 → 視為重切不報 → 解 FP#2。
+- **整頁版面變更 → 全面標記（針對「整個版面真的重新設計」）**：逐頁計算文字相似度，低於 `_PAGE_REDESIGN_RATIO=0.45`（且兩側內容夠長）時，輸出**單一「整頁版面變更」綜合標記**涵蓋整頁，而非碎成大量區塊或被壓掉。
+- **綜合標記保證存活**：`_drop_non_numeric_modifications` 對 context 含「整頁版面變更／整表替換」者一律保留（`_COMPREHENSIVE_MARKERS`），確保整頁重設計一定被標出。
+- 單元測試：`tests/test_image_text_recall.py` 增 3 例（整頁重設計→單一標記、區塊重切不誤報、標點漂移不誤報）；後端全套件 42 passed。
+- 仍維持 `ENABLE_IMAGE_TEXT_RECALL` 預設關；二次容器回歸（美保發/臻美利）確認誤報消失、真實召回（臻美利註3 新增、兩組頁尾）與無亂碼仍在後，再評估是否預設打開。
+
+### 呈現面（2026-05-22）：已抑制視覺變更提示
+- `DiffReport` 新增 `suppressed_count`（`merge_diff_results` 以可選 `stats` 參數回報被丟棄的 IMAGE_DIFF 數，`generate_diff_report` 帶入；不改變既有丟棄行為，既有測試與輔助腳本不受影響）。
+- 前端 `ComparePage` 差異摘要區、`types.ts` `DiffReport.suppressed_count`：當 >0 時顯示「另偵測到 N 處視覺/排版變更未列入內容差異，請對照截圖再確認」橫幅，避免影像型 PDF「看到 0 筆」的靜默漏報感。
+
+### 驗證迭代與相似度閘（2026-05-22 三次）
+多輪容器回歸（美保發/臻美利，召回層啟用）逐步收斂誤報：
+- 包含關係閘生效：美保發「客服電話新增」、臻美利「本範例數值僅供參考」等重切誤報消失；美保發收斂到 2 筆（揭露值刪除＋頁尾，皆為真）。
+- 真實召回穩定保留：臻美利「註3：身故/完全失能保險金遞減特性」新增（p2/p3/p4）與兩組頁尾版本/文號變更皆在。
+- **殘留誤報根因（重要）**：臻美利 p2/p3/p4 的「註1/註2」長註腳塊仍被報為內容變更。容器內合成測試證實程式碼與數字正規化皆正確；根因是**兩份各自 OCR，長註腳全文裡有位數誤讀**（同一段靜態文字，一次讀對一次讀錯），`_recall_norm` 的標點正規化修不了位數誤讀，且誤讀的數字會讓「數字有變」成立。
+- **修法（三次，取代數字閘）**：matched 區塊改用**無條件相似度閘** `_NOISE_SIM=0.95`——新舊正規化後相似度 ≥0.95 即視為 OCR 不穩雜訊不報；真改（重寫的句子、短儲存格費率）相似度明顯較低仍會報。比「只看數字是否變」更穩健，且不誤殺短句真數字變更（單元測試涵蓋）。
+- **已知取捨**：大型數字格網（費率/試算表）OCR 本身就讀成亂碼，召回層無法可靠偵測其中單一數值變更；這類改動由像素路徑標為 IMAGE_DIFF + `suppressed_count` 橫幅提示審核人員對照截圖人工確認。
+- `ENABLE_IMAGE_TEXT_RECALL` 維持預設 **關**。相似度閘的長註腳實際效果以容器回歸最終確認後，再決定是否預設打開。
+- 後端全套件 45 passed（`tests/test_image_text_recall.py` 共 10 例，涵蓋整頁重設計、重切回退、包含關係、標點漂移、相似度雜訊、真數字變更保留）。
+
+- **完整護欄**：見 `docs/pdf_diff_guardrails.md`。未來修改 PDF diff/OCR/部署前，必須先看該文件。

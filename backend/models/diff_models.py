@@ -46,6 +46,9 @@ class DiffReport(BaseModel):
     total_diffs: int
     items: list[DiffItem]
     summary: str | None = None
+    # Count of visual-only (IMAGE_DIFF) regions detected but dropped from the
+    # content list, so the UI can warn the reviewer to also check the snapshots.
+    suppressed_count: int = 0
 
 
 class CheckStatus(str, Enum):

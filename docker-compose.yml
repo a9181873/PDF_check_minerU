@@ -35,6 +35,9 @@ services:
       MINERU_API_URL: 'http://mineru-api-minerU:18080'
       ENABLE_DOCLING_PARALLEL: 'true'
       MINERU_PREFERRED_WAIT_SECONDS: '0'
+      # Image-only PDF text-recall layer. Keep 'false' until validated with the
+      # fixed-sample container regression (scripts/diagnose-pdf-samples.ps1).
+      ENABLE_IMAGE_TEXT_RECALL: 'false'
     volumes:
       - backend_runtime_minerU:/app/runtime
       - backend_hf_cache_minerU:/app/.cache/huggingface

@@ -481,6 +481,231 @@ def diff_paragraphs(
     return diff_items
 
 
+def _bbox_iou(a: BBox, b: BBox) -> float:
+    """Intersection-over-union of two bboxes on the same page (0.0 otherwise)."""
+    if a.page != b.page:
+        return 0.0
+    ix0, iy0 = max(a.x0, b.x0), max(a.y0, b.y0)
+    ix1, iy1 = min(a.x1, b.x1), min(a.y1, b.y1)
+    inter = max(0.0, ix1 - ix0) * max(0.0, iy1 - iy0)
+    if inter <= 0.0:
+        return 0.0
+    area_a = max(0.0, a.x1 - a.x0) * max(0.0, a.y1 - a.y0)
+    area_b = max(0.0, b.x1 - b.x0) * max(0.0, b.y1 - b.y0)
+    union = area_a + area_b - inter
+    return inter / union if union > 0.0 else 0.0
+
+
+# Recall-layer tuning. The recall layer OCR-diffs two INDEPENDENTLY OCR'd image
+# PDFs, so it must absorb OCR-level noise (punctuation drift, block
+# re-segmentation) yet still flag a genuine wholesale page redesign in full.
+_RECALL_NUM_SEP_RE = re.compile(r"(?<=\d)[.,](?=\d)")
+_PAGE_REDESIGN_RATIO = 0.45   # page text similarity below this → whole-page redesign
+_BLOCK_REMATCH_RATIO = 0.60   # text-similarity fallback to re-pair re-segmented blocks
+_NOISE_SIM = 0.95             # matched blocks this similar = OCR noise, not a real edit
+_CONTAINMENT_SUPPRESS = 0.85  # add/del block this contained in the other page = re-segmentation
+_COMPREHENSIVE_MARKERS = ("整頁版面變更", "整表替換")
+
+
+def _recall_norm(text: str) -> str:
+    """Normalise for recall comparison: deep-normalise + drop OCR-unstable numeric
+    separators ('3.90' vs '3,90' → '390') so thousands/decimal OCR drift between
+    the two documents does not surface as a false NUMBER_MODIFIED."""
+    return _RECALL_NUM_SEP_RE.sub("", _deep_normalize(text))
+
+
+def _text_ratio(a: str, b: str) -> float:
+    if not a and not b:
+        return 1.0
+    return SequenceMatcher(None, a, b, autojunk=False).ratio()
+
+
+def _containment(sub: str, whole: str) -> float:
+    """Fraction of `sub` that appears (as matching blocks) inside `whole`. 1.0 means
+    sub is essentially present in whole — i.e. an add/del candidate that is really
+    just re-segmented text already on the other side."""
+    if not sub:
+        return 1.0
+    sm = SequenceMatcher(None, sub, whole, autojunk=False)
+    return sum(b.size for b in sm.get_matching_blocks()) / len(sub)
+
+
+def _union_bbox(paragraphs: list[ParsedParagraph], page: int) -> BBox | None:
+    boxes = [p.bbox for p in paragraphs if p.bbox]
+    if not boxes:
+        return None
+    return BBox(
+        page=page,
+        x0=min(b.x0 for b in boxes), y0=min(b.y0 for b in boxes),
+        x1=max(b.x1 for b in boxes), y1=max(b.y1 for b in boxes),
+    )
+
+
+def _recall_block_item(op: ParsedParagraph, npg: ParsedParagraph, page: int, conf: float) -> DiffItem | None:
+    """Build a gated TEXT/NUMBER_MODIFIED for a matched-but-changed block pair.
+
+    Two image PDFs are OCR'd independently, so long blocks (esp. footnotes)
+    accumulate scattered punctuation/spacing/digit-misread drift. A near-identical
+    pair (similarity >= `_NOISE_SIM`) is OCR noise, NOT a content edit — drop it.
+    Only a substantial difference (a reworded line, a rate change in a short cell)
+    drops below the threshold and is reported. Wording-only changes are still
+    filtered downstream by the non-numeric filter; numeric edits survive.
+    """
+    on, nn = _recall_norm(op.text), _recall_norm(npg.text)
+    if on == nn:
+        return None  # same content (incl. numeric separator drift) → not a change
+    if not (_is_reliable_ocr_text(op.text) and _is_reliable_ocr_text(npg.text)):
+        return None
+    if _text_ratio(on, nn) >= _NOISE_SIM:
+        return None  # near-identical → OCR instability, not a real change
+    return DiffItem(
+        id="", diff_type=_guess_diff_type(op.text, npg.text),
+        old_value=_clip_text(op.text), new_value=_clip_text(npg.text),
+        old_bbox=op.bbox, new_bbox=npg.bbox,
+        context=f"Page {page} 內容變更（OCR召回）", confidence=conf,
+    )
+
+
+def _diff_page_blocks(
+    olds: list[ParsedParagraph],
+    news: list[ParsedParagraph],
+    page: int,
+    iou_threshold: float,
+) -> list[DiffItem]:
+    """Per-block recall diff for a page that is NOT a wholesale redesign."""
+    items: list[DiffItem] = []
+    matched_new: set[int] = set()
+    unmatched_old: list[ParsedParagraph] = []
+    # Page-level normalised text — used to suppress re-segmentation add/del:
+    # a block "added" on one side that is already present in the other side's
+    # page text is just OCR re-splitting, not a real content change.
+    old_join_norm = _recall_norm(" ".join(p.text for p in olds))
+    new_join_norm = _recall_norm(" ".join(p.text for p in news))
+
+    # Pass 1: position (IoU) matching.
+    for op in olds:
+        best_j, best_iou = -1, 0.0
+        for j, npg in enumerate(news):
+            if j in matched_new:
+                continue
+            iou = _bbox_iou(op.bbox, npg.bbox)
+            if iou > best_iou:
+                best_iou, best_j = iou, j
+        if best_j >= 0 and best_iou >= iou_threshold:
+            matched_new.add(best_j)
+            item = _recall_block_item(op, news[best_j], page, 0.78)
+            if item:
+                items.append(item)
+        else:
+            unmatched_old.append(op)
+
+    # Pass 2: text-similarity fallback to re-pair re-segmented/moved blocks before
+    # declaring add/delete — same text at a new bbox must not become a false
+    # ADDED+DELETED pair.
+    for op in unmatched_old:
+        on = _recall_norm(op.text)
+        best_j, best_ratio = -1, 0.0
+        for j, npg in enumerate(news):
+            if j in matched_new:
+                continue
+            r = _text_ratio(on, _recall_norm(npg.text))
+            if r > best_ratio:
+                best_ratio, best_j = r, j
+        if best_j >= 0 and best_ratio >= _BLOCK_REMATCH_RATIO:
+            matched_new.add(best_j)
+            item = _recall_block_item(op, news[best_j], page, 0.75)
+            if item:
+                items.append(item)
+        elif (
+            _is_reliable_ocr_text(op.text)
+            and _containment(_recall_norm(op.text), new_join_norm) < _CONTAINMENT_SUPPRESS
+        ):
+            items.append(DiffItem(
+                id="", diff_type=DiffType.DELETED,
+                old_value=_clip_text(op.text), new_value=None,
+                old_bbox=op.bbox, new_bbox=None,
+                context=f"Page {page} 區塊刪除（OCR召回）", confidence=0.75,
+            ))
+
+    # Remaining unmatched new blocks → ADDED (gated). Skip ones whose text is
+    # already present in the old page (re-segmentation, not a real addition).
+    for j, npg in enumerate(news):
+        if j in matched_new or not _is_reliable_ocr_text(npg.text):
+            continue
+        if _containment(_recall_norm(npg.text), old_join_norm) >= _CONTAINMENT_SUPPRESS:
+            continue
+        items.append(DiffItem(
+            id="", diff_type=DiffType.ADDED,
+            old_value=None, new_value=_clip_text(npg.text),
+            old_bbox=None, new_bbox=npg.bbox,
+            context=f"Page {page} 區塊新增（OCR召回）", confidence=0.75,
+        ))
+
+    return items
+
+
+def diff_positioned_paragraphs(
+    old_paragraphs: list[ParsedParagraph],
+    new_paragraphs: list[ParsedParagraph],
+    *,
+    iou_threshold: float = 0.3,
+) -> list[DiffItem]:
+    """Position-aligned text diff for image-only PDFs parsed via forced OCR.
+
+    Recall layer: the pixel path classifies large CJK text blocks (an added
+    clause, a whole redesigned page) as IMAGE_DIFF and drops them, so a real
+    content change is never shown. Processed per page (present on both sides):
+
+      • Wholesale redesign (page text similarity < `_PAGE_REDESIGN_RATIO`) → emit
+        ONE comprehensive 「整頁版面變更」 marker. It is kept by the non-numeric
+        filter, so a fully re-laid page is flagged in full instead of being
+        fragmented into many noisy per-block items or suppressed.
+      • Otherwise → per-block IoU diff with OCR-noise guards: numeric-separator
+        normalisation (`3.90`↔`3,90`) and a text-similarity fallback that
+        re-pairs re-segmented blocks, so OCR punctuation drift / block
+        re-splitting between the two scans do not become false positives.
+
+    Every surfaced value passes `_is_reliable_ocr_text`, so OCR garbage (the
+    `[PAYV` class the guardrails forbid) is never exposed.
+    """
+    from collections import defaultdict
+
+    old_by_page: dict[int, list[ParsedParagraph]] = defaultdict(list)
+    new_by_page: dict[int, list[ParsedParagraph]] = defaultdict(list)
+    for p in old_paragraphs:
+        if p.bbox:
+            old_by_page[p.bbox.page].append(p)
+    for p in new_paragraphs:
+        if p.bbox:
+            new_by_page[p.bbox.page].append(p)
+
+    items: list[DiffItem] = []
+    # Only pages present on BOTH sides; whole-page add/delete is the pixel path's job.
+    for page in sorted(set(old_by_page) & set(new_by_page)):
+        olds = old_by_page[page]
+        news = new_by_page[page]
+        old_join = _recall_norm(" ".join(p.text for p in olds))
+        new_join = _recall_norm(" ".join(p.text for p in news))
+
+        if (
+            len(old_join) > 30 and len(new_join) > 30
+            and _text_ratio(old_join, new_join) < _PAGE_REDESIGN_RATIO
+        ):
+            bbox = _union_bbox(olds + news, page)
+            items.append(DiffItem(
+                id="", diff_type=DiffType.TEXT_MODIFIED,
+                old_value=_clip_text("整頁版面變更｜舊：" + old_join, 200),
+                new_value=_clip_text("整頁版面變更｜新：" + new_join, 200),
+                old_bbox=bbox, new_bbox=bbox,
+                context=f"Page {page} 整頁版面變更（OCR召回）", confidence=0.85,
+            ))
+            continue
+
+        items.extend(_diff_page_blocks(olds, news, page, iou_threshold))
+
+    return items
+
+
 def align_table_headers(old_df, new_df) -> tuple[dict, dict]:
     old_cols = {col: col for col in old_df.columns}
     new_cols = {col: col for col in new_df.columns}
@@ -575,11 +800,21 @@ def _diff_table_cells(
     # Aggregation: if most cells changed, one whole-table marker is clearer.
     change_ratio = changed_cells / max(total_cells, 1)
     if change_ratio >= _CELL_DIFF_AGGREGATE_THRESHOLD:
+        # Carry a few real changed-cell values into old/new so the marker (a)
+        # survives the final non-numeric filter — identical placeholder strings
+        # used to make _drop_non_numeric_modifications delete a heavily-changed
+        # rate table entirely — and (b) lets the reviewer see WHAT changed.
+        head = f"{context} 整表替換（{changed_cells}/{total_cells} 格變更）"
+        old_samples = [it.old_value for it in pending if it.old_value][:8]
+        new_samples = [it.new_value for it in pending if it.new_value][:8]
+        has_number = any(it.diff_type == DiffType.NUMBER_MODIFIED for it in pending)
+        old_summary = (f"{head}｜舊：" + " / ".join(old_samples)) if old_samples else head
+        new_summary = (f"{head}｜新：" + " / ".join(new_samples)) if new_samples else head
         return [DiffItem(
             id="",
-            diff_type=DiffType.TEXT_MODIFIED,
-            old_value=f"{context} 整表替換（{changed_cells}/{total_cells} 格變更）",
-            new_value=f"{context} 整表替換（{changed_cells}/{total_cells} 格變更）",
+            diff_type=DiffType.NUMBER_MODIFIED if has_number else DiffType.TEXT_MODIFIED,
+            old_value=old_summary,
+            new_value=new_summary,
             old_bbox=old_table.bbox,
             new_bbox=new_table.bbox,
             context=f"{context} — 整表替換",
@@ -1614,6 +1849,7 @@ def merge_diff_results(
     table_diffs: list[DiffItem],
     pixel_diffs: list[DiffItem] | None,
     image_diffs: list[DiffItem] | None = None,
+    stats: dict | None = None,
 ) -> list[DiffItem]:
     merged = [*text_diffs, *table_diffs]
     if pixel_diffs:
@@ -1662,9 +1898,12 @@ def merge_diff_results(
                 if _contains(bi, bj) and _area(bi) > _area(bj) * 1.2:
                     area_i = _area(bi)
                     area_j = _area(bj)
-                    inner_is_text = merged[j].diff_type in {DiffType.TEXT_MODIFIED, DiffType.NUMBER_MODIFIED}
+                    inner_is_content = merged[j].diff_type in {
+                        DiffType.TEXT_MODIFIED, DiffType.NUMBER_MODIFIED,
+                        DiffType.ADDED, DiffType.DELETED,
+                    }
                     outer_is_visual = merged[i].diff_type == DiffType.IMAGE_DIFF
-                    if inner_is_text and (outer_is_visual or area_i > area_j * 8):
+                    if inner_is_content and (outer_is_visual or area_i > area_j * 8):
                         to_remove.add(i)
                         break
                     to_remove.add(j)
@@ -1673,7 +1912,12 @@ def merge_diff_results(
 
     # Drop image-only (pure visual) diffs — they are noise for content review.
     # Text / number / added / deleted changes still carry their values, so only
-    # markers whose sole signal is a visual delta are removed.
+    # markers whose sole signal is a visual delta are removed. Record how many
+    # were dropped so the UI can warn the reviewer to also check the snapshots.
+    if stats is not None:
+        stats["suppressed_visual"] = stats.get("suppressed_visual", 0) + sum(
+            1 for item in merged if item.diff_type == DiffType.IMAGE_DIFF
+        )
     merged = [item for item in merged if item.diff_type != DiffType.IMAGE_DIFF]
 
     merged = sorted(merged, key=_sort_key)
@@ -1688,11 +1932,15 @@ def _drop_non_numeric_modifications(items: list[DiffItem]) -> list[DiffItem]:
 
     Added/deleted items are structural presence changes (a whole new or removed
     block) and are kept regardless, since they are not "text differences" in the
-    modify-in-place sense the reviewer asked to suppress.
+    modify-in-place sense the reviewer asked to suppress. Comprehensive markers
+    (整頁版面變更 / 整表替換) are deliberate whole-page/table aggregates and are
+    always kept so a genuine wholesale redesign is flagged in full.
     """
     kept: list[DiffItem] = []
     for item in items:
         if item.diff_type in (DiffType.ADDED, DiffType.DELETED):
+            kept.append(item)
+        elif item.context and any(m in item.context for m in _COMPREHENSIVE_MARKERS):
             kept.append(item)
         elif _numbers_changed(item.old_value, item.new_value):
             kept.append(item)
@@ -1724,12 +1972,27 @@ def generate_diff_report(
         except Exception:
             img_diffs = None
     imgc = len(img_diffs) if img_diffs else 0
+    stats: dict = {}
 
     if use_pixel_only:
         pixel_diffs = diff_pixels(old_pdf_path, new_pdf_path)
-        merged_items = merge_diff_results([], [], pixel_diffs, img_diffs)
+        # Recall layer (opt-in): forced-OCR both sides via MinerU and diff text by
+        # position to recover large CJK block / rate-table changes the pixel path
+        # drops as IMAGE_DIFF. Behind a flag + gated by reliability checks; any
+        # failure (no MinerU, OCR error) degrades silently to pixel-only.
+        recall_diffs: list[DiffItem] = []
+        try:
+            from config import settings as _settings
+            if getattr(_settings, "enable_image_text_recall", False):
+                from services.parser_service import parse_image_pdf_via_mineru_ocr
+                old_ocr = parse_image_pdf_via_mineru_ocr(old_pdf_path)
+                new_ocr = parse_image_pdf_via_mineru_ocr(new_pdf_path)
+                recall_diffs = diff_positioned_paragraphs(old_ocr.paragraphs, new_ocr.paragraphs)
+        except Exception:
+            recall_diffs = []
+        merged_items = merge_diff_results(recall_diffs, [], pixel_diffs, img_diffs, stats=stats)
         mode = "image_pdf" if (old_doc.is_image_pdf and new_doc.is_image_pdf) else "mixed_pdf"
-        summary = f"{mode}; pixel={len(pixel_diffs)}, img={imgc}"
+        summary = f"{mode}; pixel={len(pixel_diffs)}, img={imgc}, recall={len(recall_diffs)}"
     else:
         text_diffs = diff_paragraphs(old_doc.paragraphs, new_doc.paragraphs)
         table_diffs = diff_tables(old_doc.tables, new_doc.tables)
@@ -1739,7 +2002,7 @@ def generate_diff_report(
         pixel_diffs_fb = None
         if old_pdf_path and new_pdf_path:
             pixel_diffs_fb = diff_pixels(old_pdf_path, new_pdf_path)
-        merged_items = merge_diff_results(text_diffs, table_diffs, pixel_diffs_fb, img_diffs)
+        merged_items = merge_diff_results(text_diffs, table_diffs, pixel_diffs_fb, img_diffs, stats=stats)
         pxc = len(pixel_diffs_fb) if pixel_diffs_fb else 0
         summary = f"text_pdf; text={len(text_diffs)}, table={len(table_diffs)}, pixel={pxc}, img={imgc}"
 
@@ -1758,4 +2021,5 @@ def generate_diff_report(
         total_diffs=len(merged_items),
         items=merged_items,
         summary=summary,
+        suppressed_count=int(stats.get("suppressed_visual", 0)),
     )

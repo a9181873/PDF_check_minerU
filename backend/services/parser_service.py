@@ -123,19 +123,38 @@ def _get_docling_converter():
 
 # ── MinerU helpers ────────────────────────────────────────────────────────────
 
-def _get_page_heights_fitz(pdf_path: Path) -> dict[int, float]:
-    """Return {page_no (1-based): height_in_pt} using PyMuPDF."""
+def _get_page_sizes_fitz(pdf_path: Path) -> dict[int, tuple[float, float]]:
+    """Return {page_no (1-based): (width_pt, height_pt)} using PyMuPDF."""
     try:
         import fitz
         with fitz.open(pdf_path) as doc:
-            return {i + 1: float(page.rect.height) for i, page in enumerate(doc)}
+            return {
+                i + 1: (float(page.rect.width), float(page.rect.height))
+                for i, page in enumerate(doc)
+            }
     except Exception:
         return {}
 
 
-def _mineru_bbox_to_bbox(raw: list, page_no: int, page_height: float) -> BBox:
-    """Convert MinerU [x0, y0_top, x1, y1_top] (top-left origin) to bottom-left BBox."""
-    x0, y0_top, x1, y1_top = float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3])
+def _mineru_bbox_to_bbox(raw: list, page_no: int, page_width: float, page_height: float) -> BBox:
+    """Convert a MinerU content_list bbox to a bottom-left-origin BBox.
+
+    MinerU ``content_list.json`` bboxes are normalised to a 0–1000 coordinate
+    space with a top-left origin — verified empirically against the repo's own
+    outputs, where x/y maxima cluster at ~968–983 regardless of page size or
+    page count (see docs/historical_issues.md §7). Scale back to PDF points
+    using the real page size, then flip Y to a bottom-left origin. When the page
+    size is unknown (<= 0) fall back to treating the values as raw points so a
+    missing fitz page cannot break the conversion.
+    """
+    x0n, y0n_top, x1n, y1n_top = float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3])
+    if page_width > 0 and page_height > 0:
+        sx = page_width / 1000.0
+        sy = page_height / 1000.0
+        x0, x1 = x0n * sx, x1n * sx
+        y0_top, y1_top = y0n_top * sy, y1n_top * sy
+    else:
+        x0, x1, y0_top, y1_top = x0n, x1n, y0n_top, y1n_top
     return BBox(page=page_no, x0=x0, y0=page_height - y1_top, x1=x1, y1=page_height - y0_top)
 
 
@@ -165,13 +184,15 @@ def _html_table_to_dataframe(html: str) -> pd.DataFrame:
 
 def _parse_via_mineru(
     pdf_path: Path,
-    page_heights: dict[int, float],
+    page_sizes: dict[int, tuple[float, float]],
+    parse_method: str = "auto",
 ) -> ParsedDocument:
     """Call MinerU REST API to extract tables and text.
 
     Uses pipeline backend with chinese_cht language to minimise
-    Traditional/Simplified Chinese mixing in OCR output.
-    Falls back gracefully if the service is unavailable.
+    Traditional/Simplified Chinese mixing in OCR output. ``parse_method`` is
+    "auto" for text-layer PDFs and "ocr" to force OCR on image-only PDFs (the
+    recall layer). Falls back gracefully if the service is unavailable.
     """
     import requests as _requests
 
@@ -188,7 +209,7 @@ def _parse_via_mineru(
             data={
                 "backend": "pipeline",
                 "lang_list": "chinese_cht",
-                "parse_method": "auto",
+                "parse_method": parse_method,
                 "return_md": "true",
                 "return_content_list": "true",
             },
@@ -217,9 +238,12 @@ def _parse_via_mineru(
         raw_bbox = block.get("bbox") or []
         # MinerU uses 0-based page_idx
         page_no = int(block.get("page_idx", 0)) + 1
-        page_h = page_heights.get(page_no, DEFAULT_PAGE_HEIGHT_PT)
+        page_w, page_h = page_sizes.get(page_no, (DEFAULT_PAGE_WIDTH_PT, DEFAULT_PAGE_HEIGHT_PT))
 
-        bbox = _mineru_bbox_to_bbox(raw_bbox, page_no, page_h) if len(raw_bbox) == 4 else None
+        bbox = (
+            _mineru_bbox_to_bbox(raw_bbox, page_no, page_w, page_h)
+            if len(raw_bbox) == 4 else None
+        )
 
         if btype == "text":
             text = _normalize_mineru_text(block.get("text", "") or "")
@@ -244,7 +268,7 @@ def _parse_via_mineru(
                     cell_bboxes={},  # cell-level bbox not available from MinerU HTML
                 ))
 
-    total_pages = max(page_heights.keys()) if page_heights else max(
+    total_pages = max(page_sizes.keys()) if page_sizes else max(
         (int(b.get("page_idx", 0)) + 1 for b in cl if isinstance(b, dict)), default=1
     )
 
@@ -561,7 +585,7 @@ def parse_pdf(file_path: str) -> ParsedDocument:
             # Text-layer PDF: augment with table detection.
             # Prefer MinerU (higher table precision, cell-level HTML) when configured;
             # fall back to Docling when MinerU is unavailable.
-            page_heights = _get_page_heights_fitz(pdf_path)
+            page_sizes = _get_page_sizes_fitz(pdf_path)
             table_doc = None
 
             from config import settings
@@ -571,7 +595,7 @@ def parse_pdf(file_path: str) -> ParsedDocument:
             if mineru_url and settings.enable_docling_parallel:
                 pool = ThreadPoolExecutor(max_workers=2)
                 futures = {
-                    pool.submit(_parse_via_mineru, pdf_path, page_heights): "mineru",
+                    pool.submit(_parse_via_mineru, pdf_path, page_sizes): "mineru",
                     pool.submit(_parse_via_docling, pdf_path): "docling",
                 }
                 mineru_future = next(fut for fut, engine in futures.items() if engine == "mineru")
@@ -631,7 +655,7 @@ def parse_pdf(file_path: str) -> ParsedDocument:
             else:
                 if mineru_url:
                     try:
-                        table_doc = _parse_via_mineru(pdf_path, page_heights)
+                        table_doc = _parse_via_mineru(pdf_path, page_sizes)
                     except Exception:
                         table_doc = None
 
@@ -687,6 +711,19 @@ def parse_pdf(file_path: str) -> ParsedDocument:
 def parse_pdf_fallback(file_path: str) -> ParsedDocument:
     """Fallback parser hook using pdftotext directly."""
     return _parse_via_pdftotext(Path(file_path))
+
+
+def parse_image_pdf_via_mineru_ocr(file_path: str) -> ParsedDocument:
+    """Parse an image-only PDF through MinerU with forced OCR.
+
+    Used by the text-recall layer (diff_service.diff_positioned_paragraphs) to
+    recover CJK block / rate-table changes the pixel path misses. Paragraph
+    bboxes are scaled from MinerU's 0–1000 space using the real page size.
+    Raises if MinerU is unavailable so the caller can degrade gracefully.
+    """
+    pdf_path = Path(file_path)
+    page_sizes = _get_page_sizes_fitz(pdf_path)
+    return _parse_via_mineru(pdf_path, page_sizes, parse_method="ocr")
 
 
 def render_markdown(document: ParsedDocument, source_name: str | None = None) -> str:

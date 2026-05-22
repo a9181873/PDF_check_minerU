@@ -731,6 +731,15 @@ const ComparePage: React.FC = () => {
               </div>
             </div>
 
+            {report?.suppressed_count ? (
+              <div className="mb-4 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-amber-800">
+                <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                <span className="text-sm">
+                  另偵測到 {report.suppressed_count} 處視覺/排版變更未列入內容差異，請對照頁面截圖再確認一次。
+                </span>
+              </div>
+            ) : null}
+
             <div className="space-y-2 rounded-2xl bg-[#F5F5F5] p-4">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">新增內容</span>

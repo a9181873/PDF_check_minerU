@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     enable_docling_parallel: bool = True
     mineru_preferred_wait_seconds: float = 0.0
 
+    # Image-only PDFs: also parse both sides via MinerU forced-OCR and diff text
+    # by position, to recover large CJK block changes (e.g. an added clause) and
+    # rate-table edits the pixel path classifies as IMAGE_DIFF and drops. OFF by
+    # default — needs a fixed-sample regression before enabling (see
+    # docs/pdf_diff_guardrails.md / docs/historical_issues.md §7).
+    enable_image_text_recall: bool = False
+
     # Snapshot PNGs are audit convenience artifacts. Rendering every page is CPU
     # expensive, so default to pages that actually contain diffs.
     generate_snapshots: bool = True

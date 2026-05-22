@@ -39,6 +39,7 @@ export interface DiffReport {
   total_diffs: number;
   items: DiffItem[];
   summary?: string | null;
+  suppressed_count?: number;
 }
 
 export enum CheckStatus {
