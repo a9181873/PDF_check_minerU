@@ -502,8 +502,7 @@ def _bbox_iou(a: BBox, b: BBox) -> float:
 _RECALL_NUM_SEP_RE = re.compile(r"(?<=\d)[.,](?=\d)")
 _PAGE_REDESIGN_RATIO = 0.45   # page text similarity below this → whole-page redesign
 _BLOCK_REMATCH_RATIO = 0.60   # text-similarity fallback to re-pair re-segmented blocks
-_NOISE_SIM = 0.95             # matched blocks this similar = OCR noise, not a real edit
-_CONTAINMENT_SUPPRESS = 0.85  # add/del block this contained in the other page = re-segmentation
+_CONTAINMENT_SUPPRESS = 0.85  # add/del block this contained in the other doc = re-segmentation
 _COMPREHENSIVE_MARKERS = ("整頁版面變更", "整表替換")
 
 
@@ -520,6 +519,15 @@ def _recall_digits(norm_text: str) -> list[str]:
     absorbing decimal/thousands OCR drift — used to decide whether a re-segmented
     matched pair carries a genuine number change."""
     return sorted(re.findall(r"\d+", norm_text))
+
+
+def _digits_covered(block_norm: str, doc_norm: str) -> bool:
+    """True when every digit run in `block_norm` already appears somewhere in
+    `doc_norm` — i.e. the block introduces no new number relative to the other
+    document. Lets the add/delete guard suppress a re-segmented block ONLY when it
+    carries no numeric change; a real rate/total edit keeps a novel digit run and
+    is therefore surfaced even if its surrounding text is otherwise present."""
+    return set(re.findall(r"\d+", block_norm)) <= set(re.findall(r"\d+", doc_norm))
 
 
 def _text_ratio(a: str, b: str) -> float:
@@ -550,36 +558,25 @@ def _union_bbox(paragraphs: list[ParsedParagraph], page: int) -> BBox | None:
 
 
 def _recall_block_item(op: ParsedParagraph, npg: ParsedParagraph, page: int, conf: float) -> DiffItem | None:
-    """Build a gated TEXT/NUMBER_MODIFIED for a matched-but-changed block pair.
+    """Build a NUMBER_MODIFIED for a matched block pair, gated on a real DIGIT change.
 
-    Two image PDFs are OCR'd independently, so long blocks (esp. footnotes)
-    accumulate scattered punctuation/spacing/digit-misread drift. A near-identical
-    pair (similarity >= `_NOISE_SIM`) is OCR noise, NOT a content edit — drop it.
-    Only a substantial difference (a reworded line, a rate change in a short cell)
-    drops below the threshold and is reported. Wording-only changes are still
-    filtered downstream by the non-numeric filter; numeric edits survive.
+    Two image PDFs are OCR'd independently, so a long block (footnote, illustration
+    line) picks up punctuation/spacing/re-segmentation drift that looks like a change
+    but is not. The reliable discriminator is the digits: `_recall_norm` already
+    absorbs decimal/thousands separator drift ('3.90'↔'3,90'→'390'), so if the digit
+    multiset is unchanged the pair is wording / OCR noise / a re-split — drop it (the
+    reviewer's filter discards wording-only edits anyway, and a footnote OCR'd with
+    different boundaries is noise). A genuine numeric edit (3.90%→4.00%) changes the
+    digits and is surfaced regardless of how textually similar the long block stays —
+    which is exactly the headline change a similarity gate would wrongly swallow.
     """
     on, nn = _recall_norm(op.text), _recall_norm(npg.text)
     if on == nn:
-        return None  # same content (incl. numeric separator drift) → not a change
+        return None  # identical after normalisation (incl. separator drift)
     if not (_is_reliable_ocr_text(op.text) and _is_reliable_ocr_text(npg.text)):
         return None
-    if _text_ratio(on, nn) >= _NOISE_SIM:
-        return None  # near-identical → OCR instability, not a real change
-    # Block re-segmentation: MinerU splits the same long footnote/clause at
-    # different boundaries between the two independent scans, so the shorter
-    # block ends up essentially contained in the longer one even though their
-    # similarity sits below _NOISE_SIM (a length gap of 203 vs 155 chars dilutes
-    # it to ~0.86). When the shorter side is largely a subset of the longer AND
-    # no number actually changed (separator drift already absorbed by
-    # _recall_norm), this is a re-split, not a content edit — the genuinely
-    # changed text, if any, lives in a neighbouring block and is diffed there.
-    shorter, longer = (on, nn) if len(on) <= len(nn) else (nn, on)
-    if (
-        _containment(shorter, longer) >= _CONTAINMENT_SUPPRESS
-        and _recall_digits(on) == _recall_digits(nn)
-    ):
-        return None
+    if _recall_digits(on) == _recall_digits(nn):
+        return None  # no numeric change → wording / punctuation / re-segmentation noise
     return DiffItem(
         id="", diff_type=_guess_diff_type(op.text, npg.text),
         old_value=_clip_text(op.text), new_value=_clip_text(npg.text),
@@ -593,18 +590,19 @@ def _diff_page_blocks(
     news: list[ParsedParagraph],
     page: int,
     iou_threshold: float,
-) -> list[DiffItem]:
-    """Per-block recall diff for a page that is NOT a wholesale redesign."""
+) -> tuple[list[DiffItem], list[ParsedParagraph], list[ParsedParagraph]]:
+    """Per-page position (IoU) matching for a page that is NOT a wholesale redesign.
+
+    Emits gated MODIFIED items for blocks that align by position, and returns the
+    leftover unmatched old/new blocks so the caller can reconcile them ACROSS
+    pages — MinerU re-segments the same content onto different page indices
+    between the two independent scans, so an add/delete decision cannot be made
+    page-locally.
+    """
     items: list[DiffItem] = []
     matched_new: set[int] = set()
-    unmatched_old: list[ParsedParagraph] = []
-    # Page-level normalised text — used to suppress re-segmentation add/del:
-    # a block "added" on one side that is already present in the other side's
-    # page text is just OCR re-splitting, not a real content change.
-    old_join_norm = _recall_norm(" ".join(p.text for p in olds))
-    new_join_norm = _recall_norm(" ".join(p.text for p in news))
+    leftover_old: list[ParsedParagraph] = []
 
-    # Pass 1: position (IoU) matching.
     for op in olds:
         best_j, best_iou = -1, 0.0
         for j, npg in enumerate(news):
@@ -619,48 +617,85 @@ def _diff_page_blocks(
             if item:
                 items.append(item)
         else:
-            unmatched_old.append(op)
+            leftover_old.append(op)
 
-    # Pass 2: text-similarity fallback to re-pair re-segmented/moved blocks before
-    # declaring add/delete — same text at a new bbox must not become a false
-    # ADDED+DELETED pair.
-    for op in unmatched_old:
-        on = _recall_norm(op.text)
-        best_j, best_ratio = -1, 0.0
-        for j, npg in enumerate(news):
-            if j in matched_new:
+    leftover_new = [npg for j, npg in enumerate(news) if j not in matched_new]
+    return items, leftover_old, leftover_new
+
+
+def _reconcile_leftover_blocks(
+    leftover_old: list[ParsedParagraph],
+    leftover_new: list[ParsedParagraph],
+    old_doc_norm: str,
+    new_doc_norm: str,
+) -> list[DiffItem]:
+    """Reconcile position-unmatched blocks across the WHOLE document.
+
+    MinerU splits the same footnote/clause onto a different page in each scan, so
+    a block left unmatched on its page is frequently the same content the other
+    scan placed elsewhere. Re-pair leftovers by text similarity (document-wide):
+      • paired + identical digits  → re-segmentation noise → drop both;
+      • paired + digits differ     → a real edit → emit MODIFIED;
+      • still unpaired new/old      → ADDED/DELETED, but only when the text is
+        genuinely absent from the other document (whole-doc containment guard,
+        which absorbs cross-page re-splits the per-page check used to miss).
+    """
+    items: list[DiffItem] = []
+    used_old: set[int] = set()
+    used_new: set[int] = set()
+
+    for ni, npg in enumerate(leftover_new):
+        nn = _recall_norm(npg.text)
+        best_i, best_ratio = -1, 0.0
+        for oi, op in enumerate(leftover_old):
+            if oi in used_old:
                 continue
-            r = _text_ratio(on, _recall_norm(npg.text))
+            r = _text_ratio(nn, _recall_norm(op.text))
             if r > best_ratio:
-                best_ratio, best_j = r, j
-        if best_j >= 0 and best_ratio >= _BLOCK_REMATCH_RATIO:
-            matched_new.add(best_j)
-            item = _recall_block_item(op, news[best_j], page, 0.75)
-            if item:
-                items.append(item)
-        elif (
-            _is_reliable_ocr_text(op.text)
-            and _containment(_recall_norm(op.text), new_join_norm) < _CONTAINMENT_SUPPRESS
-        ):
-            items.append(DiffItem(
-                id="", diff_type=DiffType.DELETED,
-                old_value=_clip_text(op.text), new_value=None,
-                old_bbox=op.bbox, new_bbox=None,
-                context=f"Page {page} 區塊刪除（OCR召回）", confidence=0.75,
-            ))
-
-    # Remaining unmatched new blocks → ADDED (gated). Skip ones whose text is
-    # already present in the old page (re-segmentation, not a real addition).
-    for j, npg in enumerate(news):
-        if j in matched_new or not _is_reliable_ocr_text(npg.text):
+                best_ratio, best_i = r, oi
+        if best_i < 0 or best_ratio < _BLOCK_REMATCH_RATIO:
             continue
-        if _containment(_recall_norm(npg.text), old_join_norm) >= _CONTAINMENT_SUPPRESS:
+        op = leftover_old[best_i]
+        used_old.add(best_i)
+        used_new.add(ni)
+        if not (_is_reliable_ocr_text(op.text) and _is_reliable_ocr_text(npg.text)):
+            continue  # re-paired but OCR unreliable → never surface garbage
+        if _recall_digits(_recall_norm(op.text)) == _recall_digits(nn):
+            continue  # same digits → pure re-segmentation, not a content edit
+        items.append(DiffItem(
+            id="", diff_type=_guess_diff_type(op.text, npg.text),
+            old_value=_clip_text(op.text), new_value=_clip_text(npg.text),
+            old_bbox=op.bbox, new_bbox=npg.bbox,
+            context=f"Page {npg.bbox.page} 內容變更（OCR召回）", confidence=0.74,
+        ))
+
+    for ni, npg in enumerate(leftover_new):
+        if ni in used_new or not _is_reliable_ocr_text(npg.text):
+            continue
+        nn = _recall_norm(npg.text)
+        # Suppress as a re-split only when the text is already in the old doc AND it
+        # introduces no new number — a moved-but-changed block (a new rate/total)
+        # keeps a novel digit and must still surface.
+        if _containment(nn, old_doc_norm) >= _CONTAINMENT_SUPPRESS and _digits_covered(nn, old_doc_norm):
             continue
         items.append(DiffItem(
             id="", diff_type=DiffType.ADDED,
             old_value=None, new_value=_clip_text(npg.text),
             old_bbox=None, new_bbox=npg.bbox,
-            context=f"Page {page} 區塊新增（OCR召回）", confidence=0.75,
+            context=f"Page {npg.bbox.page} 區塊新增（OCR召回）", confidence=0.75,
+        ))
+
+    for oi, op in enumerate(leftover_old):
+        if oi in used_old or not _is_reliable_ocr_text(op.text):
+            continue
+        on = _recall_norm(op.text)
+        if _containment(on, new_doc_norm) >= _CONTAINMENT_SUPPRESS and _digits_covered(on, new_doc_norm):
+            continue
+        items.append(DiffItem(
+            id="", diff_type=DiffType.DELETED,
+            old_value=_clip_text(op.text), new_value=None,
+            old_bbox=op.bbox, new_bbox=None,
+            context=f"Page {op.bbox.page} 區塊刪除（OCR召回）", confidence=0.75,
         ))
 
     return items
@@ -701,7 +736,14 @@ def diff_positioned_paragraphs(
         if p.bbox:
             new_by_page[p.bbox.page].append(p)
 
+    # Document-wide normalised text: lets the add/delete guard see content the
+    # other scan re-segmented onto a DIFFERENT page (the per-page check missed it).
+    old_doc_norm = _recall_norm(" ".join(p.text for p in old_paragraphs if p.bbox))
+    new_doc_norm = _recall_norm(" ".join(p.text for p in new_paragraphs if p.bbox))
+
     items: list[DiffItem] = []
+    leftover_old: list[ParsedParagraph] = []
+    leftover_new: list[ParsedParagraph] = []
     # Only pages present on BOTH sides; whole-page add/delete is the pixel path's job.
     for page in sorted(set(old_by_page) & set(new_by_page)):
         olds = old_by_page[page]
@@ -723,7 +765,13 @@ def diff_positioned_paragraphs(
             ))
             continue
 
-        items.extend(_diff_page_blocks(olds, news, page, iou_threshold))
+        page_items, lo, ln = _diff_page_blocks(olds, news, page, iou_threshold)
+        items.extend(page_items)
+        leftover_old.extend(lo)
+        leftover_new.extend(ln)
+
+    # Reconcile position-unmatched blocks across pages (cross-page re-segmentation).
+    items.extend(_reconcile_leftover_blocks(leftover_old, leftover_new, old_doc_norm, new_doc_norm))
 
     return items
 

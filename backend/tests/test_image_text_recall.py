@@ -145,10 +145,9 @@ def test_recall_suppresses_resegmented_added_block_contained_in_old():
 def test_recall_suppresses_resegmented_matched_footnote_pair():
     # The 臻美利 residual FP: the same 註1 footnote, OCR'd into a LONGER block in
     # the old scan and a SHORTER (re-split) block in the new scan at the same
-    # position. Similarity falls to ~0.86 (below _NOISE_SIM) only because of the
-    # length gap, and a '3.90' vs '3,90' separator drift makes it look numeric —
-    # but the shorter side is contained in the longer and the digits are identical
-    # after separator normalisation, so it is re-segmentation, not a content edit.
+    # position, plus a '3.90' vs '3,90' separator drift that makes it look numeric.
+    # After separator normalisation the digit multisets are identical → no real
+    # numeric change → it is re-segmentation noise, not a content edit.
     old_long = (
         "註1假設每年宣告利率3.90%計算之累計增加保險金額本商品所稱宣告利率"
         "係指本公司於每月初公告之數值該利率非保證利率實際以本公司每月公告為準"
@@ -175,3 +174,47 @@ def test_recall_keeps_resegmented_pair_when_a_digit_really_changed():
 
     assert len(items) == 1
     assert items[0].diff_type == DiffType.NUMBER_MODIFIED
+
+
+# Identical anchors (same text + bbox on both sides) IoU-match and cancel, so the
+# only block left for the cross-page reconciler is the one we moved between pages.
+_ANCHOR2 = "本商品提供完整壽險保障與多項給付項目之詳細範例試算說明文字"
+_ANCHOR3 = "投保規則與高保費折扣及匯款相關費用之各項條件詳細說明文字內容"
+
+
+def test_recall_suppresses_crosspage_resegmented_unchanged_block():
+    # The 美鑫傳家 false positive: MinerU put an UNCHANGED footnote on old p2 but
+    # new p3 (cross-page re-segmentation). The per-page check could not see it; the
+    # whole-doc reconciliation must recognise it as unchanged → no false ADDED/DELETED.
+    note = "註3:保單現金價值(解約金)及保單價值準備金係為領取祝壽保險金後之數值。"
+    old_paras = [
+        _para(_ANCHOR2, 2, 40, 600, 520, 620), _para(note, 2, 40, 300, 520, 330),
+        _para(_ANCHOR3, 3, 40, 600, 520, 620),
+    ]
+    new_paras = [
+        _para(_ANCHOR2, 2, 40, 600, 520, 620),
+        _para(_ANCHOR3, 3, 40, 600, 520, 620), _para(note, 3, 40, 300, 520, 330),
+    ]
+
+    assert diff_positioned_paragraphs(old_paras, new_paras) == []
+
+
+def test_recall_reports_crosspage_resegmented_real_number_change():
+    # Same cross-page re-segmentation, but the moved block carries a REAL change
+    # (3.90% → 4.00%). It must surface as a numeric MODIFIED, not be dropped.
+    old_line = "假設每年宣告利率為3.90%不變情況下且投保時選擇每年增值回饋分享給付方式"
+    new_line = "假設每年宣告利率為4.00%不變情況下且投保時選擇每年增值回饋分享給付方式"
+    old_paras = [
+        _para(_ANCHOR2, 2, 40, 600, 520, 620), _para(old_line, 2, 40, 300, 540, 330),
+        _para(_ANCHOR3, 3, 40, 600, 520, 620),
+    ]
+    new_paras = [
+        _para(_ANCHOR2, 2, 40, 600, 520, 620),
+        _para(_ANCHOR3, 3, 40, 600, 520, 620), _para(new_line, 3, 40, 300, 540, 330),
+    ]
+
+    items = diff_positioned_paragraphs(old_paras, new_paras)
+
+    assert len(items) == 1
+    assert items[0].diff_type == DiffType.NUMBER_MODIFIED
+    assert "3.90%" in items[0].old_value and "4.00%" in items[0].new_value
