@@ -192,4 +192,27 @@
 - 單元測試 +2（跨頁重切不變→不報、跨頁重切真數字變更→MODIFIED）；後端全套件 **49 passed**。
 - **尚待**：臻美利／美保發等其他樣本回歸，確認 digit-master 規則未在他組引入新 FP（真 OCR 位數誤讀風險）。全綠後才評估把 `ENABLE_IMAGE_TEXT_RECALL` 預設改 true；在此之前維持預設 **關**。
 
+### 跨樣本回歸：臻美利／美保發 暴露 digit-master 回歸（2026-05-24，暫停於此）
+把上面的 digit-master 改動套到其他樣本（同一條真實管線、recall ON、CPU；方法見 `recall-regression-runbook.md`）：
+- **美保發 1130101→1130418**：✅ 僅頁尾 NUMBER_MODIFIED，乾淨無 FP（recall=0；「揭露值刪除」這次未召回，屬可接受邊界）。
+- **臻美利 1130101→1130418**：⚠️ **回歸**。真改仍在（「註3」新增 p2/p3/p4、頁尾 OP2-0274→0234），但：
+  - ❌ 註1 長註腳 d002/d004/d006 又變 NUMBER_MODIFIED——可見差異只有 `3.90↔3,90`（分隔符，應吸收）＋ `)↔】`（括號），但長註腳深處某個數字兩次 OCR 不一致 → 位數多重集不等 → digit-master 照報。這正是被移除的 `_NOISE_SIM`（高相似度＝雜訊）原本擋住的。
+  - ❌ p6 公式塊 `C V + ∑E n d…` 變 DELETED（OCR 不穩、未變卻配不上）。
+- **根本張力**：長註腳的「真小數字變更」（美鑫 註5 2.25→2.50）與「靜態數字的 OCR 位數雜訊」（臻美利 註1）特徵幾乎相同（都是長塊、高相似度、少數位數差），**純 digit-master 無法區分** → 修好一邊就破另一邊。
+- **下一步（未做，下次接續）**：以**複合判斷**取代純 digit-master——「位數有變 **且** 相似度 < 門檻」才報；長塊高相似度（臻美利）視為雜訊，中短塊較低相似度（美鑫 利率／註5）才召回。需先**量測**各爭議區塊的相似度與長度以定門檻。跨頁全域重配（`_reconcile_leftover_blocks`）這半保留，問題只在 `_recall_block_item` 移除 `_NOISE_SIM` 太激進。在收斂前 `ENABLE_IMAGE_TEXT_RECALL` 維持預設 **關**。
+
 - **完整護欄**：見 `docs/pdf_diff_guardrails.md`。未來修改 PDF diff/OCR/部署前，必須先看該文件。
+
+## 8. 2026-05-24 打包／離線交付稽核
+針對離線交付（OCI／無網路客戶）做的程式碼稽核，6 項，已修 5 項（commit `75ef54f`）：
+
+| 嚴重 | 問題 | 根因 | 修正 |
+|---|---|---|---|
+| 高 | `build-and-export.ps1` PowerShell 解析失敗「字串遺漏結尾字元」 | 檔案 UTF-8 **無 BOM** → Windows PowerShell 5.1 當 Big5 讀，line 79 結尾 `）："` 的位元組 `9a` 把結尾 `"` 吃掉 | 重存為 **UTF-8 with BOM**；以 PS 5.1 `ParseFile` 驗證 PARSE OK |
+| 高 | 離線包只 `docker save` backend，缺 `mineru-api:pipeline` | compose 兩服務皆有 `build:`，離線機無 image 會嘗試 build（需連網下載模型）→ 啟不來 | export 腳本 + DEPLOY.md 都改成存／載**兩個 image**（MinerU 模型已烤進 image） |
+| 中 | `scipy` 被 `diff_service.py` 直接 import（pixel diff/pHash）未列 requirements；缺則 `diff_pixels()` 靜默回 `[]`（影像型→0 差異） | 只靠 `imagehash` 間接帶入 scipy/numpy/Pillow | requirements 顯式加 `numpy`/`scipy`/`Pillow` |
+| 中 | numpy/Pillow 同上未直接宣告 | 間接帶入 | 同上 |
+| 中 | 版本未鎖：`docling>=2.0`、`python:3.11/3.13-slim`、`pip install "mineru[pipeline]"`（注意 backend 是 3.11、mineru 是 3.13） | 全 `>=`／浮動 tag → 重建漂移 | **未修（待辦 #5）**：建議從現役容器 `pip freeze` 釘版，確保離線重建一致 |
+| 低 | `build-and-export.ps1` 提示 `localhost:8000` | compose 實際 `8001:8000` | 改 `localhost:8001`（DEPLOY.md/README 本就正確） |
+
+備註：MX570 2GB + OCI 無 GPU → MinerU 一律走 **CPU**（見 `recall-regression-runbook.md`）。Docker 映像的 torch 雖是 `cu130` CUDA build、且 Docker 有 nvidia runtime，但 compose 刻意不開 GPU。
