@@ -165,4 +165,19 @@
 
 對「matched 重切閘」的意義：本組是**正向驗證**——所有真改（3.90→4.00、2.25→2.50、各祝壽總額）位數皆不同 → `_recall_digits` 不等 → 閘不會誤殺、照常報出；p5 未變長註腳若被重切（位數相同＋互相包含）→ 正確抑制。與臻美利（驗證「重切噪音被擋」）互補。
 
+### 首次本機容器真實回歸：美鑫傳家（2026-05-24，recall ON vs OFF）
+環境：本機 Docker（運行中的 `mineru-api` v3.1.15 + `pdf-check-backend`），`docker run` 掛載**當前 repo（含 matched 重切閘修正 d3118f1）**、接 `pdf_check_mineru_internal`、`MINERU_API_URL=http://mineru-api-minerU:18080`，對 `~/Downloads` 的美鑫傳家 1130101→1130701 跑 `generate_diff_report`。MinerU 為 **CPU 模式**（compose 未開 GPU；本機僅 MX570 2GB，且正式環境 OCI 亦無 GPU，CPU 即為目標環境）。
+
+**OFF（現預設）**：`pixel=24, recall=0, suppressed=2` → 4 筆：d004 頁尾版本/文號（真）＋ d001/d002/d003 三筆「給付祝壽保險金 → 給付祝壽保險金 1」殘字（pixel 局部 OCR，看不到真實金額）。**宣告利率 3.90%→4.00% 完全未現**（落在 suppressed 像素區）。→ 印證影像型 DM 在 OFF 下漏掉核心內容變更。
+
+**ON**：`recall=6` → 9 筆。
+- ✅ **召回到 OFF 漏掉的真改**：d004「假設每年宣告利率為4.00%…」(headline 利率調升)、d003「給付祝壽保險金1,448,275.00美元」(8年期新總額)、d006 註1 內含 4.00%、d009 頁尾。**確認召回層對影像型 DM 的核心價值。**
+- ❌ **新增 3 筆重切誤報，且全在 ADDED 路徑（非本次修的 matched 路徑）**：d002「本範例數值僅供參考…」(新舊皆有的頁註)、d007 註2、d008 註3（後兩者新舊完全相同、無變更）。
+- 真改多以 **ADDED（單側）** 而非 MODIFIED 呈現：MinerU 在新舊把同段切在不同邊界，IoU 與文字相似度回退都沒配上，老側落入別塊/別頁。
+
+關鍵結論：
+- 本次 matched 重切閘（d3118f1）針對 matched 配對 FP（臻美利長註腳）。**本組未出現該類 FP**（既未被觸發、也未誤殺真改）→ 修正無害，但本組驗不到它的抑制效果。
+- **本組 FP 全在 ADDED 路徑**：`_diff_page_blocks` 對 ADDED 用 `_containment(npg, 同頁 old_join_norm) >= 0.85` 抑制，但同段文字因 MinerU OCR 誤字（如「累計」OCR 成「羅計」）＋可能落在不同頁，使 containment < 0.85 → 未抑制。**且**先前文件（§7 三次）宣稱「本範例數值僅供參考」FP 已被包含關係閘消除（臻美利）——但本組重現，證明**該閘對 OCR 品質/分頁敏感、不穩**。
+- 下一步候選（ADDED 路徑強化，擇一）：①包含判斷改用**整份舊文件**文字（跨頁）而非同頁；②比 containment 前對 OCR 文字做更強正規化（吸收誤字）；③ADDED 區塊額外要求「不大致出現在舊文件任何處」。在 ADDED 路徑收斂並通過本組（d002/d007/d008 消失、d004/d003/d009 仍在）前，`ENABLE_IMAGE_TEXT_RECALL` **維持預設關**。
+
 - **完整護欄**：見 `docs/pdf_diff_guardrails.md`。未來修改 PDF diff/OCR/部署前，必須先看該文件。
