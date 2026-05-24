@@ -127,33 +127,42 @@ docker compose up -d
 
 本系統可完全離線運行，但需先在有網路的環境做以下準備：
 
+> 建議直接用 `build-and-export.ps1` 打包（已自動匯出 backend + MinerU 兩個 image）。
+> 以下為手動步驟，供需要客製時參考。
+
 ### 準備階段（需要網路）
 
 ```powershell
-# 1. Build Docker image
+# 1. Build Docker images（backend + mineru-api 兩個）
 docker compose build
 
 # 2. 啟動並執行一次 PDF 比對（觸發 Docling 模型下載到 HF cache）
 docker compose up -d
 # 上傳任意 PDF 做一次比對，等比對完成後模型已快取
 
-# 3. 匯出 Docker image
+# 3. 匯出兩個 Docker image（缺 MinerU 離線機會嘗試 build 而失敗）
 docker save pdf-check-backend:latest -o pdf-check-offline.tar
+docker save mineru-api:pipeline      -o mineru-api_pipeline.tar
 
 # 4. 匯出模型快取 volume
 docker run --rm -v backend_hf_cache_minerU:/data -v ${PWD}:/backup alpine tar czf /backup/hf_cache_backup.tgz -C /data .
 ```
 
+> MinerU pipeline 模型已在 build 時烤進 `mineru-api:pipeline` image（見 `mineru/Dockerfile`），
+> 因此 `mineru-api_pipeline.tar` 已自帶模型，離線機不需再下載。
+
 ### 離線環境部署
 
 將以下檔案帶到離線環境：
-- `pdf-check-offline.tar` — Docker image
+- `pdf-check-offline.tar` — backend image
+- `mineru-api_pipeline.tar` — MinerU image（含 pipeline 模型）
 - `hf_cache_backup.tgz` — Docling 模型快取
 - `docker-compose.yml` — 啟動設定
 
 ```powershell
-# 1. 載入 image
+# 1. 載入兩個 image
 docker load -i pdf-check-offline.tar
+docker load -i mineru-api_pipeline.tar
 
 # 2. 啟動
 docker compose up -d

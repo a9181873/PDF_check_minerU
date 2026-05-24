@@ -11,3 +11,9 @@ psutil>=5.9
 imagehash>=4.3
 requests>=2.31
 lxml>=4.9
+# Used directly by services/diff_service.py (pixel diff + pHash). Previously only
+# pulled in transitively via imagehash; declared explicitly so a missing scipy can
+# never silently make diff_pixels() return [] (image-only PDFs -> 0 diffs).
+numpy>=1.24
+scipy>=1.10
+Pillow>=10.0
