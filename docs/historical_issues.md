@@ -136,4 +136,14 @@
 3. 比對前**先把同頁區塊合併**再做 diff，消除重切造成的長度差。
 - 在 1/2/3 任一完成並通過容器回歸（誤報清掉、註3＋頁尾仍在）前，`ENABLE_IMAGE_TEXT_RECALL` 維持預設 **關**。
 
+### 實作：matched 配對包含關係閘（2026-05-24，採方案 1）
+針對上述「區塊重切」殘留誤報，在 `_recall_block_item`（matched 配對路徑）於 `_NOISE_SIM` 閘之後加一道**重切閘**：
+- 取兩塊正規化文字的**較短/較長**邊，若 `_containment(shorter, longer) >= _CONTAINMENT_SUPPRESS`（0.85，與 ADD/DEL 路徑同一常數）→ 短邊大致是長邊的子集，屬 MinerU 在新舊掃描把同段註腳切在不同邊界。
+- **且** `_recall_digits(on) == _recall_digits(nn)`：以 `_recall_norm` 已去分隔符的字串抽 `\d+` 比對位數多重集（`3.90`/`3,90`→`390` 視為相同）→ 無真實數字變更時才視為重切丟棄；任一位數真的變了（`3.90`→`4.20`）digits 不等 → 仍照報。
+- 新增 helper `_recall_digits`（分隔符容忍的位數抽取，置於 `_recall_norm` 旁）。
+- 量測本案合成例：sim≈0.667（< 0.95，會進新閘）、containment=1.0（≥0.85）、digits 相等 → 正確抑制；數字真變版本（4.20%）digits 不等 → 仍報 NUMBER_MODIFIED。
+- 取捨：matched 區塊「純改字、無數字變更」也會被此閘吃掉，但這類本就由下游 `_drop_non_numeric_modifications` 丟棄，無淨損失；真正新增的整段條款走 ADDED 路徑（不經此閘）仍會被召回。
+- 單元測試：`tests/test_image_text_recall.py` 新增 2 例（重切長註腳對→抑制、重切但真數字變更→保留）；後端全套件 **47 passed**（host 無 fitz/tesseract，僅跑純邏輯）。
+- **尚待容器回歸確認**才預設打開：必過底線不變 — 臻美利 d002/d004/d006 長註腳誤報消失、「註3」新增（p2/p3/p4 ADDED）與兩組頁尾版本/文號仍在、美保發仍收斂到 2 筆真改、無 `[PAYV` 亂碼。通過後再把 `ENABLE_IMAGE_TEXT_RECALL` 預設改 **true**；在此之前維持預設 **關**。
+
 - **完整護欄**：見 `docs/pdf_diff_guardrails.md`。未來修改 PDF diff/OCR/部署前，必須先看該文件。

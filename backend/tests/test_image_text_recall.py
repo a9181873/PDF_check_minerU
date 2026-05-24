@@ -140,3 +140,38 @@ def test_recall_suppresses_resegmented_added_block_contained_in_old():
     ]
 
     assert diff_positioned_paragraphs(old_paras, new_paras) == []
+
+
+def test_recall_suppresses_resegmented_matched_footnote_pair():
+    # The 臻美利 residual FP: the same 註1 footnote, OCR'd into a LONGER block in
+    # the old scan and a SHORTER (re-split) block in the new scan at the same
+    # position. Similarity falls to ~0.86 (below _NOISE_SIM) only because of the
+    # length gap, and a '3.90' vs '3,90' separator drift makes it look numeric —
+    # but the shorter side is contained in the longer and the digits are identical
+    # after separator normalisation, so it is re-segmentation, not a content edit.
+    old_long = (
+        "註1假設每年宣告利率3.90%計算之累計增加保險金額本商品所稱宣告利率"
+        "係指本公司於每月初公告之數值該利率非保證利率實際以本公司每月公告為準"
+    )
+    new_short = "註1假設每年宣告利率3,90%計算之累計增加保險金額本商品所稱宣告利率"
+    old_paras = [_para(old_long, 2, 40, 700, 540, 760)]
+    new_paras = [_para(new_short, 2, 40, 700, 540, 760)]  # same position → IoU-matched
+
+    assert diff_positioned_paragraphs(old_paras, new_paras) == []
+
+
+def test_recall_keeps_resegmented_pair_when_a_digit_really_changed():
+    # Guard the gate above: if the same re-split footnote ALSO carries a genuine
+    # rate change (3.90% → 4.20%), the digits differ → it is NOT suppressed.
+    old_long = (
+        "註1假設每年宣告利率3.90%計算之累計增加保險金額本商品所稱宣告利率"
+        "係指本公司於每月初公告之數值該利率非保證利率實際以本公司每月公告為準"
+    )
+    new_short = "註1假設每年宣告利率4.20%計算之累計增加保險金額本商品所稱宣告利率"
+    old_paras = [_para(old_long, 2, 40, 700, 540, 760)]
+    new_paras = [_para(new_short, 2, 40, 700, 540, 760)]
+
+    items = diff_positioned_paragraphs(old_paras, new_paras)
+
+    assert len(items) == 1
+    assert items[0].diff_type == DiffType.NUMBER_MODIFIED

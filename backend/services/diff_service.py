@@ -514,6 +514,14 @@ def _recall_norm(text: str) -> str:
     return _RECALL_NUM_SEP_RE.sub("", _deep_normalize(text))
 
 
+def _recall_digits(norm_text: str) -> list[str]:
+    """Sorted digit runs of an already `_recall_norm`'d string. The separators
+    have been stripped ('3.90'→'390'), so this compares the actual digits while
+    absorbing decimal/thousands OCR drift — used to decide whether a re-segmented
+    matched pair carries a genuine number change."""
+    return sorted(re.findall(r"\d+", norm_text))
+
+
 def _text_ratio(a: str, b: str) -> float:
     if not a and not b:
         return 1.0
@@ -558,6 +566,20 @@ def _recall_block_item(op: ParsedParagraph, npg: ParsedParagraph, page: int, con
         return None
     if _text_ratio(on, nn) >= _NOISE_SIM:
         return None  # near-identical → OCR instability, not a real change
+    # Block re-segmentation: MinerU splits the same long footnote/clause at
+    # different boundaries between the two independent scans, so the shorter
+    # block ends up essentially contained in the longer one even though their
+    # similarity sits below _NOISE_SIM (a length gap of 203 vs 155 chars dilutes
+    # it to ~0.86). When the shorter side is largely a subset of the longer AND
+    # no number actually changed (separator drift already absorbed by
+    # _recall_norm), this is a re-split, not a content edit — the genuinely
+    # changed text, if any, lives in a neighbouring block and is diffed there.
+    shorter, longer = (on, nn) if len(on) <= len(nn) else (nn, on)
+    if (
+        _containment(shorter, longer) >= _CONTAINMENT_SUPPRESS
+        and _recall_digits(on) == _recall_digits(nn)
+    ):
+        return None
     return DiffItem(
         id="", diff_type=_guess_diff_type(op.text, npg.text),
         old_value=_clip_text(op.text), new_value=_clip_text(npg.text),
