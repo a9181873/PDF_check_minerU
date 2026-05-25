@@ -137,13 +137,22 @@
 - `backend/tests/test_diff.py`：補上 fallback 保留、最終非數字過濾不再刪 fallback、完整 report 保留 image PDF fallback 的測試。
 - 驗證：`backend/.venv/bin/python -m pytest backend/tests`，59 passed。
 
+第二步調整：
+
+- `backend/config.py` / `docker-compose.yml`：新增 `IMAGE_TEXT_RECALL_STRATEGY`，預設 `alignment`；如需 A/B 可設 `heuristic` 回到舊 IoU path。
+- `backend/services/diff_service.py`：新增 `diff_aligned_paragraphs()`，把 `align_service.align_paragraphs()` 轉成正式 `DiffItem`，讓 recall ON 時可走文字序列對齊，而不是 bbox-IoU 閘門網路。
+- `backend/tests/test_image_text_recall.py` / `backend/tests/test_diff.py`：補上 alignment recall 對重分段數字變更、新增條款，以及 `generate_diff_report` 策略選擇的測試。
+- 驗證：`backend/.venv/bin/python -m pytest backend/tests`，62 passed。
+
+這個調整刻意不把 recall 預設打開；它只是把未來驗證的主路線從「繼續調舊 heuristic」改成「同一份 OCR 結果可切換 alignment / heuristic 做 A/B」。
+
 ## Alignment Shadow Plan
 
 目標不是立刻替換現行 diff，而是新增一條只輸出 trace/metrics 的旁路，讓現有 heuristic 與 alignment 結果並排比較。
 
-### Phase 1 - `align_service.py`
+### Phase 1 - `align_service.py`（已完成原型）
 
-新增獨立服務，不改 `diff_service.py` 正式輸出：
+新增獨立服務，先不改預設正式輸出：
 
 - input: `list[ParsedParagraph]`
 - output: `AlignmentDiff` / `AlignmentTrace`
@@ -172,9 +181,9 @@ class AlignmentDiff:
     reason: str
 ```
 
-### Phase 2 - Sequence Alignment
+### Phase 2 - Sequence Alignment（已接成可選 recall strategy）
 
-先用句/短段層級，避免全文字元級 O(n^2)：
+目前已先用文件級字元序列 + `SequenceMatcher(autojunk=False)` 建立 shadow/可選 strategy。下一步才做句/短段 window 化以降低大型 OCR 文件的計算成本：
 
 1. 依頁面與閱讀順序排序 OCR paragraphs。
 2. 將文字切成 CJK punctuation / whitespace / long-run windows。

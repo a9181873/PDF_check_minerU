@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     # default — needs a fixed-sample regression before enabling (see
     # docs/pdf_diff_guardrails.md / docs/historical_issues.md §7).
     enable_image_text_recall: bool = False
+    # When recall is enabled, prefer text-sequence alignment over bbox-IoU
+    # heuristics. Set IMAGE_TEXT_RECALL_STRATEGY=heuristic to run the older
+    # position-matching path for A/B regression checks.
+    image_text_recall_strategy: str = "alignment"
 
     # Snapshot PNGs are audit convenience artifacts. Rendering every page is CPU
     # expensive, so default to pages that actually contain diffs.

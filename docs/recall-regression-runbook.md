@@ -29,6 +29,7 @@ from services.diff_service import generate_diff_report
 from config import settings
 old = Path("/samples/舊檔.pdf"); new = Path("/samples/新檔.pdf")
 print("recall_enabled:", settings.enable_image_text_recall)
+print("recall_strategy:", settings.image_text_recall_strategy)
 rep = generate_diff_report("x", old.name, new.name,
                            _parse_via_fitz(old), _parse_via_fitz(new), str(old), str(new))
 print("SUMMARY:", rep.summary, "| suppressed:", rep.suppressed_count)
@@ -45,6 +46,7 @@ for it in rep.items:
 MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' docker run --rm \
   --network pdf_check_mineru_internal \
   -e ENABLE_IMAGE_TEXT_RECALL=true \
+  -e IMAGE_TEXT_RECALL_STRATEGY=alignment \
   -e MINERU_API_URL=http://mineru-api-minerU:18080 \
   -e OCR_LANGS=chi_tra+chi_sim+eng \
   -e PYTHONIOENCODING=utf-8 -e DATA_DIR=/tmp/runtime \
@@ -57,6 +59,7 @@ MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' docker run --rm \
 
 - repo 內的 `商品DM/` 會出現在 `/repo/商品DM/`（不必另外掛）。
 - 設 `ENABLE_IMAGE_TEXT_RECALL=false` 即可比對「現預設 OFF」的輸出（且不需 MinerU、很快）。
+- 設 `IMAGE_TEXT_RECALL_STRATEGY=heuristic` 可回到舊 bbox-IoU recall；預設 `alignment` 用文字序列對齊吸收 OCR 重分段。
 - 健康檢查：容器內 `python -c "import requests,os;print(requests.get(os.environ['MINERU_API_URL']+'/health').text)"` 應回 `healthy`。
 
 ## 判讀（必過底線，改 PDF diff / 召回層後都要重跑）

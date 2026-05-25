@@ -824,6 +824,50 @@ def diff_positioned_paragraphs(
     return items
 
 
+def diff_aligned_paragraphs(
+    old_paragraphs: list[ParsedParagraph],
+    new_paragraphs: list[ParsedParagraph],
+) -> list[DiffItem]:
+    """Text-sequence recall path for image-only PDF OCR output.
+
+    Unlike `diff_positioned_paragraphs`, this does not use bbox IoU as the
+    primary pairing signal. MinerU may split the same visual text into different
+    blocks between two OCR runs; sequence alignment absorbs that re-segmentation
+    first, then returns only classified content candidates.
+    """
+    from services.align_service import align_paragraphs
+
+    items: list[DiffItem] = []
+    for diff in align_paragraphs(old_paragraphs, new_paragraphs):
+        bbox = diff.new_bbox or diff.old_bbox
+        page = bbox.page if bbox else "?"
+
+        if diff.kind == "modified":
+            diff_type = _guess_diff_type(diff.old_text, diff.new_text)
+            context = f"Page {page} 內容變更（OCR對齊:{diff.reason}）"
+        elif diff.kind == "added":
+            diff_type = DiffType.ADDED
+            context = f"Page {page} 區塊新增（OCR對齊:{diff.reason}）"
+        elif diff.kind == "deleted":
+            diff_type = DiffType.DELETED
+            context = f"Page {page} 區塊刪除（OCR對齊:{diff.reason}）"
+        else:
+            continue
+
+        items.append(DiffItem(
+            id="",
+            diff_type=diff_type,
+            old_value=diff.old_text,
+            new_value=diff.new_text,
+            old_bbox=diff.old_bbox,
+            new_bbox=diff.new_bbox,
+            context=context,
+            confidence=diff.confidence,
+        ))
+
+    return items
+
+
 def align_table_headers(old_df, new_df) -> tuple[dict, dict]:
     old_cols = {col: col for col in old_df.columns}
     new_cols = {col: col for col in new_df.columns}
@@ -2114,7 +2158,13 @@ def generate_diff_report(
                 from services.parser_service import parse_image_pdf_via_mineru_ocr
                 old_ocr = parse_image_pdf_via_mineru_ocr(old_pdf_path)
                 new_ocr = parse_image_pdf_via_mineru_ocr(new_pdf_path)
-                recall_diffs = diff_positioned_paragraphs(old_ocr.paragraphs, new_ocr.paragraphs)
+                strategy = getattr(_settings, "image_text_recall_strategy", "alignment").strip().lower()
+                if strategy == "heuristic":
+                    recall_diffs = diff_positioned_paragraphs(old_ocr.paragraphs, new_ocr.paragraphs)
+                else:
+                    strategy = "alignment"
+                    recall_diffs = diff_aligned_paragraphs(old_ocr.paragraphs, new_ocr.paragraphs)
+                stats["recall_strategy"] = strategy
         except Exception:
             recall_diffs = []
         merged_items = merge_diff_results(
@@ -2127,6 +2177,8 @@ def generate_diff_report(
         )
         mode = "image_pdf" if (old_doc.is_image_pdf and new_doc.is_image_pdf) else "mixed_pdf"
         summary = f"{mode}; pixel={len(pixel_diffs)}, img={imgc}, recall={len(recall_diffs)}"
+        if stats.get("recall_strategy"):
+            summary += f", recall_strategy={stats['recall_strategy']}"
         if stats.get("retained_visual"):
             summary += f", visual_retained={int(stats['retained_visual'])}"
     else:

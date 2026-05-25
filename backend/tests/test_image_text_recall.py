@@ -6,7 +6,12 @@ still require the fixed-sample container regression (see docs/historical_issues.
 """
 
 from models.diff_models import BBox, DiffType
-from services.diff_service import _bbox_iou, _is_reliable_ocr_text, diff_positioned_paragraphs
+from services.diff_service import (
+    _bbox_iou,
+    _is_reliable_ocr_text,
+    diff_aligned_paragraphs,
+    diff_positioned_paragraphs,
+)
 from services.parser_service import ParsedParagraph
 
 
@@ -51,6 +56,33 @@ def test_recall_reports_numeric_block_change():
     assert items[0].diff_type == DiffType.NUMBER_MODIFIED
     assert "32000" in items[0].old_value
     assert "31680" in items[0].new_value
+
+
+def test_alignment_recall_reports_numeric_change_across_resegmentation():
+    old_paras = [_para("假設每年宣告利率為3.90%不變情況下計算", 1, 60, 500, 430, 520)]
+    new_paras = [
+        _para("假設每年宣告利率為", 1, 60, 500, 260, 520),
+        _para("4.00%不變情況下計算", 1, 260, 500, 430, 520),
+    ]
+
+    items = diff_aligned_paragraphs(old_paras, new_paras)
+
+    assert len(items) == 1
+    assert items[0].diff_type == DiffType.NUMBER_MODIFIED
+    assert "OCR對齊:number_change" in items[0].context
+
+
+def test_alignment_recall_reports_added_clause_without_bbox_iou():
+    shared = "住院日額保險金被保險人於本契約有效期間內因疾病住院"
+    clause = "訂立本契約時以受監護宣告尚未撤銷者為被保險人其身故保險金變更為喪葬費用保險金"
+    old_paras = [_para(shared, 2, 50, 600, 500, 620)]
+    new_paras = [_para(shared, 2, 50, 600, 500, 620), _para(clause, 2, 50, 300, 500, 330)]
+
+    items = diff_aligned_paragraphs(old_paras, new_paras)
+
+    assert len(items) == 1
+    assert items[0].diff_type == DiffType.ADDED
+    assert "監護宣告" in (items[0].new_value or "")
 
 
 def test_recall_suppresses_ocr_garbage():

@@ -357,6 +357,48 @@ def test_generate_diff_report_retains_visual_fallback_for_image_pdf(monkeypatch)
     assert "visual_retained=1" in (report.summary or "")
 
 
+def test_generate_diff_report_can_use_alignment_recall_strategy(monkeypatch):
+    old_doc = ParsedDocument(pages=1, paragraphs=[], tables=[], raw_json={}, is_image_pdf=True)
+    new_doc = ParsedDocument(pages=1, paragraphs=[], tables=[], raw_json={}, is_image_pdf=True)
+    old_ocr = ParsedDocument(
+        pages=1,
+        paragraphs=[_paragraph("假設每年宣告利率為3.90%不變情況下計算")],
+        tables=[],
+        raw_json={},
+    )
+    new_ocr = ParsedDocument(
+        pages=1,
+        paragraphs=[
+            _paragraph("假設每年宣告利率為"),
+            _paragraph("4.00%不變情況下計算", y0=80, y1=95),
+        ],
+        tables=[],
+        raw_json={},
+    )
+    calls = iter([old_ocr, new_ocr])
+
+    monkeypatch.setattr("config.settings.enable_image_text_recall", True)
+    monkeypatch.setattr("config.settings.image_text_recall_strategy", "alignment")
+    monkeypatch.setattr("services.diff_service.diff_pixels", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr("services.diff_service.diff_images", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr("services.parser_service.parse_image_pdf_via_mineru_ocr", lambda *_args: next(calls))
+
+    report = generate_diff_report(
+        project_id="p001",
+        old_filename="old.pdf",
+        new_filename="new.pdf",
+        old_doc=old_doc,
+        new_doc=new_doc,
+        old_pdf_path="/tmp/old.pdf",
+        new_pdf_path="/tmp/new.pdf",
+    )
+
+    assert report.total_diffs == 1
+    assert report.items[0].diff_type == DiffType.NUMBER_MODIFIED
+    assert "OCR對齊:number_change" in report.items[0].context
+    assert "recall_strategy=alignment" in (report.summary or "")
+
+
 def test_overlapping_text_diffs_in_tall_cell_merge_into_one_block():
     # Two token-level diffs that share the same tall paragraph bbox (height 120
     # exceeds the 80pt merge cap) — they overlap, so they must still collapse.
