@@ -5,7 +5,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _BASE_DIR = Path(__file__).resolve().parent.parent
 _HOST_RUNTIME = _BASE_DIR / "runtime"
-_DEFAULT_DATA_DIR = _HOST_RUNTIME if _HOST_RUNTIME.exists() else Path("/app/runtime")
+# Host/local default: <repo>/runtime (the README local-run layout; auto-created on
+# startup). In the container, compose sets DATA_DIR=/app/runtime which overrides this.
+# The previous `if exists() else /app/runtime` fallback wrongly pointed a fresh host
+# checkout (no runtime/ yet) at the container path (\app\runtime on Windows).
+_DEFAULT_DATA_DIR = _HOST_RUNTIME
 
 
 class Settings(BaseSettings):

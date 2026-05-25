@@ -77,11 +77,16 @@ const PopoutPage: React.FC = () => {
   }, [taskId, setTaskId, setReport]);
 
   useEffect(() => {
-    // Listen for incoming cross-window scroll events
+    // Listen for incoming cross-window scroll events. useCrossWindowSync already
+    // de-dupes by windowId (a window never receives its own broadcast), so any event
+    // here came from ANOTHER window and this pane should follow it by ratio —
+    // including the main window's SAME-side pane. The old `source === version` guard
+    // wrongly ignored those, so an old/new popout never synced to the main window's
+    // matching pane. (`isSyncingRef` still blocks the programmatic scroll from
+    // re-broadcasting, so there is no feedback loop.)
     const handleScrollEvent = (e: CustomEvent<{ source: string, ratio: number }>) => {
       const targetEl = getScroller();
       if (!targetEl) return;
-      if (e.detail.source === version || e.detail.source === 'popout') return;
 
       isSyncingRef.current = true;
       const targetScrollable = targetEl.scrollHeight - targetEl.clientHeight;
@@ -93,7 +98,7 @@ const PopoutPage: React.FC = () => {
 
     window.addEventListener('cross-window-scroll', handleScrollEvent as EventListener);
     return () => window.removeEventListener('cross-window-scroll', handleScrollEvent as EventListener);
-  }, [getScroller, version]);
+  }, [getScroller]);
 
   const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
     if (isSyncingRef.current) return;
