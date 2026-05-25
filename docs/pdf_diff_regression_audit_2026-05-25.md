@@ -146,6 +146,20 @@
 
 這個調整刻意不把 recall 預設打開；它只是把未來驗證的主路線從「繼續調舊 heuristic」改成「同一份 OCR 結果可切換 alignment / heuristic 做 A/B」。
 
+### 商品DM 快速驗證（recall OFF）
+
+在 `/Users/jy/pdfcheck_minerU/商品DM` 對 5 組各 2 份 PDF 跑 `ENABLE_IMAGE_TEXT_RECALL=false`。此驗證不經 MinerU OCR，只驗證 image-only PDF 的 pixel fallback 是否仍留在正式 diff list。
+
+| Sample | Summary | total | Types |
+|---|---:|---:|---|
+| 慈愛微型 | `pixel=38, img=0, recall=0, visual_retained=3` | 4 | `image_diff=3`, `number_modified=1` |
+| 新扶愛 | `pixel=104, img=0, recall=0, visual_retained=47` | 48 | `image_diff=47`, `number_modified=1` |
+| 美保發 | `pixel=29, img=0, recall=0, visual_retained=2` | 3 | `image_diff=2`, `number_modified=1` |
+| 美利保 | `pixel=52, img=0, recall=0, visual_retained=3` | 4 | `image_diff=3`, `number_modified=1` |
+| 臻美利 | `pixel=13, img=0, recall=0, visual_retained=6` | 7 | `image_diff=6`, `number_modified=1` |
+
+結論：P0 修正後，recall 關閉時不再把 image-only PDF 的唯一視覺證據整批丟掉；`suppressed_count=0`，差異清單保留可供人工審核的 `image_diff` fallback。這不是最終準確率驗證，下一步仍需在 MinerU 可用時跑 `IMAGE_TEXT_RECALL_STRATEGY=alignment` vs `heuristic` 的 OCR A/B。
+
 ## Alignment Shadow Plan
 
 目標不是立刻替換現行 diff，而是新增一條只輸出 trace/metrics 的旁路，讓現有 heuristic 與 alignment 結果並排比較。
