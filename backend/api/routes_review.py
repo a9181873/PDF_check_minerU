@@ -8,6 +8,7 @@ from models.database import (
     add_review_log,
     get_comparison_report,
     get_review_counts,
+    save_comparison_report_state,
     update_review_item_state,
 )
 from models.schemas import ReviewActionRequest, ReviewSummaryResponse
@@ -46,7 +47,7 @@ async def confirm_diff(comparison_id: str, payload: ReviewActionRequest):
     )
     # Persist just this item atomically — overwriting the whole report blob would
     # drop a concurrent reviewer's edit to a different item.
-    update_review_item_state(
+    persisted = update_review_item_state(
         comparison_id,
         payload.diff_item_id,
         reviewed=target.reviewed,
@@ -54,6 +55,12 @@ async def confirm_diff(comparison_id: str, payload: ReviewActionRequest):
         reviewed_at=target.reviewed_at,
         flagged=target.flagged,
     )
+    if not persisted:
+        # The durable report blob had no row/item to patch (e.g. result served from
+        # the in-memory task store but not yet written to SQLite). Fall back to
+        # writing the full report so this review state is not silently lost. The
+        # review_logs row above is already the source of truth for the counts.
+        save_comparison_report_state(comparison_id, report)
 
     return {"ok": True}
 

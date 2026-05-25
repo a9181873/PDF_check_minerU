@@ -18,10 +18,13 @@ interface DiffOverlayProps {
   side?: 'old' | 'new';
 }
 
-/** Pick the bbox for the side being rendered, falling back to the other side
- *  (a DELETED item has only old_bbox; an ADDED item only new_bbox). */
+/** The bbox for THIS side only — no cross-side fallback. An item with no bbox on
+ *  this side has no location here (an ADDED item exists only in new; a DELETED only
+ *  in old), so it must not be drawn: falling back to the other side's bbox would
+ *  paint an ADDED box onto the old PDF (or a DELETED box onto the new) at the wrong
+ *  coordinates. MODIFIED/IMAGE_DIFF items carry both bboxes, so they draw on both. */
 const pickBbox = (diff: DiffItem, side: 'old' | 'new') =>
-  side === 'old' ? diff.old_bbox || diff.new_bbox : diff.new_bbox || diff.old_bbox;
+  side === 'old' ? diff.old_bbox : diff.new_bbox;
 
 const getDiffColor = () => {
   return 'diff-overlay-highlight';
