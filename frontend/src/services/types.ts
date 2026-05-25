@@ -28,6 +28,7 @@ export interface DiffItem {
   reviewed: boolean;
   reviewed_by: string | null;
   reviewed_at: string | null;
+  flagged?: boolean;
 }
 
 export interface DiffReport {

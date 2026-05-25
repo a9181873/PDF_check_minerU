@@ -315,6 +315,52 @@ def save_comparison_report_state(comparison_id: str, report: DiffReport) -> None
         )
 
 
+def update_review_item_state(
+    comparison_id: str,
+    diff_item_id: str,
+    *,
+    reviewed: bool,
+    reviewed_by: str | None,
+    reviewed_at: str | None,
+    flagged: bool,
+) -> bool:
+    """Atomically update a SINGLE diff item's review state in the stored report blob.
+
+    Replaces the previous "load whole report, mutate, overwrite the entire JSON"
+    flow, which lost concurrent reviewers' edits (two reviewers acting on different
+    items would clobber each other). BEGIN IMMEDIATE takes the write lock before the
+    read, so the read-modify-write of one item is serialized across connections;
+    other items in the blob are preserved untouched. Returns False if the comparison
+    or the item is not found. (Aggregate counts come from the append-only review_logs
+    table via get_review_counts, which is unaffected by this.)
+    """
+    with get_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT diff_result_json FROM comparisons WHERE id = ?",
+            (comparison_id,),
+        ).fetchone()
+        if not row or not row["diff_result_json"]:
+            return False
+        payload = row["diff_result_json"]
+        data = json.loads(payload) if isinstance(payload, str) else payload
+        found = False
+        for item in data.get("items", []):
+            if item.get("id") == diff_item_id:
+                item["reviewed"] = reviewed
+                item["reviewed_by"] = reviewed_by
+                item["reviewed_at"] = reviewed_at
+                item["flagged"] = flagged
+                found = True
+                break
+        if found:
+            conn.execute(
+                "UPDATE comparisons SET diff_result_json = ? WHERE id = ?",
+                (json.dumps(data, ensure_ascii=False), comparison_id),
+            )
+        return found
+
+
 def save_markdown_paths(
     comparison_id: str,
     *,

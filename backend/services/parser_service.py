@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import subprocess
 import tempfile
@@ -477,8 +478,10 @@ def _parse_via_fitz(pdf_path: Path) -> ParsedDocument:
 
         # Per-page judgement: only flag as image PDF when ≥70% of pages are essentially
         # rasterized (no meaningful text + has images). Prevents "one scan page + lots of
-        # text pages" being forced into pixel-only diff.
-        is_image_pdf = total_pages > 0 and image_pages >= max(1, int(0.7 * total_pages))
+        # text pages" being forced into pixel-only diff. ceil (not int) so the threshold
+        # never rounds DOWN below 70% — e.g. a 2-page PDF needs BOTH pages rasterized
+        # (ceil(1.4)=2), not just one (int(1.4)=1 = 50%), which would hide text diffs.
+        is_image_pdf = total_pages > 0 and image_pages >= max(1, math.ceil(0.7 * total_pages))
 
         markdown_lines = [paragraph.text for paragraph in paragraphs]
         markdown = "\n\n".join(markdown_lines)

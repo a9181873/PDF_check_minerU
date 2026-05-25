@@ -698,11 +698,14 @@ def _reconcile_leftover_blocks(
         if best_i < 0 or best_ratio < _BLOCK_REMATCH_RATIO:
             continue
         op = leftover_old[best_i]
+        # Reliability is checked BEFORE consuming the pair: an OCR-garbage block must
+        # not claim a reliable partner and silently remove it from the add/delete
+        # loops below. Leaving both unconsumed lets each be judged independently there.
+        if not (_is_reliable_ocr_text(op.text) and _is_reliable_ocr_text(npg.text)):
+            continue
         used_old.add(best_i)
         used_new.add(ni)
         on = _recall_norm(op.text)
-        if not (_is_reliable_ocr_text(op.text) and _is_reliable_ocr_text(npg.text)):
-            continue  # re-paired but OCR unreliable → never surface garbage
         if _recall_digits(on) == _recall_digits(nn):
             continue  # same digits → pure re-segmentation, not a content edit
         if not _aligned_length(on, nn):

@@ -62,6 +62,7 @@ interface CompareState {
     added: number;
     deleted: number;
     modified: number;
+    flagged: number;
   };
   
   // View controls
@@ -219,7 +220,7 @@ export const useCompareStore = create<CompareState>()(
 
         const updatedItems = report.items.map(item =>
           item.id === diffId
-            ? { ...item, reviewed: true, reviewed_by: reviewer || null, reviewed_at: new Date().toISOString() }
+            ? { ...item, reviewed: true, flagged: false, reviewed_by: reviewer || null, reviewed_at: new Date().toISOString() }
             : item
         );
         const updatedReport = { ...report, items: updatedItems };
@@ -243,7 +244,7 @@ export const useCompareStore = create<CompareState>()(
 
         const updatedItems = report.items.map(item =>
           item.id === diffId
-            ? { ...item, reviewed: true, reviewed_by: reviewer || null, reviewed_at: new Date().toISOString() }
+            ? { ...item, reviewed: true, flagged: true, reviewed_by: reviewer || null, reviewed_at: new Date().toISOString() }
             : item
         );
         const updatedReport = { ...report, items: updatedItems };
@@ -274,20 +275,21 @@ export const useCompareStore = create<CompareState>()(
       getStats: () => {
         const { report } = get();
         if (!report) {
-          return { total: 0, reviewed: 0, pending: 0, added: 0, deleted: 0, modified: 0 };
+          return { total: 0, reviewed: 0, pending: 0, added: 0, deleted: 0, modified: 0, flagged: 0 };
         }
-        
+
         const items = report.items;
         const total = items.length;
         const reviewed = items.filter(item => item.reviewed).length;
         const pending = total - reviewed;
         const added = items.filter(item => item.diff_type === 'added').length;
         const deleted = items.filter(item => item.diff_type === 'deleted').length;
-        const modified = items.filter(item => 
+        const modified = items.filter(item =>
           item.diff_type === 'text_modified' || item.diff_type === 'number_modified'
         ).length;
-        
-        return { total, reviewed, pending, added, deleted, modified };
+        const flagged = items.filter(item => item.flagged).length;
+
+        return { total, reviewed, pending, added, deleted, modified, flagged };
       },
     }),
     { name: 'compare-store' }

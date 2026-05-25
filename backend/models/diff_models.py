@@ -35,6 +35,7 @@ class DiffItem(BaseModel):
     reviewed: bool = False
     reviewed_by: str | None = None
     reviewed_at: str | None = None
+    flagged: bool = False  # reviewer marked this diff as an anomaly (action == "flagged")
 
 
 class DiffReport(BaseModel):

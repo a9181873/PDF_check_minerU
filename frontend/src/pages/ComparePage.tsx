@@ -727,7 +727,7 @@ const ComparePage: React.FC = () => {
               </div>
               <div className="rounded-2xl border border-red-100 bg-red-50 p-3">
                 <div className="text-sm text-red-700">異常</div>
-                <div className="text-2xl font-bold text-red-900">0</div>
+                <div className="text-2xl font-bold text-red-900">{stats.flagged}</div>
               </div>
             </div>
 
@@ -877,6 +877,7 @@ const ComparePage: React.FC = () => {
                         selectedDiffId={selectedDiffId}
                         onDiffClick={handleDiffClick}
                         showDiffLabels={showDiffLabels}
+                        side="old"
                       />
                     }
                     rightContent={
@@ -892,6 +893,7 @@ const ComparePage: React.FC = () => {
                         selectedDiffId={selectedDiffId}
                         onDiffClick={handleDiffClick}
                         showDiffLabels={showDiffLabels}
+                        side="new"
                       />
                     }
                     syncEnabled={scrollSyncEnabled}

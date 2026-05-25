@@ -75,7 +75,7 @@ SQLite + runtime files + in-memory stores
 - 掛載 CORS
 - 註冊所有 router
 - 啟動時建立 runtime 目錄與初始化 SQLite
-- 掛載 `/uploads` 與 SPA 靜態檔
+- 掛載 SPA 靜態檔（上傳的 PDF 僅經 auth-gated 的 `/api/compare/{id}/pdf/{version}` 提供，**不**靜態掛載 `/uploads`，避免未登入繞過存取）
 
 重要設計：
 

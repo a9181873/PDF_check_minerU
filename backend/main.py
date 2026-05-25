@@ -86,6 +86,9 @@ async def spa_exception_handler(request, exc):
 
 static_dir = Path(__file__).resolve().parent / "static"
 
+# NOTE: uploaded PDFs are served ONLY through the auth-gated /api/compare/{id}/pdf/{version}
+# route (router has Depends(get_current_user)). We deliberately do NOT mount /uploads as
+# static files — that would expose every uploaded PDF unauthenticated to anyone who can
+# guess a filename, bypassing login.
 # Keep the SPA fallback mount last so API and health routes remain reachable.
-app.mount("/uploads", StaticFiles(directory=settings.uploads_dir, check_dir=False), name="uploads")
 app.mount("/", StaticFiles(directory=static_dir, html=True, check_dir=False), name="static")

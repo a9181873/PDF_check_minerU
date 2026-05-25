@@ -8,13 +8,16 @@ from models.database import (
     ensure_default_project,
     get_archive_by_hashes,
     get_checklist,
+    get_comparison_report,
     get_review_counts,
     get_review_logs,
     get_review_logs_with_changes,
     init_db,
     save_checklist,
+    save_comparison_report_state,
+    update_review_item_state,
 )
-from models.diff_models import CheckStatus, ChecklistItem
+from models.diff_models import CheckStatus, ChecklistItem, DiffItem, DiffReport, DiffType
 
 
 def _prepare_temp_db(monkeypatch, tmp_path: Path) -> None:
@@ -47,6 +50,51 @@ def test_review_counts_use_latest_action(monkeypatch, tmp_path: Path):
     assert counts["confirmed"] == 1
     assert counts["flagged"] == 1
     assert counts["skipped"] == 0
+
+
+def _seed_report(comparison_id: str) -> None:
+    report = DiffReport(
+        project_id=ensure_default_project(),
+        old_filename="old.pdf",
+        new_filename="new.pdf",
+        created_at="2026-05-25T00:00:00Z",
+        total_diffs=2,
+        items=[
+            DiffItem(id="d001", diff_type=DiffType.NUMBER_MODIFIED, context="p1", confidence=0.9),
+            DiffItem(id="d002", diff_type=DiffType.NUMBER_MODIFIED, context="p2", confidence=0.9),
+        ],
+    )
+    save_comparison_report_state(comparison_id, report)
+
+
+def test_update_review_item_state_is_atomic_per_item(monkeypatch, tmp_path: Path):
+    # Two reviewers acting on different items must not clobber each other: updating
+    # d001 must leave d002 untouched (the bug was overwriting the whole report blob).
+    _prepare_temp_db(monkeypatch, tmp_path)
+    init_db()
+    comparison_id = "cmp-atomic"
+    _create_comparison_record(comparison_id)
+    _seed_report(comparison_id)
+
+    assert update_review_item_state(
+        comparison_id, "d002", reviewed=True, reviewed_by="alice",
+        reviewed_at="2026-05-25T01:00:00Z", flagged=False,
+    ) is True
+    assert update_review_item_state(
+        comparison_id, "d001", reviewed=True, reviewed_by="bob",
+        reviewed_at="2026-05-25T02:00:00Z", flagged=True,
+    ) is True
+
+    report = get_comparison_report(comparison_id)
+    by_id = {it.id: it for it in report.items}
+    # d001 flagged by bob; d002's earlier confirm by alice survives.
+    assert by_id["d001"].reviewed and by_id["d001"].flagged and by_id["d001"].reviewed_by == "bob"
+    assert by_id["d002"].reviewed and not by_id["d002"].flagged and by_id["d002"].reviewed_by == "alice"
+
+    # Unknown comparison / item → False, no crash.
+    assert update_review_item_state(
+        comparison_id, "d999", reviewed=True, reviewed_by="x", reviewed_at="t", flagged=True,
+    ) is False
 
 
 def test_checklist_round_trip_persists_to_sqlite(monkeypatch, tmp_path: Path):

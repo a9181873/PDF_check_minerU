@@ -29,6 +29,8 @@ interface PDFViewerProps {
   onDiffClick?: (diff: DiffItem) => void;
   /** Whether to show the text label inside each diff overlay */
   showDiffLabels?: boolean;
+  /** Which document side this viewer shows, so the overlay uses the matching bbox */
+  side?: 'old' | 'new';
 }
 
 /** Track per-page original PDF dimensions (in PDF points, scale-independent) */
@@ -70,6 +72,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   selectedDiffId = null,
   onDiffClick,
   showDiffLabels = true,
+  side = 'new',
 }) => {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -92,8 +95,11 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   const selectedDiffPage = useMemo(() => {
     if (!selectedDiffId) return null;
     const diff = diffItems.find((item) => item.id === selectedDiffId);
-    return diff?.new_bbox?.page ?? diff?.old_bbox?.page ?? null;
-  }, [diffItems, selectedDiffId]);
+    // Jump to the page on THIS side's bbox so the old viewer scrolls to the old page.
+    return side === 'old'
+      ? diff?.old_bbox?.page ?? diff?.new_bbox?.page ?? null
+      : diff?.new_bbox?.page ?? diff?.old_bbox?.page ?? null;
+  }, [diffItems, selectedDiffId, side]);
 
   const includePageWindow = useCallback((source: Set<number>, page: number, totalPages: number | null) => {
     const next = new Set(source);
@@ -482,6 +488,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                               pdfPageHeight={dims.pdfHeight}
                               onDiffClick={onDiffClick}
                               showLabels={showDiffLabels}
+                              side={side}
                             />
                           )}
                           {/* Page number badge */}

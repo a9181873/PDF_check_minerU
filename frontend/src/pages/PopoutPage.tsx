@@ -155,6 +155,7 @@ const PopoutPage: React.FC = () => {
               diffItems={filteredItems}
               selectedDiffId={selectedDiffId}
               onDiffClick={handleDiffClick}
+              side={version}
             />
           </Suspense>
         </div>

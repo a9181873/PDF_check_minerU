@@ -8,7 +8,7 @@ from models.database import (
     add_review_log,
     get_comparison_report,
     get_review_counts,
-    save_comparison_report_state,
+    update_review_item_state,
 )
 from models.schemas import ReviewActionRequest, ReviewSummaryResponse
 
@@ -35,6 +35,7 @@ async def confirm_diff(comparison_id: str, payload: ReviewActionRequest):
     target.reviewed = payload.action in {"confirmed", "flagged"}
     target.reviewed_by = payload.reviewer
     target.reviewed_at = datetime.now(timezone.utc).isoformat()
+    target.flagged = payload.action == "flagged"
 
     add_review_log(
         comparison_id=comparison_id,
@@ -43,7 +44,16 @@ async def confirm_diff(comparison_id: str, payload: ReviewActionRequest):
         reviewer=payload.reviewer,
         note=payload.note,
     )
-    save_comparison_report_state(comparison_id, report)
+    # Persist just this item atomically — overwriting the whole report blob would
+    # drop a concurrent reviewer's edit to a different item.
+    update_review_item_state(
+        comparison_id,
+        payload.diff_item_id,
+        reviewed=target.reviewed,
+        reviewed_by=target.reviewed_by,
+        reviewed_at=target.reviewed_at,
+        flagged=target.flagged,
+    )
 
     return {"ok": True}
 

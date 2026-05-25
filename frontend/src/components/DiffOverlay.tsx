@@ -12,7 +12,16 @@ interface DiffOverlayProps {
   selectedDiffId?: string | null;
   onDiffClick?: (diff: DiffItem) => void;
   showLabels?: boolean;
+  /** Which document this overlay is drawn over. The old PDF must highlight at the
+   *  OLD bbox and the new PDF at the NEW bbox — a MODIFIED item has different
+   *  coordinates on each side, so sharing one bbox misplaces the old-side boxes. */
+  side?: 'old' | 'new';
 }
+
+/** Pick the bbox for the side being rendered, falling back to the other side
+ *  (a DELETED item has only old_bbox; an ADDED item only new_bbox). */
+const pickBbox = (diff: DiffItem, side: 'old' | 'new') =>
+  side === 'old' ? diff.old_bbox || diff.new_bbox : diff.new_bbox || diff.old_bbox;
 
 const getDiffColor = () => {
   return 'diff-overlay-highlight';
@@ -70,10 +79,11 @@ const DiffOverlay: React.FC<DiffOverlayProps> = ({
   selectedDiffId = null,
   onDiffClick,
   showLabels = true,
+  side = 'new',
 }) => {
   // Filter diffs for this specific page
   const pageDiffs = diffItems.filter((diff) => {
-    const bbox = diff.new_bbox || diff.old_bbox;
+    const bbox = pickBbox(diff, side);
     return bbox && bbox.page === pageNumber;
   });
 
@@ -85,7 +95,7 @@ const DiffOverlay: React.FC<DiffOverlayProps> = ({
     // inset-0 always fills the parent .relative div exactly — no stored pixel dimensions needed
     <div className="absolute inset-0 pointer-events-none">
       {pageDiffs.map((diff) => {
-        const bbox = diff.new_bbox || diff.old_bbox;
+        const bbox = pickBbox(diff, side);
         if (!bbox) return null;
 
         // Use % so the overlay stays accurate regardless of scale or transition state.
