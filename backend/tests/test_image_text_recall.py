@@ -6,7 +6,7 @@ still require the fixed-sample container regression (see docs/historical_issues.
 """
 
 from models.diff_models import BBox, DiffType
-from services.diff_service import _bbox_iou, diff_positioned_paragraphs
+from services.diff_service import _bbox_iou, _is_reliable_ocr_text, diff_positioned_paragraphs
 from services.parser_service import ParsedParagraph
 
 
@@ -159,16 +159,33 @@ def test_recall_suppresses_resegmented_matched_footnote_pair():
     assert diff_positioned_paragraphs(old_paras, new_paras) == []
 
 
-def test_recall_keeps_resegmented_pair_when_a_digit_really_changed():
-    # Guard the gate above: if the same re-split footnote ALSO carries a genuine
-    # rate change (3.90% → 4.20%), the digits differ → it is NOT suppressed.
+def test_recall_suppresses_length_mismatched_matched_pair():
+    # The 臻美利 註1 regression: the same footnote, OCR'd LONG in the old scan but
+    # truncated (re-split before 註2) in the new scan, so the two blocks span
+    # different content windows. Even though their digit multisets differ (the long
+    # block carries the trailing 註2 digits the short one lacks), this is a windowing
+    # artifact, not a content edit — a matched pair this length-mismatched
+    # (296 vs 154 in production) must be suppressed. A number that genuinely changed
+    # would still surface via the add/reconcile novel-digit path (covered below).
     old_long = (
-        "註1假設每年宣告利率3.90%計算之累計增加保險金額本商品所稱宣告利率"
-        "係指本公司於每月初公告之數值該利率非保證利率實際以本公司每月公告為準"
+        "註1假設每年宣告利率3.90%計算之累計增加保險金額本商品所稱宣告利率係指本公司於每月初"
+        "公告之數值該利率非保證利率實際以本公司每月公告為準註2上表各項累計增加保險金額之年度末"
     )
-    new_short = "註1假設每年宣告利率4.20%計算之累計增加保險金額本商品所稱宣告利率"
+    new_short = "註1假設每年宣告利率3.90%計算之累計增加保險金額本商品所稱宣告利率"
     old_paras = [_para(old_long, 2, 40, 700, 540, 760)]
-    new_paras = [_para(new_short, 2, 40, 700, 540, 760)]
+    new_paras = [_para(new_short, 2, 40, 700, 540, 760)]  # same position → IoU-matched
+
+    assert diff_positioned_paragraphs(old_paras, new_paras) == []
+
+
+def test_recall_reports_low_similarity_same_length_change():
+    # The 新保安心 文號 case, and why the gate is LENGTH not similarity: a short header
+    # line where many digits changed (民國112年→113年, 文號 1110152342→11304921175).
+    # Text similarity is low (~0.67) but it is a REAL edit; the two blocks are the
+    # same length (in-place substitution), so it must be reported. A similarity gate
+    # would wrongly swallow it.
+    old_paras = [_para("中華民國112年2月9日依111年1月28日金管保壽字第1110152342號函修正", 1, 40, 700, 500, 720)]
+    new_paras = [_para("中華民國113年7月1日依113年6月27日金管保壽字第11304921175號函修正", 1, 40, 700, 500, 720)]
 
     items = diff_positioned_paragraphs(old_paras, new_paras)
 
@@ -218,3 +235,17 @@ def test_recall_reports_crosspage_resegmented_real_number_change():
     assert len(items) == 1
     assert items[0].diff_type == DiffType.NUMBER_MODIFIED
     assert "3.90%" in items[0].old_value and "4.00%" in items[0].new_value
+
+
+def test_recall_suppresses_math_formula_block():
+    # The 臻美利 p6 actuarial-reserve formula, OCR'd as a garbled mix of isolated
+    # letters and math operators (∑, (1+i), m-t). It is a formula, not prose, and
+    # MinerU cannot OCR it reliably → it must never be surfaced (here it would
+    # otherwise become a DELETED). The pixel path + suppressed-count banner cover it.
+    formula = "C V + ∑E n d(1 + i) m-tm=1、5、10、15、20∑ G Pt(1 + i ) m-t+1"
+    assert _is_reliable_ocr_text(formula) is False
+
+    old_paras = [_para(formula, 6, 40, 300, 520, 360)]
+    new_paras = [_para("本契約之保險金給付依保單條款約定計算並以實際發生為準。", 6, 40, 300, 520, 360)]
+    # The formula side is unreliable, so no DELETED/MODIFIED is emitted from it.
+    assert all("∑" not in (i.old_value or "") for i in diff_positioned_paragraphs(old_paras, new_paras))

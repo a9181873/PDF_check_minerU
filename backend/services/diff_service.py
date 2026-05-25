@@ -22,6 +22,11 @@ _VERSION_DATE_RE = re.compile(r"\b((?:20)?\d{2,3}\.\d{2})\b")
 _CJK_RE = re.compile(r"[\u3400-\u9fff]")
 _CJK_RUN_RE = re.compile(r"[\u3400-\u9fff]{6,}")
 _UPPER_BRACKET_NOISE_RE = re.compile(r"\[[A-Z]{2,}")
+# Summation/integral/product/root/contour operators: a math FORMULA, never legitimate
+# prose in these DMs. MinerU OCRs such blocks as garbage (e.g. the actuarial reserve
+# formula "C V + \u2211E n d(1+i) m-t\u2026"); they cannot be reliably diffed, so the pixel path
+# + suppressed-count banner handle them, not the text-recall layer.
+_MATH_FORMULA_NOISE_RE = re.compile(r"[\u2211\u222b\u220f\u221a\u222e]")
 _PRIVATE_USE_RE = re.compile(r"[\ue000-\uf8ff\ufffd]")
 
 # Characters that should be stripped or unified before comparison to prevent
@@ -249,6 +254,8 @@ def _is_reliable_ocr_text(text: str | None) -> bool:
         return True
     if _UPPER_BRACKET_NOISE_RE.search(clean):
         return False
+    if _MATH_FORMULA_NOISE_RE.search(clean):
+        return False  # math-formula fragment (∑/∫/√…) — OCR garbage, recall can't diff it
 
     chars = [ch for ch in clean if not ch.isspace()]
     if len(chars) < 6:
@@ -503,6 +510,7 @@ _RECALL_NUM_SEP_RE = re.compile(r"(?<=\d)[.,](?=\d)")
 _PAGE_REDESIGN_RATIO = 0.45   # page text similarity below this → whole-page redesign
 _BLOCK_REMATCH_RATIO = 0.60   # text-similarity fallback to re-pair re-segmented blocks
 _CONTAINMENT_SUPPRESS = 0.85  # add/del block this contained in the other doc = re-segmentation
+_ALIGNED_LEN_RATIO = 0.90     # matched pair this same-length → same content window (real edit)
 _COMPREHENSIVE_MARKERS = ("整頁版面變更", "整表替換")
 
 
@@ -528,6 +536,25 @@ def _digits_covered(block_norm: str, doc_norm: str) -> bool:
     carries no numeric change; a real rate/total edit keeps a novel digit run and
     is therefore surfaced even if its surrounding text is otherwise present."""
     return set(re.findall(r"\d+", block_norm)) <= set(re.findall(r"\d+", doc_norm))
+
+
+def _aligned_length(a: str, b: str) -> bool:
+    """True when two normalised blocks span essentially the SAME content window.
+
+    A genuine number edit is an in-place digit substitution, so the two independent
+    OCR scans produce near-identical-length blocks (measured: 美鑫 rate lines 72/72,
+    76/76; 新保安心 文號 line 38/37). Re-segmentation between the two scans yields very
+    different lengths (臻美利 註1: 296 vs 154 — the new scan truncated the block before
+    註2), and a digit difference across such mismatched windows is an artifact, not a
+    content change. Length-ratio separates the two cleanly where text similarity does
+    NOT: the 文號 edit is real yet only 0.667 similar, while the 臻美利 noise is a
+    longer block — measured gap is genuine ≥0.97 vs re-segmentation ≤0.80. The small
+    absolute-diff escape keeps short real edits whose length jitters by OCR. See
+    historical_issues.md §7."""
+    shorter, longer = min(len(a), len(b)), max(len(a), len(b))
+    if longer == 0:
+        return True
+    return longer - shorter <= 2 or shorter / longer >= _ALIGNED_LEN_RATIO
 
 
 def _text_ratio(a: str, b: str) -> float:
@@ -558,17 +585,28 @@ def _union_bbox(paragraphs: list[ParsedParagraph], page: int) -> BBox | None:
 
 
 def _recall_block_item(op: ParsedParagraph, npg: ParsedParagraph, page: int, conf: float) -> DiffItem | None:
-    """Build a NUMBER_MODIFIED for a matched block pair, gated on a real DIGIT change.
+    """Build a NUMBER_MODIFIED for a matched block pair: a real DIGIT change between
+    two blocks that span the SAME content window.
 
-    Two image PDFs are OCR'd independently, so a long block (footnote, illustration
-    line) picks up punctuation/spacing/re-segmentation drift that looks like a change
-    but is not. The reliable discriminator is the digits: `_recall_norm` already
-    absorbs decimal/thousands separator drift ('3.90'↔'3,90'→'390'), so if the digit
-    multiset is unchanged the pair is wording / OCR noise / a re-split — drop it (the
-    reviewer's filter discards wording-only edits anyway, and a footnote OCR'd with
-    different boundaries is noise). A genuine numeric edit (3.90%→4.00%) changes the
-    digits and is surfaced regardless of how textually similar the long block stays —
-    which is exactly the headline change a similarity gate would wrongly swallow.
+    Two image PDFs are OCR'd independently, so a block picks up punctuation/spacing/
+    re-segmentation drift that looks like a change but is not. Two gates, both needed:
+
+      1. The digits must differ. `_recall_norm` already absorbs decimal/thousands
+         separator drift ('3.90'↔'3,90'→'390'), so an unchanged digit multiset means
+         wording / OCR noise — drop it (the reviewer's filter discards wording-only
+         edits anyway).
+      2. The two blocks must be roughly the same LENGTH (`_aligned_length`). A genuine
+         edit substitutes a digit in place, so both scans yield same-length blocks
+         (美鑫 72/72). A length-mismatched pair is re-segmentation — the new scan
+         truncated/merged the block differently (臻美利 註1: 296 vs 154) — and the
+         digit difference there is a windowing artifact, not a content edit. (A real
+         number that only ever appears in a re-split block still surfaces via the
+         add/reconcile path's novel-digit guard, so nothing real is lost here.)
+
+    Length, not similarity, is the discriminator: the measured 新保安心 文號 edit is
+    REAL yet only 0.667 similar (many digits changed in a short string), so a
+    similarity gate would wrongly swallow it; its length ratio is 0.97. See
+    historical_issues.md §7.
     """
     on, nn = _recall_norm(op.text), _recall_norm(npg.text)
     if on == nn:
@@ -577,6 +615,8 @@ def _recall_block_item(op: ParsedParagraph, npg: ParsedParagraph, page: int, con
         return None
     if _recall_digits(on) == _recall_digits(nn):
         return None  # no numeric change → wording / punctuation / re-segmentation noise
+    if not _aligned_length(on, nn):
+        return None  # length-mismatched = re-segmentation; digit diff is a windowing artifact
     return DiffItem(
         id="", diff_type=_guess_diff_type(op.text, npg.text),
         old_value=_clip_text(op.text), new_value=_clip_text(npg.text),
@@ -635,7 +675,9 @@ def _reconcile_leftover_blocks(
     a block left unmatched on its page is frequently the same content the other
     scan placed elsewhere. Re-pair leftovers by text similarity (document-wide):
       • paired + identical digits  → re-segmentation noise → drop both;
-      • paired + digits differ     → a real edit → emit MODIFIED;
+      • paired + digits differ + same length → a real edit → emit MODIFIED (a
+        length-mismatched re-pair is reflow/mis-pairing, so its digit diff is an
+        artifact — `_aligned_length`);
       • still unpaired new/old      → ADDED/DELETED, but only when the text is
         genuinely absent from the other document (whole-doc containment guard,
         which absorbs cross-page re-splits the per-page check used to miss).
@@ -658,10 +700,13 @@ def _reconcile_leftover_blocks(
         op = leftover_old[best_i]
         used_old.add(best_i)
         used_new.add(ni)
+        on = _recall_norm(op.text)
         if not (_is_reliable_ocr_text(op.text) and _is_reliable_ocr_text(npg.text)):
             continue  # re-paired but OCR unreliable → never surface garbage
-        if _recall_digits(_recall_norm(op.text)) == _recall_digits(nn):
+        if _recall_digits(on) == _recall_digits(nn):
             continue  # same digits → pure re-segmentation, not a content edit
+        if not _aligned_length(on, nn):
+            continue  # length-mismatched re-pair = reflow/mis-pair; digit diff is an artifact
         items.append(DiffItem(
             id="", diff_type=_guess_diff_type(op.text, npg.text),
             old_value=_clip_text(op.text), new_value=_clip_text(npg.text),
