@@ -240,3 +240,27 @@
 | 低 | `build-and-export.ps1` 提示 `localhost:8000` | compose 實際 `8001:8000` | 改 `localhost:8001`（DEPLOY.md/README 本就正確） |
 
 備註：MX570 2GB + OCI 無 GPU → MinerU 一律走 **CPU**（見 `recall-regression-runbook.md`）。Docker 映像的 torch 雖是 `cu130` CUDA build、且 Docker 有 nvidia runtime，但 compose 刻意不開 GPU。
+
+## 9. 2026-05-25 程式碼審查稽核（8 項）＋ 上線
+
+外部審查報告列出 8 項（5 高 3 中）。逐一對程式碼核實（部分為刻意設計），確認為真者全修。
+
+| # | 嚴重 | 位置 | 判定 | 根因 / 修正 |
+|---|---|---|---|---|
+| 1 | 高 | `DiffOverlay.tsx` | ✅ 真 | 舊/新兩個 `PDFViewer` 共用同一份 items，`DiffOverlay` 永遠取 `new_bbox`、無側別 → **舊側高亮畫在新版座標**（文字型 reflow 才看得出、影像型幾乎重疊故未被發現）。修：`PDFViewer→DiffOverlay` 加 `side` prop，舊側用 `old_bbox`（選取跳頁也依側別）。**追加**：`pickBbox` 原本 fallback 到另一側 → ADDED（只有 new_bbox）會漏畫到舊版、DELETED 漏到新版；改為**嚴格只取該側 bbox**（後端確認 MODIFIED/IMAGE_DIFF 兩側都帶 bbox、ADDED/DELETED 只帶單側，故 fallback 對真實項目無益只會誤畫）。 |
+| 2 | 高 | `diff_service.py` reconcile | ⚠️ 部分 | digit-equal／not-aligned 的 `continue` 是刻意降噪（已過回歸）。真正問題：**reliability 檢查在 `used.add` 之後** → OCR 亂碼塊會「吃掉」可配對的可靠塊並使其消失。修：reliability 檢查移到 `used.add` 之前，不可靠配對不消費，留給 ADD/DEL 迴圈各自判定。5 樣本容器回歸**逐筆與基準一致**。 |
+| 3 | 高 | `parser_service.py` | ✅ 真（窄） | `int(0.7*total)` 向下取整 → 2 頁 PDF 只要 1 頁影像（50%）就誤判 image-PDF（違反註解 70%），強制 pixel-only 漏文字差異。修：`int`→`math.ceil`（2 頁需兩頁皆影像）。 |
+| 4 | 高 | `routes_review.py` | ✅ 真（有緩解） | `save_comparison_report_state` 整包覆寫 report blob → 多人同審 lost-update。修：新增 `update_review_item_state`（`BEGIN IMMEDIATE` 原子單 item RMW），只改該 item；counts 本就來自 append-only 的 `review_logs`。**追加**：route 檢查回傳值，False（blob 尚未持久化）時 fallback 整包寫入避免靜默丟失。 |
+| 5 | 高 | `main.py` | ✅ 真 | `/uploads` 靜態掛載無 auth → 未登入可依檔名直接下載上傳 PDF。應用實際走 auth-gated 的 `/api/compare/{id}/pdf/{version}`，前端零依賴 → **移除 `/uploads` 掛載**。 |
+| 6 | 中 | `PopoutPage.tsx` | ✅ 真（微妙） | `useCrossWindowSync` 已用 windowId 去重（自己的廣播收不到）＋`isSyncingRef` 擋再廣播；PopoutPage 又用 `source === version` 擋 → 舊/新版 popout 忽略主視窗同側捲動。修：移除多餘 version 比對，依 ratio 跟隨所有跨視窗事件。 |
+| 7 | 中 | `ComparePage.tsx` | ✅ 真 | 「異常」卡硬寫 `0`。修：`DiffItem` 加 `flagged`（flagged 動作設定、經原子更新持久化）；`getStats` 計數；卡片接 `stats.flagged`。 |
+| 8 | 中 | `config.py` | ✅ 真（輕） | 本機無 `runtime/` 時 fallback 到容器路徑 `/app/runtime`（Windows 變 `\app\runtime`），與 README 本機佈局不符。修：預設一律 `<repo>/runtime`；容器仍由 compose `DATA_DIR=/app/runtime` 覆寫。 |
+
+- Commits：`533c139`（#1 #2 #3 #4 #5 #7）、`ca717f8`（#6 #8）、`be513ce`（#1/#4 兩個追加）。host pytest **52 passed**（+1 原子更新測試）、前端 **tsc clean**、5 樣本容器召回回歸不變。
+
+### 上線（2026-05-25）
+- **分支模型校正**：OCI 原本跑孤兒本地分支 `master@f23c2ba`（極舊、GitHub 已無 `origin/master`）。本次把 `feat/image-text-recall` 快轉合併進 `main`（GitHub `origin/main` → `be513ce`），OCI 改**追蹤 `origin/main`**。日後正式機統一以 `main` 部署。
+- **OCI 部署事實**（ARM64 `ubuntu@144.24.11.149`，deploy 目錄 `/home/ubuntu/pdf-check-minerU`）：與 `caddy` 等 9 個 stack 共用同一台。backend `Dockerfile` 內含前端 `npm run build` → 重建 backend 即帶新前端。流程：`git pull`(main) → `docker compose build backend-minerU`（舊容器續跑）→ `up -d`（只重建 backend、mineru-api 不動、資料卷保留）。
+- **prod compose 客製（每次切分支後須重套）**：`ports: '8000'`（不綁 host，由 caddy 經內部網路代理）＋ `networks.internal: external: true`（共享外部網路 `internal`，caddy 以容器名 `pdf-check-minerU:8000` 連、`health_uri /health`）。`ENABLE_IMAGE_TEXT_RECALL` 維持 `false`。切分支前先 `cp docker-compose.yml ~/docker-compose.prod.bak.*` 備份。
+- **驗證**：容器在 `internal` 網（172.18.0.9）、`Uvicorn running`、`/health 200`（含 caddy 探測）、SPA 根 `200`、live env `ENABLE_IMAGE_TEXT_RECALL=false`、caddy 站 `pdfcheck_minerU.{$DOMAIN}` 正常。
+- **依賴漂移再現（#5 未鎖版的後果）**：此次 ARM 重建把未鎖的 requirements 拉到較新主版本（numpy 2.4、pandas 3.0、torch 2.12、fastapi 0.136、docling 2.95…）。build 成功、/health 與 SPA 正常，但印證 §8 #5 的風險——**建議從現役容器 `pip freeze` 釘版**以確保可重現。
