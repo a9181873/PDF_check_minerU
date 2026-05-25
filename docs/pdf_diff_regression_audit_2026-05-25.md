@@ -10,6 +10,8 @@
 
 最可疑斷點是 `c60ae99`：它開始在合併後丟棄所有 `IMAGE_DIFF`，並加入最終非數字過濾。影像型 PDF 的大段文字變更常先被 pixel path 判成 `IMAGE_DIFF`；如果 `ENABLE_IMAGE_TEXT_RECALL=false`，這些變更沒有文字召回路徑，最後只剩 `suppressed_count` 提醒或直接從差異清單消失。
 
+本分支已先做 P0 止血修正：image-only / mixed image PDF 進入 pixel path 時，保留 `IMAGE_DIFF` 作為高信號視覺 fallback；一般文字型 PDF 維持原本降噪行為。這不是把爛 recall 流程複製一層，而是先修復 5/21 後最明確的漏報來源：系統看到差異後又在合併層刪掉。
+
 5/22 後新增的 MinerU OCR recall layer 方向正確，但仍是多層 heuristic 網路。它已被多次修補以處理 OCR 標點漂移、區塊重切、跨頁重切、長度不匹配、公式亂碼等情境。這些修補對個別樣本有效，但形成高度耦合的閘門網路，改一個條件就可能讓另一組樣本回歸。
 
 ## Evidence
@@ -27,6 +29,8 @@
 
 - `merge_diff_results` 計數 `suppressed_visual` 後移除 `IMAGE_DIFF`
 - `_drop_non_numeric_modifications` 只保留 ADDED / DELETED / numbers changed / comprehensive markers
+
+本分支修正為：`merge_diff_results(..., keep_image_diffs=True)` 只在 image-only / mixed image PDF 主路徑啟用，並讓 `_drop_non_numeric_modifications(..., keep_image_diffs=True)` 不再二次刪掉這些 fallback。這讓 recall OFF、MinerU 失敗、或 OCR 讀不到密集表格時，審核清單仍保留像素路徑已確認的視覺差異框。
 
 ### 2. Recall layer exists, but production default is still off
 
@@ -124,8 +128,14 @@
 
 1. 不要再新增 recall heuristic。
 2. 保持 `ENABLE_IMAGE_TEXT_RECALL=false`，除非該環境已跑完固定樣本回歸。
-3. 對 `IMAGE_DIFF` 的處理改產品決策：不要讓真變更只剩 `suppressed_count`。至少應能切換「保留高信號視覺差異供人工審核」。
+3. image-only / mixed image PDF 保留高信號 `IMAGE_DIFF` fallback，避免真變更只剩 `suppressed_count` 或 0 筆。
 4. 將 `suppressed_count > 0` 的任務列為需要人工截圖複核，不可視為 0 差異。
+
+已完成的程式調整：
+
+- `backend/services/diff_service.py`：新增 `keep_image_diffs` 參數，image-only path 保留 visual fallback。
+- `backend/tests/test_diff.py`：補上 fallback 保留、最終非數字過濾不再刪 fallback、完整 report 保留 image PDF fallback 的測試。
+- 驗證：`backend/.venv/bin/python -m pytest backend/tests`，59 passed。
 
 ## Alignment Shadow Plan
 

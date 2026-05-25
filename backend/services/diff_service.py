@@ -1968,6 +1968,7 @@ def merge_diff_results(
     pixel_diffs: list[DiffItem] | None,
     image_diffs: list[DiffItem] | None = None,
     stats: dict | None = None,
+    keep_image_diffs: bool = False,
 ) -> list[DiffItem]:
     merged = [*text_diffs, *table_diffs]
     if pixel_diffs:
@@ -2028,15 +2029,16 @@ def merge_diff_results(
         if to_remove:
             merged = [item for idx, item in enumerate(merged) if idx not in to_remove]
 
-    # Drop image-only (pure visual) diffs — they are noise for content review.
-    # Text / number / added / deleted changes still carry their values, so only
-    # markers whose sole signal is a visual delta are removed. Record how many
-    # were dropped so the UI can warn the reviewer to also check the snapshots.
-    if stats is not None:
-        stats["suppressed_visual"] = stats.get("suppressed_visual", 0) + sum(
-            1 for item in merged if item.diff_type == DiffType.IMAGE_DIFF
-        )
-    merged = [item for item in merged if item.diff_type != DiffType.IMAGE_DIFF]
+    visual_count = sum(1 for item in merged if item.diff_type == DiffType.IMAGE_DIFF)
+    if keep_image_diffs:
+        if stats is not None:
+            stats["retained_visual"] = stats.get("retained_visual", 0) + visual_count
+    else:
+        # Drop image-only (pure visual) diffs — they are noise for normal content
+        # review. Image-only PDFs opt into keeping them as the fallback signal.
+        if stats is not None:
+            stats["suppressed_visual"] = stats.get("suppressed_visual", 0) + visual_count
+        merged = [item for item in merged if item.diff_type != DiffType.IMAGE_DIFF]
 
     merged = sorted(merged, key=_sort_key)
     for index, item in enumerate(merged, start=1):
@@ -2044,7 +2046,11 @@ def merge_diff_results(
     return merged
 
 
-def _drop_non_numeric_modifications(items: list[DiffItem]) -> list[DiffItem]:
+def _drop_non_numeric_modifications(
+    items: list[DiffItem],
+    *,
+    keep_image_diffs: bool = False,
+) -> list[DiffItem]:
     """Keep added/removed blocks and any change whose numbers differ; drop
     wording-only edits that carry no numeric change.
 
@@ -2056,7 +2062,10 @@ def _drop_non_numeric_modifications(items: list[DiffItem]) -> list[DiffItem]:
     """
     kept: list[DiffItem] = []
     for item in items:
-        if item.diff_type in (DiffType.ADDED, DiffType.DELETED):
+        if item.diff_type == DiffType.IMAGE_DIFF:
+            if keep_image_diffs:
+                kept.append(item)
+        elif item.diff_type in (DiffType.ADDED, DiffType.DELETED):
             kept.append(item)
         elif item.context and any(m in item.context for m in _COMPREHENSIVE_MARKERS):
             kept.append(item)
@@ -2108,9 +2117,18 @@ def generate_diff_report(
                 recall_diffs = diff_positioned_paragraphs(old_ocr.paragraphs, new_ocr.paragraphs)
         except Exception:
             recall_diffs = []
-        merged_items = merge_diff_results(recall_diffs, [], pixel_diffs, img_diffs, stats=stats)
+        merged_items = merge_diff_results(
+            recall_diffs,
+            [],
+            pixel_diffs,
+            img_diffs,
+            stats=stats,
+            keep_image_diffs=True,
+        )
         mode = "image_pdf" if (old_doc.is_image_pdf and new_doc.is_image_pdf) else "mixed_pdf"
         summary = f"{mode}; pixel={len(pixel_diffs)}, img={imgc}, recall={len(recall_diffs)}"
+        if stats.get("retained_visual"):
+            summary += f", visual_retained={int(stats['retained_visual'])}"
     else:
         text_diffs = diff_paragraphs(old_doc.paragraphs, new_doc.paragraphs)
         table_diffs = diff_tables(old_doc.tables, new_doc.tables)
@@ -2127,7 +2145,7 @@ def generate_diff_report(
     # Final content filter: drop wording-only edits (no numeric change), keeping
     # number changes and structural add/remove. Re-number ids after filtering so
     # they stay sequential (d001, d002, …).
-    merged_items = _drop_non_numeric_modifications(merged_items)
+    merged_items = _drop_non_numeric_modifications(merged_items, keep_image_diffs=use_pixel_only)
     for index, item in enumerate(merged_items, start=1):
         item.id = f"d{index:03d}"
 

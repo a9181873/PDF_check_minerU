@@ -1,5 +1,6 @@
 from models.diff_models import BBox, DiffItem, DiffType
 from services.diff_service import (
+    _drop_non_numeric_modifications,
     _extract_priority_ocr_text,
     _is_reliable_ocr_pair,
     _is_reliable_ocr_text,
@@ -284,6 +285,76 @@ def test_image_only_diff_is_suppressed():
     assert all(item.diff_type != DiffType.IMAGE_DIFF for item in merged)
     assert len(merged) == 1
     assert merged[0].diff_type == DiffType.TEXT_MODIFIED
+
+
+def test_image_only_visual_fallback_can_be_retained():
+    image_only = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_value=None,
+        new_value=None,
+        old_bbox=BBox(page=1, x0=20, y0=80, x1=560, y1=760),
+        new_bbox=BBox(page=1, x0=20, y0=80, x1=560, y1=760),
+        context="Page 1 表格/版面變更",
+        confidence=0.95,
+    )
+    stats = {}
+
+    merged = merge_diff_results([], [], [image_only], stats=stats, keep_image_diffs=True)
+
+    assert len(merged) == 1
+    assert merged[0].diff_type == DiffType.IMAGE_DIFF
+    assert stats["retained_visual"] == 1
+
+
+def test_non_numeric_filter_can_keep_image_fallback():
+    image_only = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_value=None,
+        new_value=None,
+        old_bbox=BBox(page=1, x0=20, y0=80, x1=560, y1=760),
+        new_bbox=BBox(page=1, x0=20, y0=80, x1=560, y1=760),
+        context="Page 1 表格/版面變更",
+        confidence=0.95,
+    )
+
+    assert _drop_non_numeric_modifications([image_only]) == []
+    kept = _drop_non_numeric_modifications([image_only], keep_image_diffs=True)
+    assert kept == [image_only]
+
+
+def test_generate_diff_report_retains_visual_fallback_for_image_pdf(monkeypatch):
+    image_only = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_value=None,
+        new_value=None,
+        old_bbox=BBox(page=1, x0=20, y0=80, x1=560, y1=760),
+        new_bbox=BBox(page=1, x0=20, y0=80, x1=560, y1=760),
+        context="Page 1 表格/版面變更",
+        confidence=0.95,
+    )
+    old_doc = ParsedDocument(pages=1, paragraphs=[], tables=[], raw_json={}, is_image_pdf=True)
+    new_doc = ParsedDocument(pages=1, paragraphs=[], tables=[], raw_json={}, is_image_pdf=True)
+
+    monkeypatch.setattr("services.diff_service.diff_pixels", lambda *_args, **_kwargs: [image_only])
+    monkeypatch.setattr("services.diff_service.diff_images", lambda *_args, **_kwargs: [])
+
+    report = generate_diff_report(
+        project_id="p001",
+        old_filename="old.pdf",
+        new_filename="new.pdf",
+        old_doc=old_doc,
+        new_doc=new_doc,
+        old_pdf_path="/tmp/old.pdf",
+        new_pdf_path="/tmp/new.pdf",
+    )
+
+    assert report.total_diffs == 1
+    assert report.items[0].diff_type == DiffType.IMAGE_DIFF
+    assert report.suppressed_count == 0
+    assert "visual_retained=1" in (report.summary or "")
 
 
 def test_overlapping_text_diffs_in_tall_cell_merge_into_one_block():
