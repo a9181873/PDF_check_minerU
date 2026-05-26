@@ -105,5 +105,13 @@ class Settings(BaseSettings):
                 return False
         return bool(value)
 
+    @field_validator("image_text_recall_strategy", mode="before")
+    @classmethod
+    def normalize_image_text_recall_strategy(cls, value):
+        strategy = str(value or "alignment").strip().lower()
+        if strategy not in {"alignment", "heuristic"}:
+            raise ValueError("image_text_recall_strategy must be 'alignment' or 'heuristic'")
+        return strategy
+
 
 settings = Settings()
