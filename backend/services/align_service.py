@@ -59,6 +59,10 @@ def _digits(text: str) -> tuple[str, ...]:
     return tuple(sorted(_DIGIT_RE.findall(_recall_norm(text))))
 
 
+def _digit_set(text: str) -> set[str]:
+    return set(_DIGIT_RE.findall(_recall_norm(text)))
+
+
 def _cjk_count(text: str) -> int:
     return len(_CJK_RE.findall(text))
 
@@ -125,7 +129,7 @@ def _change_groups(
     old_text: str,
     new_text: str,
     *,
-    merge_equal_chars: int = 6,
+    merge_equal_chars: int = 24,
 ) -> list[_ChangeGroup]:
     matcher = SequenceMatcher(None, old_text, new_text, autojunk=False)
     groups: list[_ChangeGroup] = []
@@ -156,6 +160,44 @@ def _change_groups(
     return groups
 
 
+def _expand_digit_edges(group: _ChangeGroup, old_text: str, new_text: str) -> _ChangeGroup:
+    old_start, old_end = group.old_start, group.old_end
+    new_start, new_end = group.new_start, group.new_end
+    number_chars = set("0123456789.,%")
+
+    while old_start > 0 and old_text[old_start - 1] in number_chars:
+        old_start -= 1
+    while old_end < len(old_text) and old_text[old_end] in number_chars:
+        old_end += 1
+    while new_start > 0 and new_text[new_start - 1] in number_chars:
+        new_start -= 1
+    while new_end < len(new_text) and new_text[new_end] in number_chars:
+        new_end += 1
+
+    return _ChangeGroup(old_start, old_end, new_start, new_end)
+
+
+def _has_strong_one_sided_signal(text: str) -> bool:
+    """Avoid surfacing tiny headings like '8注意事項' as number changes."""
+    compact = _recall_norm(text)
+    if _cjk_count(text) >= 8:
+        return True
+    if re.search(r"\d[\d,]*(?:\.\d+)?\s*(?:%|元|美元)", text):
+        return True
+    if re.search(r"\d{3,4}[-)]?\d{3,4}[-)]?\d{3,4}", compact):
+        return True
+    return False
+
+
+def _already_present_without_new_digits(text: str, other_doc_norm: str, other_doc_digits: set[str]) -> bool:
+    norm = _recall_norm(text)
+    if not norm:
+        return False
+    if norm not in other_doc_norm:
+        return False
+    return _digit_set(text) <= other_doc_digits
+
+
 def _classify(old_text: str, new_text: str) -> tuple[bool, str, float]:
     old_norm = _recall_norm(old_text)
     new_norm = _recall_norm(new_text)
@@ -167,6 +209,8 @@ def _classify(old_text: str, new_text: str) -> tuple[bool, str, float]:
     old_digits = _digits(old_text)
     new_digits = _digits(new_text)
     if old_digits != new_digits:
+        if (not old_norm or not new_norm) and not _has_strong_one_sided_signal(old_text or new_text):
+            return False, "tiny_one_sided_number_fragment", 0.0
         return True, "number_change", 0.78
 
     max_len = max(len(old_norm), len(new_norm))
@@ -196,10 +240,22 @@ def align_paragraphs(
     if not old_seq.text and not new_seq.text:
         return []
 
+    old_doc_norm = _recall_norm(old_seq.text)
+    new_doc_norm = _recall_norm(new_seq.text)
+    old_doc_digits = _digit_set(old_seq.text)
+    new_doc_digits = _digit_set(new_seq.text)
+
     diffs: list[AlignmentDiff] = []
     for group in _change_groups(old_seq.text, new_seq.text):
+        group = _expand_digit_edges(group, old_seq.text, new_seq.text)
         old_text = _slice_text(old_seq, group.old_start, group.old_end)
         new_text = _slice_text(new_seq, group.new_start, group.new_end)
+
+        if old_text and not new_text and _already_present_without_new_digits(old_text, new_doc_norm, new_doc_digits):
+            continue
+        if new_text and not old_text and _already_present_without_new_digits(new_text, old_doc_norm, old_doc_digits):
+            continue
+
         keep, reason, confidence = _classify(old_text, new_text)
         if not keep:
             continue
