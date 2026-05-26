@@ -123,6 +123,111 @@ re-segmentation better, but its output must be judged against the rendered PDF:
 The practical target is not "more recall items"; it is "the reviewer can quickly
 see the real changed location and then confirm whether the content is correct."
 
+## Detailed Lessons
+
+1. Count-based A/B is not enough.
+   The first A/B compared alignment and heuristic by item count, but the PDF
+   review showed that fewer or more items does not mean better review quality.
+   For image-only EDMs, a single crop-backed visual region can be more useful
+   than several unreadable OCR fragments.
+
+2. PDF reality must be inspected before code output.
+   The samples include both image-only PDFs and mixed text + image PDFs. A mixed
+   text PDF should stay on the native text-layer path first; an image-only PDF
+   needs visual evidence and targeted OCR assistance. Treating all files as the
+   same category is the source of several false conclusions.
+
+3. The correct decision model is three-way fusion.
+   The stable reviewer signal should come from native text recognition, OCR
+   recognition, and bbox/visual position together. Native text answers "what did
+   the PDF already know"; OCR answers "what can we read from image-rendered
+   content"; bbox/visual diff answers "where should the reviewer look".
+
+4. OCR recall is an explanation layer, not the ground truth.
+   MinerU OCR can recover useful rate/date/amount snippets, but it also creates
+   garbage around dense Chinese clauses, footer text, and tables. OCR-only output
+   should not replace visual regions unless the text signal is strong and the
+   bbox is positioned on the actual changed area.
+
+5. The April approach remains the better north star.
+   Cell-level bboxes, character/token-level comparison, pHash, NCC, local OCR,
+   and graphic suppression all point to the same principle: cross-check evidence
+   before surfacing a diff. This regression work should keep moving toward that
+   fusion model instead of adding more one-off recall heuristics.
+
+## Update And Fix Log
+
+### Commit `5545440` - A/B baseline
+
+- Added the EDM MinerU OCR A/B audit for `IMAGE_TEXT_RECALL_STRATEGY=alignment`
+  vs `heuristic`.
+- Recorded that alignment improved recall in some non-IoU cases but produced
+  too many fragmented OCR snippets.
+- Confirmed recall remained default OFF and image-diff fallback remained the
+  safety net.
+
+### Commit `a83fa5e` - Alignment post-processing
+
+- Increased nearby alignment opcode grouping so related header/date/control
+  number changes are kept as one reviewer-sized span.
+- Expanded diff groups to include full numeric tokens such as decimal rates and
+  percentages.
+- Suppressed moved identical clauses when the same normalized text already
+  exists elsewhere in the opposite document without new numeric evidence.
+- Suppressed tiny one-sided number fragments unless they carry a stronger
+  signal: amount, percent, phone-like number, or longer CJK text.
+- Added tests for header number merging, moved clause suppression, tiny heading
+  filtering, one-sided amount retention, and decimal-rate token expansion.
+- Re-ran MinerU OCR A/B after the change:
+  - New Bao An Xin: alignment reduced from 11 to 4, but page 2 still needs
+    visual region evidence.
+  - Xin Fu Ai: alignment reduced from 8 to 3, but remaining OCR snippets are
+    still secondary to page/section visual changes.
+  - Mei Xin Chuan Jia: alignment keeps a cleaner `3.90 -> 4.00` signal, but
+    dense table changes still need table/region evidence.
+  - Mei Bao Fa: alignment-only footer text is not the main change; page 2 visual
+    table/value diff remains the key reviewer evidence.
+
+### Current documentation update
+
+- Added the PDF-first review summary so future work does not judge the output by
+  OCR item count alone.
+- Added the April reference section and explicitly documented the three-way
+  fusion principle: native text + OCR + bbox/position.
+- Added this detailed lesson/fix log so the next implementation step can start
+  from the user-facing review goal, not from another isolated heuristic rule.
+
+## Remaining Risks
+
+- The visual review sheets are local runtime artifacts and are not committed.
+  They are useful evidence, but a repeatable script/report should eventually
+  generate a compact reviewer-facing artifact.
+- Some OCR text in local console output appears garbled due encoding, so final
+  product evaluation should rely on UI crops/positions and normalized values,
+  not raw console text alone.
+- Alignment post-processing reduces fragmentation, but it does not yet fuse OCR
+  snippets back into visual diff regions.
+- Image-only table pages still need a stronger table-region or cell-region
+  explanation path. OCR can identify rates and totals, but the reviewer must see
+  the table area that changed.
+
+## Next Implementation Direction
+
+The next implementation should build a fusion layer instead of extending the old
+heuristic:
+
+1. Classify each page as native-text, image-only, or mixed text + image.
+2. Generate candidate regions from pixel/image diff and table/cell bboxes.
+3. Attach native text and OCR snippets to the nearest candidate region when the
+   bbox overlap or distance is reasonable.
+4. Score each candidate by evidence type:
+   - high: numeric/rate/amount text with matching visual region;
+   - medium: large visual region with weak OCR, surfaced as crop-backed
+     `image_diff`;
+   - low: OCR-only tiny heading/footer fragments, suppressed unless they match a
+     known high-value pattern.
+5. Show the reviewer the positioned region first, then the best text/OCR summary.
+
 ## Validation
 
 - `python -m py_compile backend\services\align_service.py backend\tests\test_align_service.py` - pass
