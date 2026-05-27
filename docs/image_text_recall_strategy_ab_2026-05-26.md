@@ -197,6 +197,31 @@ see the real changed location and then confirm whether the content is correct."
 - Added this detailed lesson/fix log so the next implementation step can start
   from the user-facing review goal, not from another isolated heuristic rule.
 
+### Current implementation update - Visual/Text fusion
+
+- Added a first fusion layer inside `merge_diff_results()` for image-PDF mode
+  when visual fallback is retained.
+- When an OCR/native-text item overlaps a visual `IMAGE_DIFF` region, the output
+  now keeps the visual region bbox as the reviewer-facing location and attaches
+  the text/OCR summary as the explanation.
+- Numeric OCR explanations, such as rate changes, promote the fused item to
+  `number_modified` while preserving the larger table/section bbox.
+- Non-numeric OCR explanations remain `image_diff` so the final numeric filter
+  does not accidentally delete the visual fallback.
+- Unexplained visual regions still remain visible, preserving the zero-miss
+  behavior for image-only tables, clauses, and layout changes.
+- Fusion now assigns each OCR/text item to the best matching visual region by
+  bbox coverage and IoU, so a tight table-row/field region wins over a broad
+  page-level region when both overlap the same text.
+- `generate_diff_report()` summary now reports `visual_fused=N` when visual
+  regions are explained by OCR/text.
+- Added tests covering:
+  - visual-only fallback retention;
+  - numeric OCR fusion into a visual region;
+  - non-numeric OCR preserving `image_diff` fallback type;
+  - preference for tighter visual regions over broad overlapping regions;
+  - full `generate_diff_report()` fusion summary.
+
 ## Remaining Risks
 
 - The visual review sheets are local runtime artifacts and are not committed.
@@ -205,21 +230,22 @@ see the real changed location and then confirm whether the content is correct."
 - Some OCR text in local console output appears garbled due encoding, so final
   product evaluation should rely on UI crops/positions and normalized values,
   not raw console text alone.
-- Alignment post-processing reduces fragmentation, but it does not yet fuse OCR
-  snippets back into visual diff regions.
+- The fusion layer currently uses bbox overlap and content type. It does not yet
+  score confidence from OCR quality, table structure, page class, and visual
+  region size together.
 - Image-only table pages still need a stronger table-region or cell-region
   explanation path. OCR can identify rates and totals, but the reviewer must see
   the table area that changed.
 
 ## Next Implementation Direction
 
-The next implementation should build a fusion layer instead of extending the old
-heuristic:
+The next implementation should deepen the fusion layer instead of extending the
+old heuristic:
 
 1. Classify each page as native-text, image-only, or mixed text + image.
 2. Generate candidate regions from pixel/image diff and table/cell bboxes.
-3. Attach native text and OCR snippets to the nearest candidate region when the
-   bbox overlap or distance is reasonable.
+3. Attach native text and OCR snippets to the nearest candidate region using
+   bbox overlap first, then distance and reading-order proximity.
 4. Score each candidate by evidence type:
    - high: numeric/rate/amount text with matching visual region;
    - medium: large visual region with weak OCR, surfaced as crop-backed
@@ -232,6 +258,8 @@ heuristic:
 
 - `python -m py_compile backend\services\align_service.py backend\tests\test_align_service.py` - pass
 - `python -m pytest backend\tests\test_align_service.py backend\tests\test_image_text_recall.py --basetemp backend\tmp_pytest_probe -p no:cacheprovider -q` - 28 passed
-- `python -m pytest backend\tests --basetemp backend\tmp_pytest_probe -p no:cacheprovider -q` - 68 passed on the current local worktree
+- `python -m py_compile backend\services\diff_service.py backend\tests\test_diff.py` - pass
+- `python -m pytest backend\tests\test_diff.py --basetemp backend\tmp_pytest_probe -p no:cacheprovider -q` - 26 passed
+- `python -m pytest backend\tests --basetemp backend\tmp_pytest_probe -p no:cacheprovider -q` - 71 passed on the current local worktree
 - MinerU OCR A/B over 8 EDM pairs after alignment post-processing - pass
 - PDF-first visual sheets generated with PyMuPDF from `C:\Users\JY\Downloads\DM` - pass

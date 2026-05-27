@@ -258,7 +258,11 @@ def test_priority_control_diff_does_not_merge_with_nearby_text():
     assert any(item.new_value == "new nearby footer text" for item in merged)
 
 
-def test_image_only_diff_is_suppressed():
+def test_image_only_region_is_surfaced_as_item():
+    # A visual-only region that no content item explains must be KEPT as a located,
+    # crop-backed item (zero-miss): hiding it behind a "N changes, go look" count is
+    # the failure mode we removed. Here the image region (p1) and the text change (p2)
+    # do not overlap, so both survive.
     image_only = DiffItem(
         id="",
         diff_type=DiffType.IMAGE_DIFF,
@@ -280,11 +284,117 @@ def test_image_only_diff_is_suppressed():
         confidence=0.9,
     )
 
-    merged = merge_diff_results([text_change], [], [image_only])
+    merged = merge_diff_results([text_change], [], [image_only], keep_image_diffs=True)
 
-    assert all(item.diff_type != DiffType.IMAGE_DIFF for item in merged)
+    assert len(merged) == 2
+    assert any(item.diff_type == DiffType.IMAGE_DIFF for item in merged)
+    assert any(item.diff_type == DiffType.TEXT_MODIFIED for item in merged)
+
+
+def test_coarse_visual_region_fuses_with_text_explanation_when_retained():
+    # In image-only mode the visual region is the reviewer-facing location. OCR
+    # text explains the region, but should not shrink the crop down to a tiny bbox.
+    coarse_visual = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_value=None,
+        new_value=None,
+        old_bbox=BBox(page=2, x0=20, y0=380, x1=560, y1=440),
+        new_bbox=BBox(page=2, x0=20, y0=380, x1=560, y1=440),
+        context="Page 2 表格/版面變更",
+        confidence=0.95,
+    )
+    text_change = DiffItem(
+        id="",
+        diff_type=DiffType.NUMBER_MODIFIED,
+        old_value="3.90%",
+        new_value="4.00%",
+        old_bbox=BBox(page=2, x0=40, y0=400, x1=200, y1=418),
+        new_bbox=BBox(page=2, x0=40, y0=400, x1=200, y1=418),
+        context="Page 2 OCR rate",
+        confidence=0.9,
+    )
+    stats = {}
+
+    merged = merge_diff_results([text_change], [], [coarse_visual], stats=stats, keep_image_diffs=True)
+
     assert len(merged) == 1
-    assert merged[0].diff_type == DiffType.TEXT_MODIFIED
+    assert merged[0].diff_type == DiffType.NUMBER_MODIFIED
+    assert merged[0].old_value == "3.90%"
+    assert merged[0].new_value == "4.00%"
+    assert merged[0].old_bbox == coarse_visual.old_bbox
+    assert "OCR rate" in merged[0].context
+    assert stats["fused_visual"] == 1
+
+
+def test_non_numeric_visual_fusion_keeps_visual_fallback_type():
+    coarse_visual = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_value=None,
+        new_value=None,
+        old_bbox=BBox(page=2, x0=20, y0=380, x1=560, y1=440),
+        new_bbox=BBox(page=2, x0=20, y0=380, x1=560, y1=440),
+        context="Page 2 表格/版面變更",
+        confidence=0.95,
+    )
+    wording = DiffItem(
+        id="",
+        diff_type=DiffType.TEXT_MODIFIED,
+        old_value="舊條款",
+        new_value="新條款",
+        old_bbox=BBox(page=2, x0=40, y0=400, x1=200, y1=418),
+        new_bbox=BBox(page=2, x0=40, y0=400, x1=200, y1=418),
+        context="Page 2 OCR clause",
+        confidence=0.9,
+    )
+
+    merged = merge_diff_results([wording], [], [coarse_visual], keep_image_diffs=True)
+
+    assert len(merged) == 1
+    assert merged[0].diff_type == DiffType.IMAGE_DIFF
+    assert merged[0].old_value == "舊條款"
+    assert merged[0].new_value == "新條款"
+
+
+def test_visual_fusion_prefers_tighter_region_for_same_text():
+    broad_visual = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_value=None,
+        new_value=None,
+        old_bbox=BBox(page=2, x0=0, y0=300, x1=600, y1=500),
+        new_bbox=BBox(page=2, x0=0, y0=300, x1=600, y1=500),
+        context="Page 2 broad visual",
+        confidence=0.8,
+    )
+    tight_visual = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_value=None,
+        new_value=None,
+        old_bbox=BBox(page=2, x0=30, y0=390, x1=250, y1=430),
+        new_bbox=BBox(page=2, x0=30, y0=390, x1=250, y1=430),
+        context="Page 2 table row visual",
+        confidence=0.95,
+    )
+    rate = DiffItem(
+        id="",
+        diff_type=DiffType.NUMBER_MODIFIED,
+        old_value="3.90%",
+        new_value="4.00%",
+        old_bbox=BBox(page=2, x0=40, y0=400, x1=200, y1=418),
+        new_bbox=BBox(page=2, x0=40, y0=400, x1=200, y1=418),
+        context="Page 2 OCR rate",
+        confidence=0.9,
+    )
+
+    merged = merge_diff_results([rate], [], [broad_visual, tight_visual], keep_image_diffs=True)
+
+    assert len(merged) == 1
+    assert merged[0].diff_type == DiffType.NUMBER_MODIFIED
+    assert merged[0].old_bbox == tight_visual.old_bbox
+    assert "table row visual" in merged[0].context
 
 
 def test_image_only_visual_fallback_can_be_retained():
@@ -355,6 +465,57 @@ def test_generate_diff_report_retains_visual_fallback_for_image_pdf(monkeypatch)
     assert report.items[0].diff_type == DiffType.IMAGE_DIFF
     assert report.suppressed_count == 0
     assert "visual_retained=1" in (report.summary or "")
+
+
+def test_generate_diff_report_fuses_visual_region_with_alignment_recall(monkeypatch):
+    visual_region = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_value=None,
+        new_value=None,
+        old_bbox=BBox(page=1, x0=20, y0=360, x1=560, y1=460),
+        new_bbox=BBox(page=1, x0=20, y0=360, x1=560, y1=460),
+        context="Page 1 表格/版面變更",
+        confidence=0.95,
+    )
+    old_doc = ParsedDocument(pages=1, paragraphs=[], tables=[], raw_json={}, is_image_pdf=True)
+    new_doc = ParsedDocument(pages=1, paragraphs=[], tables=[], raw_json={}, is_image_pdf=True)
+    old_ocr = ParsedDocument(
+        pages=1,
+        paragraphs=[_paragraph("預定利率3.90%", y0=400, y1=418)],
+        tables=[],
+        raw_json={},
+    )
+    new_ocr = ParsedDocument(
+        pages=1,
+        paragraphs=[_paragraph("預定利率4.00%", y0=400, y1=418)],
+        tables=[],
+        raw_json={},
+    )
+    calls = iter([old_ocr, new_ocr])
+
+    monkeypatch.setattr("config.settings.enable_image_text_recall", True)
+    monkeypatch.setattr("config.settings.image_text_recall_strategy", "alignment")
+    monkeypatch.setattr("services.diff_service.diff_pixels", lambda *_args, **_kwargs: [visual_region])
+    monkeypatch.setattr("services.diff_service.diff_images", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr("services.parser_service.parse_image_pdf_via_mineru_ocr", lambda *_args: next(calls))
+
+    report = generate_diff_report(
+        project_id="p001",
+        old_filename="old.pdf",
+        new_filename="new.pdf",
+        old_doc=old_doc,
+        new_doc=new_doc,
+        old_pdf_path="/tmp/old.pdf",
+        new_pdf_path="/tmp/new.pdf",
+    )
+
+    assert report.total_diffs == 1
+    assert report.items[0].diff_type == DiffType.NUMBER_MODIFIED
+    assert report.items[0].old_bbox == visual_region.old_bbox
+    assert "3.90" in (report.items[0].old_value or "")
+    assert "4.00" in (report.items[0].new_value or "")
+    assert "visual_fused=1" in (report.summary or "")
 
 
 def test_generate_diff_report_can_use_alignment_recall_strategy(monkeypatch):

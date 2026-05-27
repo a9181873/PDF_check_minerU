@@ -1849,6 +1849,134 @@ def _sort_key(item: DiffItem) -> tuple[int, float]:
     return (bbox.page, -bbox.y1)
 
 
+def _bbox_area(bbox: BBox | None) -> float:
+    if not bbox:
+        return 0.0
+    return max(0.0, bbox.x1 - bbox.x0) * max(0.0, bbox.y1 - bbox.y0)
+
+
+def _bbox_intersection_area(a: BBox | None, b: BBox | None) -> float:
+    if not a or not b or a.page != b.page:
+        return 0.0
+    ix0, iy0 = max(a.x0, b.x0), max(a.y0, b.y0)
+    ix1, iy1 = min(a.x1, b.x1), min(a.y1, b.y1)
+    return max(0.0, ix1 - ix0) * max(0.0, iy1 - iy0)
+
+
+def _visual_explanation_score(visual: DiffItem, content: DiffItem) -> float:
+    """How well a visual region explains a text/OCR item."""
+    visual_bbox = visual.new_bbox or visual.old_bbox
+    content_bbox = content.new_bbox or content.old_bbox
+    inter = _bbox_intersection_area(visual_bbox, content_bbox)
+    content_area = _bbox_area(content_bbox)
+    if inter <= 0.0 or content_area <= 0.0:
+        return 0.0
+
+    coverage = inter / content_area
+    iou = _bbox_iou(visual_bbox, content_bbox)
+    if coverage < 0.45 and iou < 0.15:
+        return 0.0
+
+    # Coverage says "is the OCR/text item inside the visual region"; IoU helps
+    # choose a tighter visual region when several candidates contain the same text.
+    return coverage + iou
+
+
+def _fused_diff_type(explainers: list[DiffItem]) -> DiffType:
+    types = {item.diff_type for item in explainers}
+    if DiffType.NUMBER_MODIFIED in types:
+        return DiffType.NUMBER_MODIFIED
+    if types == {DiffType.ADDED}:
+        return DiffType.ADDED
+    if types == {DiffType.DELETED}:
+        return DiffType.DELETED
+    # Wording-only OCR is not trusted enough to replace the visual evidence.
+    return DiffType.IMAGE_DIFF
+
+
+def _fuse_visual_explanations(items: list[DiffItem], stats: dict | None = None) -> list[DiffItem]:
+    """Attach OCR/native-text summaries to overlapping visual regions.
+
+    For image-only PDFs, the visual bbox is the reviewer-facing location. OCR is
+    useful when it explains that region, but a tiny OCR bbox should not replace a
+    table/clause region the reviewer still needs to inspect.
+    """
+    content_types = {DiffType.TEXT_MODIFIED, DiffType.NUMBER_MODIFIED, DiffType.ADDED, DiffType.DELETED}
+    visual_indices = [idx for idx, item in enumerate(items) if item.diff_type == DiffType.IMAGE_DIFF]
+    if not visual_indices:
+        return items
+
+    assigned: dict[int, list[int]] = {idx: [] for idx in visual_indices}
+    for ci, candidate in enumerate(items):
+        if candidate.diff_type not in content_types:
+            continue
+
+        best_vi: int | None = None
+        best_score = 0.0
+        best_area = float("inf")
+        for vi in visual_indices:
+            score = _visual_explanation_score(items[vi], candidate)
+            if score <= 0.0:
+                continue
+            visual_area = _bbox_area(items[vi].new_bbox or items[vi].old_bbox)
+            if score > best_score or (score == best_score and visual_area < best_area):
+                best_vi = vi
+                best_score = score
+                best_area = visual_area
+
+        if best_vi is not None:
+            assigned[best_vi].append(ci)
+
+    fused_by_visual: dict[int, DiffItem] = {}
+    used_content: set[int] = set()
+
+    for vi in visual_indices:
+        visual = items[vi]
+        explainers: list[DiffItem] = []
+        for ci in assigned.get(vi, []):
+            explainers.append(items[ci])
+            used_content.add(ci)
+
+        if not explainers:
+            continue
+
+        old_parts = [item.old_value for item in explainers if item.old_value]
+        new_parts = [item.new_value for item in explainers if item.new_value]
+        detail_contexts = [item.context for item in explainers if item.context]
+        context = visual.context
+        if detail_contexts:
+            context = f"{visual.context}; OCR/text: {'; '.join(dict.fromkeys(detail_contexts))}"
+
+        fused_by_visual[vi] = DiffItem(
+            id="",
+            diff_type=_fused_diff_type(explainers),
+            old_value=" / ".join(old_parts) if old_parts else visual.old_value,
+            new_value=" / ".join(new_parts) if new_parts else visual.new_value,
+            old_bbox=visual.old_bbox,
+            new_bbox=visual.new_bbox,
+            old_image_base64=visual.old_image_base64,
+            new_image_base64=visual.new_image_base64,
+            context=context,
+            confidence=max([visual.confidence, *(item.confidence for item in explainers)]),
+        )
+
+    if not fused_by_visual:
+        return items
+
+    if stats is not None:
+        stats["fused_visual"] = stats.get("fused_visual", 0) + len(fused_by_visual)
+
+    result: list[DiffItem] = []
+    for idx, item in enumerate(items):
+        if idx in fused_by_visual:
+            result.append(fused_by_visual[idx])
+        elif idx in used_content:
+            continue
+        else:
+            result.append(item)
+    return result
+
+
 def _merge_nearby_diffs(items: list[DiffItem], gap_threshold: float = 18.0) -> list[DiffItem]:
     """Merge spatially adjacent TEXT/NUMBER diffs on the same page.
 
@@ -2023,6 +2151,9 @@ def merge_diff_results(
     # ── Proximity merge: combine adjacent text/number diffs ──
     merged = _merge_nearby_diffs(merged)
 
+    if keep_image_diffs:
+        merged = _fuse_visual_explanations(merged, stats=stats)
+
     # ── Deduplication: remove smaller boxes contained within larger ones ──
     # This prevents "框中有框" (box within box) where e.g. a table-level
     # diff overlaps with cell-level or pixel-level diffs inside it.
@@ -2103,6 +2234,14 @@ def _drop_non_numeric_modifications(
     modify-in-place sense the reviewer asked to suppress. Comprehensive markers
     (整頁版面變更 / 整表替換) are deliberate whole-page/table aggregates and are
     always kept so a genuine wholesale redesign is flagged in full.
+
+    IMAGE_DIFF items are kept too: they are located, crop-backed visual regions a
+    reviewer must still see (a layout/table/clause change that carried no extractable
+    number). Dropping them was the bug that turned real, visible changes into a
+    "N changes, go look yourself" count — a content review must never hide a region
+    it detected. Only modify-in-place text edits with no numeric change are dropped
+    (wording/OCR drift the reviewer asked to suppress); the visual region behind such
+    an edit, if any, survives separately as its own IMAGE_DIFF item.
     """
     kept: list[DiffItem] = []
     for item in items:
@@ -2181,6 +2320,8 @@ def generate_diff_report(
             summary += f", recall_strategy={stats['recall_strategy']}"
         if stats.get("retained_visual"):
             summary += f", visual_retained={int(stats['retained_visual'])}"
+        if stats.get("fused_visual"):
+            summary += f", visual_fused={int(stats['fused_visual'])}"
     else:
         text_diffs = diff_paragraphs(old_doc.paragraphs, new_doc.paragraphs)
         table_diffs = diff_tables(old_doc.tables, new_doc.tables)
@@ -2209,5 +2350,7 @@ def generate_diff_report(
         total_diffs=len(merged_items),
         items=merged_items,
         summary=summary,
-        suppressed_count=int(stats.get("suppressed_visual", 0)),
+        # Visual regions are now surfaced as items (see merge_diff_results), so nothing
+        # is hidden from the reviewer — keep the field for back-compat but report 0.
+        suppressed_count=0,
     )
