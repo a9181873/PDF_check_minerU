@@ -5,6 +5,7 @@ from services.diff_service import (
     _is_reliable_ocr_pair,
     _is_reliable_ocr_text,
     _same_native_text_is_rendering_noise,
+    diff_aligned_paragraphs,
     generate_diff_report,
     merge_diff_results,
 )
@@ -43,6 +44,18 @@ def test_generate_diff_report_detects_number_change():
     assert report.total_diffs == 1
     assert report.items[0].diff_type == DiffType.NUMBER_MODIFIED
     assert report.items[0].id == "d001"
+
+
+def test_aligned_recall_ignores_section_heading_glued_to_list_marker():
+    old = [
+        _paragraph("8 注意事項", page=4, y0=584.0, y1=650.0),
+        _paragraph("1.消費者投保前應審慎瞭解本商品之承保範圍。", page=4, y0=546.0, y1=561.0),
+    ]
+    new = [
+        _paragraph("1.消費者投保前應審慎瞭解本商品之承保範圍。", page=4, y0=546.0, y1=561.0),
+    ]
+
+    assert diff_aligned_paragraphs(old, new) == []
 
 
 def test_generate_diff_report_detects_added_paragraph():

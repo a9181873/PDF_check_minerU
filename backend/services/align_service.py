@@ -16,6 +16,7 @@ _CJK_RE = re.compile(r"[\u3400-\u9fff]")
 _DIGIT_RE = re.compile(r"\d+")
 _DIGIT_SEP_RE = re.compile(r"(?<=\d)[.,](?=\d)")
 _FORMULA_NOISE_RE = re.compile(r"[\u2211\u222b\u220f\u221a\u222e]")
+_ONE_SIDED_SECTION_PREFIX_RE = re.compile(r"^\d{1,2}[\u3400-\u9fff]{2,8}(?=\d+[.)、])")
 _ELLIPSIS = "..."
 
 
@@ -198,6 +199,25 @@ def _already_present_without_new_digits(text: str, other_doc_norm: str, other_do
     return _digit_set(text) <= other_doc_digits
 
 
+def _same_after_one_sided_section_prefix(old_text: str, new_text: str) -> bool:
+    """OCR can glue a visual section label like '8 注意事項' to the next list item.
+
+    When only one side has that short heading prefix and the remaining text is
+    identical, treat it as segmentation noise rather than a number change.
+    """
+    old_norm = _recall_norm(old_text)
+    new_norm = _recall_norm(new_text)
+    if not old_norm or not new_norm:
+        return False
+
+    old_stripped = _ONE_SIDED_SECTION_PREFIX_RE.sub("", old_norm, count=1)
+    if old_stripped != old_norm and old_stripped == new_norm:
+        return True
+
+    new_stripped = _ONE_SIDED_SECTION_PREFIX_RE.sub("", new_norm, count=1)
+    return new_stripped != new_norm and new_stripped == old_norm
+
+
 def _classify(old_text: str, new_text: str) -> tuple[bool, str, float]:
     old_norm = _recall_norm(old_text)
     new_norm = _recall_norm(new_text)
@@ -205,6 +225,8 @@ def _classify(old_text: str, new_text: str) -> tuple[bool, str, float]:
         return False, "same_after_recall_norm", 0.0
     if _FORMULA_NOISE_RE.search(old_text) or _FORMULA_NOISE_RE.search(new_text):
         return False, "formula_noise", 0.0
+    if _same_after_one_sided_section_prefix(old_text, new_text):
+        return False, "one_sided_section_heading_ocr_noise", 0.0
 
     old_digits = _digits(old_text)
     new_digits = _digits(new_text)

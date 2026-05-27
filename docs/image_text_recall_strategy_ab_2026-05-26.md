@@ -222,6 +222,24 @@ see the real changed location and then confirm whether the content is correct."
   - preference for tighter visual regions over broad overlapping regions;
   - full `generate_diff_report()` fusion summary.
 
+### Current implementation update - One-sided OCR section-heading noise
+
+- Investigated the Ci Ai Micro pair (`1140825` vs `1141003`) after a reviewer
+  saw an unchanged "Notice" list item highlighted.
+- Both PDFs are image-only: each page is one raster image and has no native text
+  layer, so the suspicious item came from MinerU OCR alignment rather than
+  embedded PDF text.
+- The false positive was caused by one-sided OCR segmentation: the old side
+  produced separate `8 Notice` and `1. ...` paragraphs, while the new side only
+  produced the list item text. Sequence alignment then compared
+  `8 Notice 1.` with `1.` and the numeric filter kept it as a number change.
+- Added an alignment classifier guard for short one-sided section-label prefixes
+  glued to the next list marker. If removing that prefix makes the two sides
+  identical, the item is treated as OCR segmentation noise.
+- Verified the same PDF pair again with the patched backend code: the false
+  `8 Notice 1. -> 1.` item disappeared, while the real footer control/version
+  change remained.
+
 ## Remaining Risks
 
 - The visual review sheets are local runtime artifacts and are not committed.
@@ -263,3 +281,9 @@ old heuristic:
 - `python -m pytest backend\tests --basetemp backend\tmp_pytest_probe -p no:cacheprovider -q` - 71 passed on the current local worktree
 - MinerU OCR A/B over 8 EDM pairs after alignment post-processing - pass
 - PDF-first visual sheets generated with PyMuPDF from `C:\Users\JY\Downloads\DM` - pass
+- `python -m py_compile backend\services\align_service.py backend\tests\test_diff.py` - pass
+- `python -m pytest backend\tests\test_diff.py -p no:cacheprovider` - 27 passed
+- `python -m pytest backend\tests --basetemp=backend\tmp_pytest_probe -p no:cacheprovider` - 72 passed
+- Docker/MinerU verification on the Ci Ai Micro pair with patched backend code:
+  `recall=2`, `visual_retained=2`, `visual_fused=1`, `total=5`; the previous
+  one-sided `8 Notice 1. -> 1.` false positive is gone.
