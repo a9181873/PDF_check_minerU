@@ -753,6 +753,10 @@ const ComparePage: React.FC = () => {
                 <span className="text-gray-600">數值修改</span>
                 <span className="font-medium text-gray-900">{stats.modified}</span>
               </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">版面/區域變更（附截圖）</span>
+                <span className="font-medium text-gray-900">{stats.visual}</span>
+              </div>
             </div>
           </div>
 

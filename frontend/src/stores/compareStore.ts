@@ -63,6 +63,7 @@ interface CompareState {
     deleted: number;
     modified: number;
     flagged: number;
+    visual: number;
   };
   
   // View controls
@@ -275,7 +276,7 @@ export const useCompareStore = create<CompareState>()(
       getStats: () => {
         const { report } = get();
         if (!report) {
-          return { total: 0, reviewed: 0, pending: 0, added: 0, deleted: 0, modified: 0, flagged: 0 };
+          return { total: 0, reviewed: 0, pending: 0, added: 0, deleted: 0, modified: 0, flagged: 0, visual: 0 };
         }
 
         const items = report.items;
@@ -288,8 +289,9 @@ export const useCompareStore = create<CompareState>()(
           item.diff_type === 'text_modified' || item.diff_type === 'number_modified'
         ).length;
         const flagged = items.filter(item => item.flagged).length;
+        const visual = items.filter(item => item.diff_type === 'image_diff').length;
 
-        return { total, reviewed, pending, added, deleted, modified, flagged };
+        return { total, reviewed, pending, added, deleted, modified, flagged, visual };
       },
     }),
     { name: 'compare-store' }
