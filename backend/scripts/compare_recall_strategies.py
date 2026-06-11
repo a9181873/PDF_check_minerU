@@ -9,19 +9,29 @@ is safer before changing defaults.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import sys
 from collections import Counter
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from config import settings
-from models.diff_models import DiffItem
+from models.diff_models import BBox, DiffItem, DiffType
 from services.diff_service import diff_aligned_paragraphs, diff_positioned_paragraphs
-from services.parser_service import parse_image_pdf_via_mineru_ocr
+from services.parser_service import ParsedDocument, ParsedParagraph, parse_image_pdf_via_mineru_ocr
+
+_CACHE_VERSION = 1
+_CJK_RE = re.compile(r"[\u3400-\u9fff]")
+_DIGIT_RE = re.compile(r"\d+")
+_DATE_OR_DOC_RE = re.compile(r"(?:民國)?\d{2,3}年\d{1,2}月?\d{0,2}日?|第?\d{7,}號|Version|Control No|商品文?號", re.I)
+_RATE_OR_AMOUNT_RE = re.compile(r"\d[\d,]*(?:\.\d+)?\s*(?:%|元|美元)")
+_PHONE_RE = re.compile(r"(?:0800[-\d]*|\(?0\d\)?[-\d]{6,})")
 
 
 def _clip(value: str | None, limit: int = 160) -> str | None:
@@ -36,8 +46,8 @@ def _page(item: DiffItem) -> int | None:
     return box.page if box else None
 
 
-def _item_to_dict(item: DiffItem) -> dict[str, Any]:
-    return {
+def _item_to_dict(item: DiffItem, **extra: Any) -> dict[str, Any]:
+    payload = {
         "type": item.diff_type.value,
         "page": _page(item),
         "old": _clip(item.old_value),
@@ -45,6 +55,264 @@ def _item_to_dict(item: DiffItem) -> dict[str, Any]:
         "context": item.context,
         "confidence": item.confidence,
     }
+    payload.update(extra)
+    return payload
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _bbox_to_dict(bbox: BBox | None) -> dict[str, Any] | None:
+    return bbox.model_dump() if bbox else None
+
+
+def _bbox_from_dict(raw: dict[str, Any] | None) -> BBox | None:
+    return BBox(**raw) if raw else None
+
+
+def _paragraph_to_dict(paragraph: ParsedParagraph) -> dict[str, Any]:
+    return {
+        "text": paragraph.text,
+        "bbox": _bbox_to_dict(paragraph.bbox),
+        "char_bboxes": [_bbox_to_dict(box) for box in (paragraph.char_bboxes or [])],
+        "style": paragraph.style,
+    }
+
+
+def _paragraph_from_dict(raw: dict[str, Any]) -> ParsedParagraph:
+    bbox = _bbox_from_dict(raw.get("bbox"))
+    if bbox is None:
+        raise ValueError("cached paragraph missing bbox")
+    char_bboxes = [_bbox_from_dict(box) for box in raw.get("char_bboxes", [])]
+    return ParsedParagraph(
+        text=str(raw.get("text") or ""),
+        bbox=bbox,
+        char_bboxes=[box for box in char_bboxes if box is not None] or None,
+        style=raw.get("style"),
+    )
+
+
+def _document_to_cache(doc: ParsedDocument, source_sha256: str) -> dict[str, Any]:
+    return {
+        "cache_version": _CACHE_VERSION,
+        "source_sha256": source_sha256,
+        "pages": doc.pages,
+        "paragraphs": [_paragraph_to_dict(paragraph) for paragraph in doc.paragraphs],
+        "raw_json": doc.raw_json,
+        "markdown_text": doc.markdown_text,
+        "is_image_pdf": doc.is_image_pdf,
+    }
+
+
+def _document_from_cache(raw: dict[str, Any], expected_sha256: str) -> ParsedDocument:
+    if raw.get("cache_version") != _CACHE_VERSION:
+        raise ValueError("cache version mismatch")
+    if raw.get("source_sha256") != expected_sha256:
+        raise ValueError("cache source hash mismatch")
+
+    return ParsedDocument(
+        pages=int(raw.get("pages") or 1),
+        paragraphs=[_paragraph_from_dict(item) for item in raw.get("paragraphs", [])],
+        tables=[],
+        raw_json=raw.get("raw_json") or {"engine": "mineru_cache"},
+        markdown_text=raw.get("markdown_text"),
+        is_image_pdf=bool(raw.get("is_image_pdf", True)),
+    )
+
+
+def parse_image_pdf_with_cache(file_path: Path, cache_dir: Path | None) -> tuple[ParsedDocument, str]:
+    source_sha256 = _file_sha256(file_path)
+    if cache_dir is None:
+        return parse_image_pdf_via_mineru_ocr(str(file_path)), "disabled"
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = cache_dir / f"mineru_ocr_v{_CACHE_VERSION}_{source_sha256}.json"
+    if cache_path.exists():
+        try:
+            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+            return _document_from_cache(cached, source_sha256), "hit"
+        except Exception:
+            # Treat corrupt or stale cache as a miss; the fresh parse rewrites it.
+            pass
+
+    doc = parse_image_pdf_via_mineru_ocr(str(file_path))
+    cache_path.write_text(
+        json.dumps(_document_to_cache(doc, source_sha256), ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return doc, "miss"
+
+
+def _norm_text(text: str | None) -> str:
+    return re.sub(r"\s+", "", text or "")
+
+
+def _item_text(item: DiffItem) -> str:
+    return " ".join(part for part in (item.old_value, item.new_value) if part)
+
+
+def _cjk_count(text: str | None) -> int:
+    return len(_CJK_RE.findall(text or ""))
+
+
+def _digits(text: str | None) -> set[str]:
+    return set(_DIGIT_RE.findall(_norm_text(text)))
+
+
+def _has_high_value_number(text: str) -> bool:
+    return bool(_RATE_OR_AMOUNT_RE.search(text) or _DATE_OR_DOC_RE.search(text))
+
+
+def _has_phone(text: str) -> bool:
+    return bool(_PHONE_RE.search(text))
+
+
+def _is_customer_service_phone_fragment(text: str) -> bool:
+    compact = _norm_text(text)
+    if not _has_phone(compact):
+        return False
+    if not re.search(r"客服|服務專線|申訴電話|免費申訴", compact):
+        return False
+    return _cjk_count(compact) <= 12
+
+
+def _is_long_cjk_added(item: DiffItem) -> bool:
+    return item.diff_type == DiffType.ADDED and not item.old_value and _cjk_count(item.new_value) >= 25
+
+
+def _looks_like_alignment_clause_fragment(item: DiffItem) -> bool:
+    if "OCR對齊" not in item.context:
+        return False
+    old_cjk = _cjk_count(item.old_value)
+    new_cjk = _cjk_count(item.new_value)
+    if item.diff_type == DiffType.DELETED and old_cjk >= 25:
+        return True
+    if item.diff_type == DiffType.NUMBER_MODIFIED and min(old_cjk, new_cjk) <= 2 and max(old_cjk, new_cjk) >= 25:
+        return True
+    return False
+
+
+def _score_recall_item(item: DiffItem, source_strategy: str) -> tuple[int, list[str]]:
+    text = _item_text(item)
+    notes: list[str] = []
+    score = 50
+
+    if item.diff_type == DiffType.NUMBER_MODIFIED:
+        score += 20
+        notes.append("number")
+    elif item.diff_type in {DiffType.ADDED, DiffType.DELETED}:
+        score += 10
+        notes.append(item.diff_type.value)
+
+    if _has_high_value_number(text):
+        score += 18
+        notes.append("high_value_number")
+    elif re.search(r"\d", text):
+        score += 8
+        notes.append("digit")
+
+    if _RATE_OR_AMOUNT_RE.search(text):
+        score += 10
+        notes.append("rate_or_amount")
+
+    cjk = _cjk_count(text)
+    if cjk >= 25:
+        score += 20
+        notes.append("long_cjk")
+    elif cjk >= 12:
+        score += 12
+        notes.append("medium_cjk")
+
+    if _has_phone(text):
+        score += 8
+        notes.append("phone")
+
+    if _is_customer_service_phone_fragment(text):
+        score -= 30
+        notes.append("customer_service_fragment")
+
+    if _looks_like_alignment_clause_fragment(item):
+        score -= 20
+        notes.append("alignment_clause_fragment")
+
+    if source_strategy == "heuristic" and _is_long_cjk_added(item):
+        score += 15
+        notes.append("heuristic_long_added")
+
+    return score, notes
+
+
+def _duplicate_score(left: DiffItem, right: DiffItem) -> float:
+    left_text = _norm_text(_item_text(left))
+    right_text = _norm_text(_item_text(right))
+    if not left_text or not right_text:
+        return 0.0
+    if _page(left) != _page(right):
+        return 0.0
+    if left.diff_type == right.diff_type and _has_high_value_number(left_text + right_text):
+        left_digits = _digits(left_text)
+        right_digits = _digits(right_text)
+        if left_digits and right_digits:
+            overlap = len(left_digits & right_digits) / min(len(left_digits), len(right_digits))
+            if overlap >= 0.5:
+                return 0.9
+    if left_text in right_text or right_text in left_text:
+        return min(len(left_text), len(right_text)) / max(len(left_text), len(right_text))
+    return SequenceMatcher(None, left_text, right_text, autojunk=False).ratio()
+
+
+def build_hybrid_recall_items(
+    alignment_items: list[DiffItem],
+    heuristic_items: list[DiffItem],
+    *,
+    min_score: int = 65,
+) -> list[dict[str, Any]]:
+    """Select reviewer-useful recall candidates from both OCR strategies.
+
+    This is a reporting scorer, not the production diff path. It favors the
+    strategy that best explains each observed EDM pattern: sequence alignment
+    for compact high-value numeric edits, and the older position heuristic for
+    long one-sided CJK clauses that alignment can split into noisy fragments.
+    """
+    preferred_clause_pages = {
+        _page(item)
+        for item in heuristic_items
+        if _is_long_cjk_added(item)
+    }
+
+    candidates: list[dict[str, Any]] = []
+    for source, items in (("alignment", alignment_items), ("heuristic", heuristic_items)):
+        for item in items:
+            if (
+                source == "alignment"
+                and _page(item) in preferred_clause_pages
+                and (_looks_like_alignment_clause_fragment(item) or _cjk_count(_item_text(item)) >= 25)
+            ):
+                continue
+            score, notes = _score_recall_item(item, source)
+            if score < min_score:
+                continue
+            candidates.append({
+                "item": item,
+                "source_strategy": source,
+                "hybrid_score": score,
+                "hybrid_notes": notes,
+            })
+
+    candidates.sort(key=lambda c: (-c["hybrid_score"], _page(c["item"]) or 10**9, c["source_strategy"]))
+    selected: list[dict[str, Any]] = []
+    for candidate in candidates:
+        item = candidate["item"]
+        if any(_duplicate_score(item, chosen["item"]) >= 0.72 for chosen in selected):
+            continue
+        selected.append(candidate)
+
+    return sorted(selected, key=lambda c: (_page(c["item"]) or 10**9, -c["hybrid_score"]))
 
 
 def _case_key(path: Path, root: Path) -> str:
@@ -73,14 +341,23 @@ def discover_pairs(root: Path) -> list[tuple[str, Path, Path]]:
     return pairs
 
 
-def compare_case(case: str, old_path: Path, new_path: Path, strategies: list[str]) -> dict[str, Any]:
-    old_ocr = parse_image_pdf_via_mineru_ocr(str(old_path))
-    new_ocr = parse_image_pdf_via_mineru_ocr(str(new_path))
+def compare_case(
+    case: str,
+    old_path: Path,
+    new_path: Path,
+    strategies: list[str],
+    *,
+    cache_dir: Path | None = None,
+    include_hybrid: bool = True,
+) -> dict[str, Any]:
+    old_ocr, old_cache = parse_image_pdf_with_cache(old_path, cache_dir)
+    new_ocr, new_cache = parse_image_pdf_with_cache(new_path, cache_dir)
 
     result: dict[str, Any] = {
         "case": case,
         "old": str(old_path),
         "new": str(new_path),
+        "cache": {"old": old_cache, "new": new_cache},
         "old_pages": old_ocr.pages,
         "new_pages": new_ocr.pages,
         "old_paragraphs": len(old_ocr.paragraphs),
@@ -99,17 +376,44 @@ def compare_case(case: str, old_path: Path, new_path: Path, strategies: list[str
             "total": len(items),
             "counts": dict(sorted(counts.items())),
             "items": [_item_to_dict(item) for item in items],
+            "_raw_items": items,
         }
+
+    if include_hybrid and {"alignment", "heuristic"} <= set(result["strategies"]):
+        hybrid = build_hybrid_recall_items(
+            result["strategies"]["alignment"]["_raw_items"],
+            result["strategies"]["heuristic"]["_raw_items"],
+        )
+        counts = Counter(candidate["item"].diff_type.value for candidate in hybrid)
+        result["strategies"]["hybrid"] = {
+            "total": len(hybrid),
+            "counts": dict(sorted(counts.items())),
+            "items": [
+                _item_to_dict(
+                    candidate["item"],
+                    source_strategy=candidate["source_strategy"],
+                    hybrid_score=candidate["hybrid_score"],
+                    hybrid_notes=candidate["hybrid_notes"],
+                )
+                for candidate in hybrid
+            ],
+        }
+
+    for summary in result["strategies"].values():
+        summary.pop("_raw_items", None)
     return result
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    default_cache_dir = Path(os.environ["OCR_CACHE_DIR"]) if os.getenv("OCR_CACHE_DIR") else None
     parser.add_argument("--dm-root", default=os.getenv("DM_ROOT", "/dm"))
     parser.add_argument("--output", type=Path)
     parser.add_argument("--case", action="append", dest="cases")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--strategies", nargs="+", default=["alignment", "heuristic"])
+    parser.add_argument("--cache-dir", type=Path, default=default_cache_dir)
+    parser.add_argument("--no-hybrid", action="store_true")
     args = parser.parse_args()
 
     root = Path(args.dm_root)
@@ -131,7 +435,14 @@ def main() -> int:
     results = []
     for case, old_path, new_path in pairs:
         try:
-            case_result = compare_case(case, old_path, new_path, strategies)
+            case_result = compare_case(
+                case,
+                old_path,
+                new_path,
+                strategies,
+                cache_dir=args.cache_dir,
+                include_hybrid=not args.no_hybrid,
+            )
         except Exception as exc:
             case_result = {
                 "case": case,
@@ -145,11 +456,13 @@ def main() -> int:
         if "error" in case_result:
             print(f"ERROR {case_result['error']}")
             continue
-        for strategy in strategies:
+        for strategy in [*strategies, "hybrid"]:
+            if strategy not in case_result["strategies"]:
+                continue
             summary = case_result["strategies"][strategy]
             print(f"{strategy}: total={summary['total']} counts={summary['counts']}")
 
-    payload = {"dm_root": str(root), "cases": results}
+    payload = {"dm_root": str(root), "cache_dir": str(args.cache_dir) if args.cache_dir else None, "cases": results}
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
