@@ -1,6 +1,7 @@
 from models.diff_models import BBox, DiffItem, DiffType
 from scripts import compare_recall_strategies as recall_ab
 from services.parser_service import ParsedDocument, ParsedParagraph
+from services.recall_hybrid_service import build_hybrid_recall_candidates
 
 
 def _bbox(page: int = 1) -> BBox:
@@ -80,11 +81,11 @@ def test_hybrid_prefers_heuristic_long_clause_over_alignment_fragments():
         )
     ]
 
-    hybrid = recall_ab.build_hybrid_recall_items(alignment, heuristic)
+    hybrid = build_hybrid_recall_candidates(alignment, heuristic)
 
     assert len(hybrid) == 1
-    assert hybrid[0]["source_strategy"] == "heuristic"
-    assert hybrid[0]["item"].diff_type == DiffType.ADDED
+    assert hybrid[0].source_strategy == "heuristic"
+    assert hybrid[0].item.diff_type == DiffType.ADDED
 
 
 def test_hybrid_suppresses_customer_service_phone_fragment():
@@ -96,7 +97,7 @@ def test_hybrid_suppresses_customer_service_phone_fragment():
         )
     ]
 
-    assert recall_ab.build_hybrid_recall_items(alignment, []) == []
+    assert build_hybrid_recall_candidates(alignment, []) == []
 
 
 def test_hybrid_keeps_alignment_date_or_document_number_change():
@@ -108,11 +109,11 @@ def test_hybrid_keeps_alignment_date_or_document_number_change():
         )
     ]
 
-    hybrid = recall_ab.build_hybrid_recall_items(alignment, [])
+    hybrid = build_hybrid_recall_candidates(alignment, [])
 
     assert len(hybrid) == 1
-    assert hybrid[0]["source_strategy"] == "alignment"
-    assert hybrid[0]["item"].diff_type == DiffType.NUMBER_MODIFIED
+    assert hybrid[0].source_strategy == "alignment"
+    assert hybrid[0].item.diff_type == DiffType.NUMBER_MODIFIED
 
 
 def test_hybrid_deduplicates_compact_and_full_date_number_change():
@@ -128,7 +129,7 @@ def test_hybrid_deduplicates_compact_and_full_date_number_change():
         )
     ]
 
-    hybrid = recall_ab.build_hybrid_recall_items(alignment, heuristic)
+    hybrid = build_hybrid_recall_candidates(alignment, heuristic)
 
     assert len(hybrid) == 1
-    assert hybrid[0]["source_strategy"] == "heuristic"
+    assert hybrid[0].source_strategy == "heuristic"

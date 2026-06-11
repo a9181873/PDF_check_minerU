@@ -573,6 +573,59 @@ def test_generate_diff_report_can_use_alignment_recall_strategy(monkeypatch):
     assert "recall_strategy=alignment" in (report.summary or "")
 
 
+def test_generate_diff_report_can_use_hybrid_recall_strategy(monkeypatch):
+    clause = (
+        "註3:本商品於部分保單年度有基本保險金額對應之身故完全失能保險金"
+        "給付逐年遞減之特性當宣告利率低於一定水準時保障可能下降"
+    )
+    alignment_fragment = DiffItem(
+        id="",
+        diff_type=DiffType.NUMBER_MODIFIED,
+        old_value="1",
+        new_value=clause,
+        old_bbox=BBox(page=2, x0=40, y0=600, x1=80, y1=620),
+        new_bbox=BBox(page=2, x0=40, y0=600, x1=520, y1=660),
+        context="Page 2 內容變更（OCR對齊:number_change）",
+        confidence=0.78,
+    )
+    heuristic_clause = DiffItem(
+        id="",
+        diff_type=DiffType.ADDED,
+        old_value=None,
+        new_value=clause,
+        old_bbox=None,
+        new_bbox=BBox(page=2, x0=40, y0=600, x1=520, y1=660),
+        context="Page 2 區塊新增（OCR召回）",
+        confidence=0.75,
+    )
+    old_doc = ParsedDocument(pages=2, paragraphs=[], tables=[], raw_json={}, is_image_pdf=True)
+    new_doc = ParsedDocument(pages=2, paragraphs=[], tables=[], raw_json={}, is_image_pdf=True)
+    empty_ocr = ParsedDocument(pages=2, paragraphs=[], tables=[], raw_json={})
+
+    monkeypatch.setattr("config.settings.enable_image_text_recall", True)
+    monkeypatch.setattr("config.settings.image_text_recall_strategy", "hybrid")
+    monkeypatch.setattr("services.diff_service.diff_pixels", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr("services.diff_service.diff_images", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr("services.diff_service.diff_aligned_paragraphs", lambda *_args, **_kwargs: [alignment_fragment])
+    monkeypatch.setattr("services.diff_service.diff_positioned_paragraphs", lambda *_args, **_kwargs: [heuristic_clause])
+    monkeypatch.setattr("services.parser_service.parse_image_pdf_via_mineru_ocr", lambda *_args: empty_ocr)
+
+    report = generate_diff_report(
+        project_id="p001",
+        old_filename="old.pdf",
+        new_filename="new.pdf",
+        old_doc=old_doc,
+        new_doc=new_doc,
+        old_pdf_path="/tmp/old.pdf",
+        new_pdf_path="/tmp/new.pdf",
+    )
+
+    assert report.total_diffs == 1
+    assert report.items[0].diff_type == DiffType.ADDED
+    assert "註3" in (report.items[0].new_value or "")
+    assert "recall_strategy=hybrid" in (report.summary or "")
+
+
 def test_overlapping_text_diffs_in_tall_cell_merge_into_one_block():
     # Two token-level diffs that share the same tall paragraph bbox (height 120
     # exceeds the 80pt merge cap) — they overlap, so they must still collapse.

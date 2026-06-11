@@ -2300,6 +2300,11 @@ def generate_diff_report(
                 strategy = getattr(_settings, "image_text_recall_strategy", "alignment").strip().lower()
                 if strategy == "heuristic":
                     recall_diffs = diff_positioned_paragraphs(old_ocr.paragraphs, new_ocr.paragraphs)
+                elif strategy == "hybrid":
+                    from services.recall_hybrid_service import build_hybrid_recall_items
+                    alignment_diffs = diff_aligned_paragraphs(old_ocr.paragraphs, new_ocr.paragraphs)
+                    heuristic_diffs = diff_positioned_paragraphs(old_ocr.paragraphs, new_ocr.paragraphs)
+                    recall_diffs = build_hybrid_recall_items(alignment_diffs, heuristic_diffs)
                 else:
                     strategy = "alignment"
                     recall_diffs = diff_aligned_paragraphs(old_ocr.paragraphs, new_ocr.paragraphs)

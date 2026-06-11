@@ -51,8 +51,8 @@ class Settings(BaseSettings):
     # docs/pdf_diff_guardrails.md / docs/historical_issues.md §7).
     enable_image_text_recall: bool = False
     # When recall is enabled, prefer text-sequence alignment over bbox-IoU
-    # heuristics. Set IMAGE_TEXT_RECALL_STRATEGY=heuristic to run the older
-    # position-matching path for A/B regression checks.
+    # heuristics. Set IMAGE_TEXT_RECALL_STRATEGY=heuristic for the older
+    # position-matching path, or hybrid to score both paths together.
     image_text_recall_strategy: str = "alignment"
 
     # Snapshot PNGs are audit convenience artifacts. Rendering every page is CPU
@@ -109,8 +109,8 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_image_text_recall_strategy(cls, value):
         strategy = str(value or "alignment").strip().lower()
-        if strategy not in {"alignment", "heuristic"}:
-            raise ValueError("image_text_recall_strategy must be 'alignment' or 'heuristic'")
+        if strategy not in {"alignment", "heuristic", "hybrid"}:
+            raise ValueError("image_text_recall_strategy must be 'alignment', 'heuristic', or 'hybrid'")
         return strategy
 
 
