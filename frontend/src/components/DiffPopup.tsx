@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle, Copy, ExternalLink, Eye, EyeOff, Flag, Maximize2, Minus, Plus, RotateCcw, X } from 'lucide-react';
+import { AlertCircle, CheckCircle, Copy, ExternalLink, Eye, EyeOff, Flag, Maximize2, Minus, Plus, RotateCcw, X } from 'lucide-react';
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
 
-import { buildAuthedUrl } from '../services/api';
+import { createDownloadUrl } from '../services/api';
 import { DiffItem, DiffType } from '../services/types';
 import { useAuthStore } from '../stores/authStore';
 
@@ -10,8 +10,8 @@ interface DiffPopupProps {
   diff: DiffItem | null;
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (diffId: string, reviewer?: string, note?: string) => void;
-  onFlag: (diffId: string, reviewer?: string, note?: string) => void;
+  onConfirm: (diffId: string, note?: string) => Promise<void>;
+  onFlag: (diffId: string, note?: string) => Promise<void>;
   taskId?: string | null;
   className?: string;
 }
@@ -86,22 +86,29 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
   className = '',
 }) => {
   const authUser = useAuthStore((s) => s.user);
-  const [reviewer, setReviewer] = useState(diff.reviewed_by || authUser?.display_name || '');
   const [note, setNote] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [oldCropFailed, setOldCropFailed] = useState(false);
   const [newCropFailed, setNewCropFailed] = useState(false);
   const [showCropPreview, setShowCropPreview] = useState(false);
   const [lightbox, setLightbox] = useState<{ url: string; label: string } | null>(null);
+  const [remoteCropUrls, setRemoteCropUrls] = useState<{ old: string | null; new: string | null }>({ old: null, new: null });
+  const reviewerLabel = authUser?.display_name || authUser?.username || '登入帳號';
 
   const isImageDiff = diff.diff_type === DiffType.IMAGE_DIFF;
   const canFetchCrop = !!taskId;
-  const oldCropUrl = diff.old_image_base64 || (canFetchCrop && diff.old_bbox ? buildAuthedUrl(`/api/compare/${taskId}/crop/${diff.id}/old`) : null);
-  const newCropUrl = diff.new_image_base64 || (canFetchCrop && diff.new_bbox ? buildAuthedUrl(`/api/compare/${taskId}/crop/${diff.id}/new`) : null);
+  const oldRemoteCropTarget = canFetchCrop && !!diff.old_bbox && !diff.old_image_base64;
+  const newRemoteCropTarget = canFetchCrop && !!diff.new_bbox && !diff.new_image_base64;
+  const oldCropUrl = diff.old_image_base64 || remoteCropUrls.old;
+  const newCropUrl = diff.new_image_base64 || remoteCropUrls.new;
   const hasOldCropTarget = !!diff.old_image_base64 || (canFetchCrop && !!diff.old_bbox);
   const hasNewCropTarget = !!diff.new_image_base64 || (canFetchCrop && !!diff.new_bbox);
   const hasCropTarget = hasOldCropTarget || hasNewCropTarget;
   const showOldImage = showCropPreview && !!oldCropUrl && !oldCropFailed;
   const showNewImage = showCropPreview && !!newCropUrl && !newCropFailed;
+  const oldCropLoading = showCropPreview && oldRemoteCropTarget && !remoteCropUrls.old && !oldCropFailed;
+  const newCropLoading = showCropPreview && newRemoteCropTarget && !remoteCropUrls.new && !newCropFailed;
 
   useEffect(() => {
     if (!lightbox) return;
@@ -112,15 +119,85 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [lightbox]);
 
-  const handleConfirm = () => {
-    onConfirm(diff.id, reviewer || undefined, note || undefined);
-    onClose();
+  useEffect(() => {
+    setNote('');
+    setSubmitError(null);
+    setIsSubmitting(false);
+    setShowCropPreview(false);
+    setLightbox(null);
+    setRemoteCropUrls({ old: null, new: null });
+    setOldCropFailed(false);
+    setNewCropFailed(false);
+  }, [diff.id]);
+
+  useEffect(() => {
+    if (!showCropPreview || !taskId) {
+      return undefined;
+    }
+
+    let isActive = true;
+
+    const loadCropUrl = async (side: 'old' | 'new') => {
+      try {
+        const url = await createDownloadUrl(`/api/compare/${taskId}/crop/${diff.id}/${side}`);
+        if (isActive) {
+          setRemoteCropUrls((current) => ({ ...current, [side]: url }));
+        }
+      } catch {
+        if (isActive) {
+          if (side === 'old') {
+            setOldCropFailed(true);
+          } else {
+            setNewCropFailed(true);
+          }
+        }
+      }
+    };
+
+    if (oldRemoteCropTarget && !remoteCropUrls.old && !oldCropFailed) {
+      void loadCropUrl('old');
+    }
+    if (newRemoteCropTarget && !remoteCropUrls.new && !newCropFailed) {
+      void loadCropUrl('new');
+    }
+
+    return () => {
+      isActive = false;
+    };
+  }, [
+    diff.id,
+    newCropFailed,
+    newRemoteCropTarget,
+    oldCropFailed,
+    oldRemoteCropTarget,
+    remoteCropUrls.new,
+    remoteCropUrls.old,
+    showCropPreview,
+    taskId,
+  ]);
+
+  const submitReview = async (action: 'confirmed' | 'flagged') => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      if (action === 'confirmed') {
+        await onConfirm(diff.id, note || undefined);
+      } else {
+        await onFlag(diff.id, note || undefined);
+      }
+      onClose();
+    } catch {
+      setSubmitError('審核送出失敗，請確認連線後再試一次');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleFlag = () => {
-    onFlag(diff.id, reviewer || undefined, note || undefined);
-    onClose();
-  };
+  const handleConfirm = () => void submitReview('confirmed');
+
+  const handleFlag = () => void submitReview('flagged');
 
   const handleCopy = (text: string) => {
     void navigator.clipboard.writeText(text);
@@ -139,9 +216,13 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
     side: 'old' | 'new',
     hasSideCropTarget: boolean,
     cropFailed: boolean,
+    cropLoading: boolean,
   ) => {
     if (!showCropPreview && hasSideCropTarget) {
       return '可顯示區域截圖';
+    }
+    if (cropLoading) {
+      return '正在準備截圖...';
     }
     if (showCropPreview && hasSideCropTarget && cropFailed) {
       return '無法載入截圖';
@@ -267,7 +348,7 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
               ) : null}
               {!diff.old_value && !showOldImage ? (
                 <p className="text-sm text-gray-500 italic">
-                  {getEmptyMessage('old', hasOldCropTarget, oldCropFailed || (showCropPreview && !oldCropUrl))}
+                  {getEmptyMessage('old', hasOldCropTarget, oldCropFailed || (showCropPreview && !oldCropUrl && !oldCropLoading), oldCropLoading)}
                 </p>
               ) : null}
             </div>
@@ -316,7 +397,7 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
               ) : null}
               {!diff.new_value && !showNewImage ? (
                 <p className="text-sm text-gray-500 italic">
-                  {getEmptyMessage('new', hasNewCropTarget, newCropFailed || (showCropPreview && !newCropUrl))}
+                  {getEmptyMessage('new', hasNewCropTarget, newCropFailed || (showCropPreview && !newCropUrl && !newCropLoading), newCropLoading)}
                 </p>
               ) : null}
             </div>
@@ -326,13 +407,9 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">審核人員</label>
-            <input
-              type="text"
-              value={reviewer}
-              onChange={(event) => setReviewer(event.target.value)}
-              placeholder="輸入姓名或代號 (選填)"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-            />
+            <div className="w-full px-3 py-2 border border-gray-200 bg-gray-50 rounded-lg text-gray-800">
+              {reviewerLabel}
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
@@ -359,29 +436,38 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
             <span>尚未審核</span>
           )}
         </div>
+        {submitError ? (
+          <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2" role="alert">
+            <AlertCircle size={16} />
+            <span>{submitError}</span>
+          </div>
+        ) : null}
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <button
             type="button"
             onClick={onClose}
-            className="px-3 sm:px-4 py-2 sm:py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+            disabled={isSubmitting}
+            className="px-3 sm:px-4 py-2 sm:py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
           >
             關閉
           </button>
           <button
             type="button"
             onClick={handleFlag}
-            className="px-3 sm:px-4 py-2 sm:py-2.5 border border-red-300 text-red-700 bg-red-50 rounded-lg hover:bg-red-100 transition-colors flex items-center space-x-1 sm:space-x-2 text-sm"
+            disabled={isSubmitting}
+            className="px-3 sm:px-4 py-2 sm:py-2.5 border border-red-300 text-red-700 bg-red-50 rounded-lg hover:bg-red-100 transition-colors flex items-center space-x-1 sm:space-x-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <Flag size={16} />
-            <span>標記問題</span>
+            <span>{isSubmitting ? '送出中...' : '標記問題'}</span>
           </button>
           <button
             type="button"
             onClick={handleConfirm}
-            className="px-3 sm:px-4 py-2 sm:py-2.5 bg-diff-added text-white rounded-lg hover:bg-emerald-600 transition-colors flex items-center space-x-1 sm:space-x-2 text-sm"
+            disabled={isSubmitting}
+            className="px-3 sm:px-4 py-2 sm:py-2.5 bg-diff-added text-white rounded-lg hover:bg-emerald-600 transition-colors flex items-center space-x-1 sm:space-x-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <CheckCircle size={16} />
-            <span>確認此修改</span>
+            <span>{isSubmitting ? '送出中...' : '確認此修改'}</span>
           </button>
         </div>
       </div>

@@ -2,9 +2,12 @@ import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { isAxiosError } from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { Upload, File, Folder, AlertCircle, CheckCircle, XCircle, Clock, ChevronRight, Search, Download, LogOut, Settings, User, Trash2, Hash } from 'lucide-react';
-import { compareApi, projectApi, buildAuthedUrl } from '../services/api';
+import { compareApi, projectApi, createDownloadUrl } from '../services/api';
 import { ComparisonInfo } from '../services/types';
 import { useAuthStore } from '../stores/authStore';
+
+const MAX_UPLOAD_SIZE_MB = 100;
+const MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024;
 
 function getSuggestedProjectName(oldName: string, newName: string): string {
   const stripExt = (n: string) => n.replace(/\.pdf$/i, '');
@@ -52,9 +55,14 @@ const UploadPage: React.FC = () => {
     );
   }, [recentComparisons, historySearch]);
 
-  const handleHistoryExport = (compId: string, format: string) => {
-    window.open(buildAuthedUrl(`/api/export/${compId}/${format}`), '_blank', 'noopener,noreferrer');
-    setOpenExportId(null);
+  const handleHistoryExport = async (compId: string, format: string) => {
+    try {
+      const url = await createDownloadUrl(`/api/export/${compId}/${format}`);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      setOpenExportId(null);
+    } catch {
+      setError('下載票證建立失敗，請重新登入後再試');
+    }
   };
 
   const handleDeleteConfirm = async (compId: string) => {
@@ -71,8 +79,13 @@ const UploadPage: React.FC = () => {
     }
   };
 
-  const handleExportAll = () => {
-    window.open(projectApi.exportAllComparisonsUrl(), '_blank', 'noopener,noreferrer');
+  const handleExportAll = async () => {
+    try {
+      const url = await projectApi.exportAllComparisonsUrl();
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      setError('下載票證建立失敗，請重新登入後再試');
+    }
   };
 
   useEffect(() => {
@@ -126,8 +139,8 @@ const UploadPage: React.FC = () => {
       setError('僅支援 PDF 檔案格式');
       return false;
     }
-    if (file.size > 50 * 1024 * 1024) { // 50MB
-      setError('檔案大小超過 50MB 限制');
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+      setError(`檔案大小超過 ${MAX_UPLOAD_SIZE_MB}MB 限制`);
       return false;
     }
     return true;
@@ -414,7 +427,7 @@ const UploadPage: React.FC = () => {
             {/* Submit button */}
             <div className="flex items-center justify-between gap-6">
               <div className="text-sm text-gray-600">
-                <p>支援 PDF 檔案格式，單一檔案最大 50MB</p>
+                <p>支援 PDF 檔案格式，單一檔案最大 {MAX_UPLOAD_SIZE_MB}MB</p>
                 <p>比對過程可能需要數分鐘，視檔案大小而定</p>
               </div>
               <button

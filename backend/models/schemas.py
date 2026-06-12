@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Literal
 
 from models.diff_models import DiffReport
 
@@ -29,9 +30,14 @@ class ProjectResponse(BaseModel):
 
 class ReviewActionRequest(BaseModel):
     diff_item_id: str
-    action: str
-    reviewer: str | None = None
+    action: Literal["confirmed", "flagged"]
     note: str | None = None
+
+
+class ReviewActionResponse(BaseModel):
+    ok: bool
+    reviewer: str
+    reviewed_at: str
 
 
 class ReviewSummaryResponse(BaseModel):

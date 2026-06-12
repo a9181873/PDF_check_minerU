@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from api.routes_auth import get_current_user
+from api.routes_auth import get_current_user, user_display_label
 from api.task_store import TASK_STORE
 from models.database import (
     add_review_log,
@@ -11,7 +11,7 @@ from models.database import (
     save_comparison_report_state,
     update_review_item_state,
 )
-from models.schemas import ReviewActionRequest, ReviewSummaryResponse
+from models.schemas import ReviewActionRequest, ReviewActionResponse, ReviewSummaryResponse
 
 router = APIRouter(prefix="/api/review", tags=["review"], dependencies=[Depends(get_current_user)])
 
@@ -23,8 +23,12 @@ def _load_report(comparison_id: str):
     return get_comparison_report(comparison_id)
 
 
-@router.post("/{comparison_id}/confirm")
-async def confirm_diff(comparison_id: str, payload: ReviewActionRequest):
+@router.post("/{comparison_id}/confirm", response_model=ReviewActionResponse)
+async def confirm_diff(
+    comparison_id: str,
+    payload: ReviewActionRequest,
+    current_user: dict = Depends(get_current_user),
+):
     report = _load_report(comparison_id)
     if not report:
         raise HTTPException(status_code=404, detail="Comparison not found")
@@ -33,8 +37,9 @@ async def confirm_diff(comparison_id: str, payload: ReviewActionRequest):
     if not target:
         raise HTTPException(status_code=404, detail="Diff item not found")
 
-    target.reviewed = payload.action in {"confirmed", "flagged"}
-    target.reviewed_by = payload.reviewer
+    reviewer = user_display_label(current_user)
+    target.reviewed = True
+    target.reviewed_by = reviewer
     target.reviewed_at = datetime.now(timezone.utc).isoformat()
     target.flagged = payload.action == "flagged"
 
@@ -42,7 +47,7 @@ async def confirm_diff(comparison_id: str, payload: ReviewActionRequest):
         comparison_id=comparison_id,
         diff_item_id=payload.diff_item_id,
         action=payload.action,
-        reviewer=payload.reviewer,
+        reviewer=reviewer,
         note=payload.note,
     )
     # Persist just this item atomically — overwriting the whole report blob would
@@ -62,7 +67,7 @@ async def confirm_diff(comparison_id: str, payload: ReviewActionRequest):
         # review_logs row above is already the source of truth for the counts.
         save_comparison_report_state(comparison_id, report)
 
-    return {"ok": True}
+    return {"ok": True, "reviewer": reviewer, "reviewed_at": target.reviewed_at}
 
 
 @router.get("/{comparison_id}/summary", response_model=ReviewSummaryResponse)

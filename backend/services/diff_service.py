@@ -49,6 +49,18 @@ _UNIFY_TABLE = str.maketrans(
 _DASH_RE = re.compile(r"[\u2013\u2014\u2015\u2212\uFE58\uFE63\uFF0D]")  # en/em/minus → -
 
 
+def _record_engine_warning(
+    warnings: list[str] | None,
+    stats: dict | None,
+    key: str,
+    message: str,
+) -> None:
+    if warnings is not None:
+        warnings.append(f"{key}: {message}")
+    if stats is not None:
+        stats[key] = message
+
+
 def _deep_normalize(text: str) -> str:
     """Aggressive normalization to suppress PDF-rendering artefacts."""
     # NFKC handles ligatures (ﬁ→fi, ﬂ→fl), full/half-width, compatibility variants
@@ -1049,6 +1061,8 @@ def diff_pixels(
     threshold: int = 30,
     min_area: int = 100,
     dpi: int = 200,
+    engine_stats: dict | None = None,
+    engine_warnings: list[str] | None = None,
 ) -> list[DiffItem]:
     """Pixel-level diff using PyMuPDF rendering + numpy + scipy connected components.
 
@@ -1062,12 +1076,24 @@ def diff_pixels(
         import numpy as np
         from scipy import ndimage
     except ImportError as exc:
+        _record_engine_warning(
+            engine_warnings,
+            engine_stats,
+            "pixel_error",
+            f"missing dependency: {exc}",
+        )
         return []
 
     try:
         doc_old = fitz.open(old_pdf_path)
         doc_new = fitz.open(new_pdf_path)
-    except Exception:
+    except Exception as exc:
+        _record_engine_warning(
+            engine_warnings,
+            engine_stats,
+            "pixel_error",
+            f"open failed: {exc}",
+        )
         return []
 
     mat = fitz.Matrix(dpi / 72.0, dpi / 72.0)
@@ -1652,6 +1678,8 @@ def _ocr_tile_pair(oi: dict, ni: dict, pixel_bbox: tuple) -> tuple[str, str]:
 def diff_images(
     old_pdf_path: str,
     new_pdf_path: str,
+    engine_stats: dict | None = None,
+    engine_warnings: list[str] | None = None,
 ) -> list[DiffItem]:
     """Compare embedded images across pages using perceptual hashing (pHash).
 
@@ -1662,13 +1690,25 @@ def diff_images(
         import fitz
         import imagehash
         from PIL import Image
-    except ImportError:
+    except ImportError as exc:
+        _record_engine_warning(
+            engine_warnings,
+            engine_stats,
+            "image_error",
+            f"missing dependency: {exc}",
+        )
         return []
 
     try:
         doc_old = fitz.open(old_pdf_path)
         doc_new = fitz.open(new_pdf_path)
-    except Exception:
+    except Exception as exc:
+        _record_engine_warning(
+            engine_warnings,
+            engine_stats,
+            "image_error",
+            f"open failed: {exc}",
+        )
         return []
 
     items: list[DiffItem] = []
@@ -2257,6 +2297,50 @@ def _drop_non_numeric_modifications(
     return kept
 
 
+def _numeric_token_set_from_text(text: str | None) -> set[str]:
+    if not text:
+        return set()
+    return set(NUMBER_PATTERN.findall(_deep_normalize(text)))
+
+
+def _numeric_token_set_from_paragraphs(paragraphs: list[ParsedParagraph]) -> set[str]:
+    tokens: set[str] = set()
+    for paragraph in paragraphs:
+        tokens.update(_numeric_token_set_from_text(paragraph.text))
+    return tokens
+
+
+def _numeric_token_set_from_items(items: list[DiffItem]) -> set[str]:
+    tokens: set[str] = set()
+    for item in items:
+        tokens.update(_numeric_token_set_from_text(item.old_value))
+        tokens.update(_numeric_token_set_from_text(item.new_value))
+    return tokens
+
+
+def _summarize_paddle_ocr_experiment(
+    old_ocr: ParsedDocument,
+    new_ocr: ParsedDocument,
+    paddle_diffs: list[DiffItem],
+    current_items: list[DiffItem],
+) -> dict:
+    old_tokens = _numeric_token_set_from_paragraphs(old_ocr.paragraphs)
+    new_tokens = _numeric_token_set_from_paragraphs(new_ocr.paragraphs)
+    paddle_changed = old_tokens.symmetric_difference(new_tokens)
+    current_changed = _numeric_token_set_from_items(current_items)
+    unconfirmed = sorted(paddle_changed - current_changed)
+    return {
+        "enabled": True,
+        "old_paragraphs": len(old_ocr.paragraphs),
+        "new_paragraphs": len(new_ocr.paragraphs),
+        "candidate_diff_count": len(paddle_diffs),
+        "old_numeric_token_count": len(old_tokens),
+        "new_numeric_token_count": len(new_tokens),
+        "changed_numeric_tokens": sorted(paddle_changed),
+        "unconfirmed_changed_numeric_tokens": unconfirmed,
+    }
+
+
 def generate_diff_report(
     project_id: str,
     old_filename: str,
@@ -2273,19 +2357,48 @@ def generate_diff_report(
     # Route to pixel diff when EITHER side lacks a text layer — text diff on a
     # one-sided text layer produces a flood of spurious ADDED/DELETED items.
     use_pixel_only = (old_doc.is_image_pdf or new_doc.is_image_pdf) and old_pdf_path and new_pdf_path
+    stats: dict = {
+        "old_is_image_pdf": bool(old_doc.is_image_pdf),
+        "new_is_image_pdf": bool(new_doc.is_image_pdf),
+    }
+    engine_warnings: list[str] = []
 
     # Embedded image comparison (always run when paths available)
     img_diffs: list[DiffItem] | None = None
     if old_pdf_path and new_pdf_path:
         try:
-            img_diffs = diff_images(old_pdf_path, new_pdf_path)
-        except Exception:
+            img_diffs = diff_images(
+                old_pdf_path,
+                new_pdf_path,
+                engine_stats=stats,
+                engine_warnings=engine_warnings,
+            )
+        except Exception as exc:
+            _record_engine_warning(
+                engine_warnings,
+                stats,
+                "image_error",
+                f"unexpected failure: {exc}",
+            )
             img_diffs = None
     imgc = len(img_diffs) if img_diffs else 0
-    stats: dict = {}
 
     if use_pixel_only:
-        pixel_diffs = diff_pixels(old_pdf_path, new_pdf_path)
+        try:
+            pixel_diffs = diff_pixels(
+                old_pdf_path,
+                new_pdf_path,
+                engine_stats=stats,
+                engine_warnings=engine_warnings,
+            )
+        except Exception as exc:
+            _record_engine_warning(
+                engine_warnings,
+                stats,
+                "pixel_error",
+                f"unexpected failure: {exc}",
+            )
+            pixel_diffs = []
         # Recall layer (opt-in): forced-OCR both sides via MinerU and diff text by
         # position to recover large CJK block / rate-table changes the pixel path
         # drops as IMAGE_DIFF. Behind a flag + gated by reliability checks; any
@@ -2293,10 +2406,14 @@ def generate_diff_report(
         recall_diffs: list[DiffItem] = []
         try:
             from config import settings as _settings
-            if getattr(_settings, "enable_image_text_recall", False):
+            recall_enabled = bool(getattr(_settings, "enable_image_text_recall", False))
+            stats["recall_enabled"] = recall_enabled
+            if recall_enabled:
                 from services.parser_service import parse_image_pdf_via_mineru_ocr
                 old_ocr = parse_image_pdf_via_mineru_ocr(old_pdf_path)
                 new_ocr = parse_image_pdf_via_mineru_ocr(new_pdf_path)
+                stats["old_ocr_paragraphs"] = len(old_ocr.paragraphs)
+                stats["new_ocr_paragraphs"] = len(new_ocr.paragraphs)
                 strategy = getattr(_settings, "image_text_recall_strategy", "alignment").strip().lower()
                 if strategy == "heuristic":
                     recall_diffs = diff_positioned_paragraphs(old_ocr.paragraphs, new_ocr.paragraphs)
@@ -2309,8 +2426,51 @@ def generate_diff_report(
                     strategy = "alignment"
                     recall_diffs = diff_aligned_paragraphs(old_ocr.paragraphs, new_ocr.paragraphs)
                 stats["recall_strategy"] = strategy
-        except Exception:
+        except Exception as exc:
+            _record_engine_warning(
+                engine_warnings,
+                stats,
+                "recall_error",
+                f"unexpected failure: {exc}",
+            )
             recall_diffs = []
+        paddle_diffs: list[DiffItem] = []
+        try:
+            from config import settings as _settings
+            paddle_enabled = bool(getattr(_settings, "enable_paddle_ocr_experiment", False))
+            stats.setdefault("paddle_ocr", {"enabled": paddle_enabled})
+            if paddle_enabled:
+                from services.paddle_ocr_adapter import parse_image_pdf_via_paddleocr
+
+                old_paddle = parse_image_pdf_via_paddleocr(
+                    old_pdf_path,
+                    dpi=int(getattr(_settings, "paddle_ocr_dpi", 200)),
+                    lang=str(getattr(_settings, "paddle_ocr_lang", "ch")),
+                    max_pages=int(getattr(_settings, "paddle_ocr_max_pages", 20)) or None,
+                    min_confidence=float(getattr(_settings, "paddle_ocr_min_confidence", 0.35)),
+                )
+                new_paddle = parse_image_pdf_via_paddleocr(
+                    new_pdf_path,
+                    dpi=int(getattr(_settings, "paddle_ocr_dpi", 200)),
+                    lang=str(getattr(_settings, "paddle_ocr_lang", "ch")),
+                    max_pages=int(getattr(_settings, "paddle_ocr_max_pages", 20)) or None,
+                    min_confidence=float(getattr(_settings, "paddle_ocr_min_confidence", 0.35)),
+                )
+                paddle_diffs = diff_aligned_paragraphs(old_paddle.paragraphs, new_paddle.paragraphs)
+                stats["paddle_ocr"] = _summarize_paddle_ocr_experiment(
+                    old_paddle,
+                    new_paddle,
+                    paddle_diffs,
+                    [],
+                )
+        except Exception as exc:
+            stats["paddle_ocr"] = {"enabled": True, "error": str(exc)}
+            _record_engine_warning(
+                engine_warnings,
+                stats,
+                "paddle_ocr_error",
+                f"unexpected failure: {exc}",
+            )
         merged_items = merge_diff_results(
             recall_diffs,
             [],
@@ -2319,6 +2479,18 @@ def generate_diff_report(
             stats=stats,
             keep_image_diffs=True,
         )
+        if paddle_diffs:
+            stats["paddle_ocr"] = _summarize_paddle_ocr_experiment(
+                old_paddle,
+                new_paddle,
+                paddle_diffs,
+                merged_items,
+            )
+            unconfirmed = stats["paddle_ocr"].get("unconfirmed_changed_numeric_tokens") or []
+            if unconfirmed:
+                engine_warnings.append(
+                    f"paddle_ocr: detected {len(unconfirmed)} numeric tokens not confirmed by primary diff"
+                )
         mode = "image_pdf" if (old_doc.is_image_pdf and new_doc.is_image_pdf) else "mixed_pdf"
         summary = f"{mode}; pixel={len(pixel_diffs)}, img={imgc}, recall={len(recall_diffs)}"
         if stats.get("recall_strategy"):
@@ -2327,6 +2499,10 @@ def generate_diff_report(
             summary += f", visual_retained={int(stats['retained_visual'])}"
         if stats.get("fused_visual"):
             summary += f", visual_fused={int(stats['fused_visual'])}"
+        stats["mode"] = mode
+        stats["pixel_diff_count"] = len(pixel_diffs)
+        stats["image_diff_count"] = imgc
+        stats["recall_diff_count"] = len(recall_diffs)
     else:
         text_diffs = diff_paragraphs(old_doc.paragraphs, new_doc.paragraphs)
         table_diffs = diff_tables(old_doc.tables, new_doc.tables)
@@ -2335,10 +2511,29 @@ def generate_diff_report(
         # is suppressed inside diff_pixels via the text identity check.
         pixel_diffs_fb = None
         if old_pdf_path and new_pdf_path:
-            pixel_diffs_fb = diff_pixels(old_pdf_path, new_pdf_path)
+            try:
+                pixel_diffs_fb = diff_pixels(
+                    old_pdf_path,
+                    new_pdf_path,
+                    engine_stats=stats,
+                    engine_warnings=engine_warnings,
+                )
+            except Exception as exc:
+                _record_engine_warning(
+                    engine_warnings,
+                    stats,
+                    "pixel_error",
+                    f"unexpected failure: {exc}",
+                )
+                pixel_diffs_fb = None
         merged_items = merge_diff_results(text_diffs, table_diffs, pixel_diffs_fb, img_diffs, stats=stats)
         pxc = len(pixel_diffs_fb) if pixel_diffs_fb else 0
         summary = f"text_pdf; text={len(text_diffs)}, table={len(table_diffs)}, pixel={pxc}, img={imgc}"
+        stats["mode"] = "text_pdf"
+        stats["text_diff_count"] = len(text_diffs)
+        stats["table_diff_count"] = len(table_diffs)
+        stats["pixel_diff_count"] = pxc
+        stats["image_diff_count"] = imgc
 
     # Final content filter: drop wording-only edits (no numeric change), keeping
     # number changes and structural add/remove. Re-number ids after filtering so
@@ -2346,6 +2541,8 @@ def generate_diff_report(
     merged_items = _drop_non_numeric_modifications(merged_items, keep_image_diffs=use_pixel_only)
     for index, item in enumerate(merged_items, start=1):
         item.id = f"d{index:03d}"
+    stats["final_diff_count"] = len(merged_items)
+    stats["suppressed_count"] = 0
 
     return DiffReport(
         project_id=project_id,
@@ -2358,4 +2555,6 @@ def generate_diff_report(
         # Visual regions are now surfaced as items (see merge_diff_results), so nothing
         # is hidden from the reviewer — keep the field for back-compat but report 0.
         suppressed_count=0,
+        engine_stats=stats,
+        engine_warnings=engine_warnings,
     )

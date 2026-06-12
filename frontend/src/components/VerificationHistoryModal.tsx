@@ -15,6 +15,7 @@ export default function VerificationHistoryModal({ comparisonId, isOpen, onClose
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -69,6 +70,19 @@ export default function VerificationHistoryModal({ comparisonId, isOpen, onClose
     );
   }, [q, reviewLogs]);
 
+  const handleArchiveDownload = async (fileType: 'old_pdf' | 'new_pdf' | 'annotated_pdf') => {
+    if (!archive || downloadingFile) return;
+    setDownloadingFile(fileType);
+    try {
+      const url = await archiveApi.getFileUrl(archive.id, fileType);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      setError('下載票證建立失敗，請重新登入後再試');
+    } finally {
+      setDownloadingFile(null);
+    }
+  };
+
   if (!isOpen) return null;
 
   const fmt = (iso: string) => {
@@ -108,31 +122,34 @@ export default function VerificationHistoryModal({ comparisonId, isOpen, onClose
         {archive && (
           <div className="px-6 py-3 border-b border-gray-100 bg-gray-50 flex flex-wrap gap-2">
             <span className="text-xs text-gray-500 self-center mr-1">存檔下載：</span>
-            <a
-              href={archiveApi.getFileUrl(archive.id, 'old_pdf')}
-              download
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+            <button
+              type="button"
+              onClick={() => void handleArchiveDownload('old_pdf')}
+              disabled={downloadingFile !== null}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Download size={12} />
-              舊版 PDF
-            </a>
-            <a
-              href={archiveApi.getFileUrl(archive.id, 'new_pdf')}
-              download
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+              {downloadingFile === 'old_pdf' ? '準備中...' : '舊版 PDF'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleArchiveDownload('new_pdf')}
+              disabled={downloadingFile !== null}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Download size={12} />
-              新版 PDF
-            </a>
+              {downloadingFile === 'new_pdf' ? '準備中...' : '新版 PDF'}
+            </button>
             {archive.annotated_archive_path && (
-              <a
-                href={archiveApi.getFileUrl(archive.id, 'annotated_pdf')}
-                download
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary-50 border border-primary-200 rounded-lg text-primary-700 hover:bg-primary-100 transition-colors"
+              <button
+                type="button"
+                onClick={() => void handleArchiveDownload('annotated_pdf')}
+                disabled={downloadingFile !== null}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary-50 border border-primary-200 rounded-lg text-primary-700 hover:bg-primary-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <Download size={12} />
-                標注差異 PDF
-              </a>
+                {downloadingFile === 'annotated_pdf' ? '準備中...' : '標注差異 PDF'}
+              </button>
             )}
           </div>
         )}

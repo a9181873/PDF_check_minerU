@@ -11,13 +11,22 @@ router = APIRouter(tags=["websocket"])
 
 @router.websocket("/ws/compare/{task_id}")
 async def compare_progress_socket(websocket: WebSocket, task_id: str):
-    # Auth via ?token= query string (browser WebSocket can't set Authorization header)
+    # Auth via a short-lived path-bound resource token. Legacy ?token= is kept
+    # for compatibility with older clients.
     token = websocket.query_params.get("token")
-    if not token:
+    download_token = websocket.query_params.get("download_token")
+    if not token and not download_token:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
-    payload = decode_token(token)
+    payload = decode_token(download_token or token)
     if not payload:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    if download_token:
+        if payload.get("scope") != "download" or payload.get("path") != f"/ws/compare/{task_id}":
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+    elif payload.get("scope") == "download":
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
     user = get_user_by_id(payload["sub"])

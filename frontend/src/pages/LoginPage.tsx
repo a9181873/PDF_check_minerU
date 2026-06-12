@@ -111,9 +111,6 @@ const LoginPage: React.FC = () => {
           </form>
         </div>
 
-        <p className="mt-6 text-center text-sm text-gray-500">
-          預設測試帳號密碼: TEST / TEST123
-        </p>
       </div>
     </div>
   );

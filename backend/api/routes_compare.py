@@ -37,6 +37,14 @@ def _assert_pdf(file: UploadFile) -> None:
     filename = file.filename or ""
     if not filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {filename}")
+    try:
+        pos = file.file.tell()
+        header = file.file.read(5)
+        file.file.seek(pos)
+    except OSError:
+        raise HTTPException(status_code=400, detail=f"Unable to inspect uploaded file: {filename}")
+    if header != b"%PDF-":
+        raise HTTPException(status_code=400, detail=f"Invalid PDF file: {filename}")
 
 
 def _save_upload(file: UploadFile, dest_dir: Path, task_id: str) -> Path:
@@ -92,6 +100,7 @@ def _markdown_output_paths(task_id: str) -> tuple[Path, Path]:
 def _find_uploaded_pdf(task_id: str, row, version: str) -> Path | None:
     upload_dir = settings.old_upload_dir if version == "old" else settings.new_upload_dir
     original_filename = row["old_filename"] if version == "old" else row["new_filename"]
+    stored_path = Path(row["old_file_path"] if version == "old" else row["new_file_path"])
 
     expected_name = f"{task_id}_{Path(original_filename).name}"
     expected_path = upload_dir / expected_name
@@ -99,7 +108,9 @@ def _find_uploaded_pdf(task_id: str, row, version: str) -> Path | None:
         return expected_path
 
     candidates = sorted(upload_dir.glob(f"{task_id}_*.pdf"))
-    return candidates[0] if candidates else None
+    if candidates:
+        return candidates[0]
+    return stored_path if stored_path.exists() else None
 
 
 def _run_compare_task(

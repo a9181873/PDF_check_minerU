@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useCompareStore } from '../stores/compareStore';
-import { compareApi, buildAuthedUrl } from '../services/api';
+import { compareApi, createDownloadUrl } from '../services/api';
 import { useCrossWindowSync } from '../hooks/useCrossWindowSync';
 import { DiffItem } from '../services/types';
 
@@ -38,6 +38,7 @@ const PopoutPage: React.FC = () => {
   } = useCompareStore();
 
   const [isLoading, setIsLoading] = useState(true);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const { broadcastScroll, broadcastPageChange, broadcastDiffSelect } = useCrossWindowSync(taskId || null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const isSyncingRef = React.useRef(false);
@@ -47,15 +48,20 @@ const PopoutPage: React.FC = () => {
   ), []);
 
   useEffect(() => {
-    if (taskId) {
+    if (taskId && version) {
       setTaskId(taskId);
       let isActive = true;
+      setPdfUrl(null);
 
       const loadComparison = async () => {
         try {
-          const reportData = await compareApi.getResult(taskId);
+          const [reportData, nextPdfUrl] = await Promise.all([
+            compareApi.getResult(taskId),
+            createDownloadUrl(`/api/compare/${taskId}/pdf/${version}`),
+          ]);
           if (isActive) {
             setReport(reportData);
+            setPdfUrl(nextPdfUrl);
           }
         } catch (err) {
           if (isActive) {
@@ -74,7 +80,7 @@ const PopoutPage: React.FC = () => {
       };
     }
     return undefined;
-  }, [taskId, setTaskId, setReport]);
+  }, [taskId, version, setTaskId, setReport]);
 
   useEffect(() => {
     // Listen for incoming cross-window scroll events. useCrossWindowSync already
@@ -123,11 +129,9 @@ const PopoutPage: React.FC = () => {
     broadcastDiffSelect(diff.id);
   };
 
-  if (isLoading || !report || !taskId || !version) {
+  if (isLoading || !report || !taskId || !version || !pdfUrl) {
     return <InlineLoader label="Loading document" />;
   }
-
-  const pdfUrl = buildAuthedUrl(`/api/compare/${taskId}/pdf/${version}`);
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-gray-100 flex flex-col">

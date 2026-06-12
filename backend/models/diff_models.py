@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -50,6 +51,8 @@ class DiffReport(BaseModel):
     # Count of visual-only (IMAGE_DIFF) regions detected but dropped from the
     # content list, so the UI can warn the reviewer to also check the snapshots.
     suppressed_count: int = 0
+    engine_stats: dict[str, Any] = Field(default_factory=dict)
+    engine_warnings: list[str] = Field(default_factory=list)
 
 
 class CheckStatus(str, Enum):

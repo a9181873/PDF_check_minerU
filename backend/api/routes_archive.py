@@ -5,18 +5,21 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from api.routes_auth import get_current_user
+from api.routes_auth import get_current_user, user_display_label
 from api.task_store import TASK_STORE
 from models.database import (
     get_archive_by_comparison,
+    get_checklist,
     get_comparison,
     get_comparison_report,
+    get_review_counts,
     get_review_logs_with_changes,
     get_verification_sessions_by_archive,
 )
+from models.diff_models import CheckStatus, DiffReport
 from services.archive_service import (
     archive_comparison,
-    compute_pdf_hash,
+    ensure_comparison_hashes,
     record_verification,
 )
 
@@ -24,7 +27,6 @@ router = APIRouter(prefix="/api/archive", tags=["archive"], dependencies=[Depend
 
 
 class VerifyRequest(BaseModel):
-    reviewer: str | None = None
     notes: str | None = None
 
 
@@ -45,8 +47,36 @@ def _parse_review_logs_snapshot(raw: str | None) -> list[dict]:
         return []
 
 
+def _assert_archive_ready(comparison_id: str, report: DiffReport) -> None:
+    counts = get_review_counts(comparison_id)
+    total = len(report.items)
+    confirmed = counts.get("confirmed", 0)
+    flagged = counts.get("flagged", 0)
+    pending = max(total - confirmed - flagged, 0)
+    checklist = get_checklist(comparison_id)
+    checklist_unresolved = sum(1 for item in checklist if item.status != CheckStatus.CONFIRMED)
+
+    blockers: list[str] = []
+    if pending:
+        blockers.append(f"仍有 {pending} 筆待審差異")
+    if flagged:
+        blockers.append(f"仍有 {flagged} 筆標記問題")
+    if checklist_unresolved:
+        blockers.append(f"Checklist 尚有 {checklist_unresolved} 筆未完成")
+
+    if blockers:
+        raise HTTPException(
+            status_code=409,
+            detail="封存前檢核未通過：" + "；".join(blockers),
+        )
+
+
 @router.post("/{comparison_id}/verify")
-async def verify_and_archive(comparison_id: str, payload: VerifyRequest):
+async def verify_and_archive(
+    comparison_id: str,
+    payload: VerifyRequest,
+    current_user: dict = Depends(get_current_user),
+):
     comp = get_comparison(comparison_id)
     if not comp:
         raise HTTPException(status_code=404, detail="Comparison not found")
@@ -56,14 +86,18 @@ async def verify_and_archive(comparison_id: str, payload: VerifyRequest):
     report = _load_report(comparison_id)
     if not report:
         raise HTTPException(status_code=404, detail="Comparison report not found")
+    _assert_archive_ready(comparison_id, report)
 
     old_path = Path(comp["old_file_path"])
     new_path = Path(comp["new_file_path"])
     if not old_path.exists() or not new_path.exists():
         raise HTTPException(status_code=404, detail="Source PDF files not found")
 
-    old_hash = comp.get("old_hash") or compute_pdf_hash(old_path)
-    new_hash = comp.get("new_hash") or compute_pdf_hash(new_path)
+    if comp.get("old_hash") and comp.get("new_hash"):
+        old_hash = comp["old_hash"]
+        new_hash = comp["new_hash"]
+    else:
+        old_hash, new_hash = ensure_comparison_hashes(comparison_id, old_path, new_path)
 
     archive_record, is_new = archive_comparison(
         comparison_id=comparison_id,
@@ -79,7 +113,7 @@ async def verify_and_archive(comparison_id: str, payload: VerifyRequest):
         archive_id=archive_record["id"],
         comparison_id=comparison_id,
         case_number=comp.get("case_number"),
-        reviewer=payload.reviewer,
+        reviewer=user_display_label(current_user),
         report=report,
         notes=payload.notes,
     )

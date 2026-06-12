@@ -41,6 +41,8 @@ export interface DiffReport {
   items: DiffItem[];
   summary?: string | null;
   suppressed_count?: number;
+  engine_stats?: Record<string, unknown>;
+  engine_warnings?: string[];
 }
 
 export enum CheckStatus {
@@ -78,8 +80,13 @@ export interface CompareStatusResponse {
 export interface ReviewActionRequest {
   diff_item_id: string;
   action: string;
-  reviewer?: string | null;
   note?: string | null;
+}
+
+export interface ReviewActionResponse {
+  ok: boolean;
+  reviewer: string;
+  reviewed_at: string;
 }
 
 export interface ReviewSummaryResponse {

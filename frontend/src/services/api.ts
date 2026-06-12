@@ -9,6 +9,7 @@ import {
   Project,
   ComparisonInfo,
   ReviewActionRequest,
+  ReviewActionResponse,
 } from './types';
 
 const normalizeBase = (value?: string) => (value ? value.replace(/\/+$/, '') : '');
@@ -35,8 +36,9 @@ api.interceptors.request.use((config) => {
 export const buildApiUrl = (path: string) => (API_BASE ? joinUrl(API_BASE, path) : path);
 
 /**
- * Like buildApiUrl, but appends ?token= for endpoints opened via window.open / <iframe>
- * (browser-driven loads that can't set the Authorization header).
+ * Legacy helper for browser-driven loads that cannot set Authorization headers.
+ * Prefer createDownloadUrl/createWebSocketUrl so URLs carry only short-lived,
+ * path-bound tokens instead of the login JWT.
  */
 export const buildAuthedUrl = (path: string) => {
   const base = buildApiUrl(path);
@@ -44,6 +46,13 @@ export const buildAuthedUrl = (path: string) => {
   if (!token) return base;
   const sep = base.includes('?') ? '&' : '?';
   return `${base}${sep}token=${encodeURIComponent(token)}`;
+};
+
+export const createDownloadUrl = async (path: string) => {
+  const base = buildApiUrl(path);
+  const response = await api.post<{ token: string }>('/api/auth/download-token', { path });
+  const sep = base.includes('?') ? '&' : '?';
+  return `${base}${sep}download_token=${encodeURIComponent(response.data.token)}`;
 };
 
 export const buildWebSocketUrl = (path: string) => {
@@ -61,6 +70,21 @@ export const buildWebSocketUrl = (path: string) => {
     url.searchParams.set('token', token);
   }
 
+  return url.toString();
+};
+
+export const createWebSocketUrl = async (path: string) => {
+  const baseOrigin = WS_BASE || API_BASE || window.location.origin;
+  const url = new URL(path, `${baseOrigin}/`);
+
+  if (url.protocol === 'http:') {
+    url.protocol = 'ws:';
+  } else if (url.protocol === 'https:') {
+    url.protocol = 'wss:';
+  }
+
+  const response = await api.post<{ token: string }>('/api/auth/download-token', { path });
+  url.searchParams.set('download_token', response.data.token);
   return url.toString();
 };
 
@@ -145,8 +169,8 @@ export const projectApi = {
     return response.data;
   },
 
-  exportAllComparisonsUrl(): string {
-    return buildAuthedUrl('/api/projects/all/comparisons/export');
+  async exportAllComparisonsUrl(): Promise<string> {
+    return createDownloadUrl('/api/projects/all/comparisons/export');
   },
 };
 
@@ -155,7 +179,7 @@ export const reviewApi = {
   async confirmDiff(
     comparisonId: string,
     payload: ReviewActionRequest
-  ): Promise<{ ok: boolean }> {
+  ): Promise<ReviewActionResponse> {
     const response = await api.post(`/api/review/${comparisonId}/confirm`, payload);
     return response.data;
   },
@@ -203,14 +227,14 @@ export const checklistApi = {
 
 export const exportApi = {
   getDownloadUrl(comparisonId: string, format: 'report' | 'pdf' | 'excel' = 'report') {
-    return buildAuthedUrl(`/api/export/${comparisonId}/${format}`);
+    return createDownloadUrl(`/api/export/${comparisonId}/${format}`);
   },
 };
 
 export const archiveApi = {
   async verify(
     comparisonId: string,
-    data: { reviewer?: string; notes?: string }
+    data: { notes?: string } = {}
   ): Promise<{ archive_id: string; session_id: string; is_new_archive: boolean; verified_at: string }> {
     const response = await api.post(`/api/archive/${comparisonId}/verify`, data);
     return response.data;
@@ -223,8 +247,8 @@ export const archiveApi = {
     return response.data;
   },
 
-  getFileUrl(archiveId: string, fileType: 'old_pdf' | 'new_pdf' | 'annotated_pdf'): string {
-    return buildAuthedUrl(`/api/archive/files/${archiveId}/${fileType}`);
+  getFileUrl(archiveId: string, fileType: 'old_pdf' | 'new_pdf' | 'annotated_pdf'): Promise<string> {
+    return createDownloadUrl(`/api/archive/files/${archiveId}/${fileType}`);
   },
 };
 

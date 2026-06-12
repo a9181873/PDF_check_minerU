@@ -240,6 +240,21 @@ see the real changed location and then confirm whether the content is correct."
   `8 Notice 1. -> 1.` item disappeared, while the real footer control/version
   change remained.
 
+### Current implementation update - Hybrid recall strategy
+
+- Added `IMAGE_TEXT_RECALL_STRATEGY=hybrid` as a selectable recall strategy.
+- `hybrid` runs both `alignment` and `heuristic`, then scores and deduplicates
+  candidates in `recall_hybrid_service.py`.
+- It suppresses low-value OCR fragments such as customer-service phone/footer
+  noise, while keeping stronger signals like long CJK additions, document/date
+  changes, and rate/amount edits.
+- `backend/scripts/compare_recall_strategies.py` now caches MinerU OCR output by
+  PDF SHA-256 when `OCR_CACHE_DIR` is set, and outputs `hybrid` by default unless
+  `--no-hybrid` is passed.
+- `generate_diff_report()` can run the same strategy through
+  `IMAGE_TEXT_RECALL_STRATEGY=hybrid`; visual bbox / crop evidence still remains
+  the reviewer-facing anchor.
+
 ## Remaining Risks
 
 - The visual review sheets are local runtime artifacts and are not committed.
@@ -287,3 +302,5 @@ old heuristic:
 - Docker/MinerU verification on the Ci Ai Micro pair with patched backend code:
   `recall=2`, `visual_retained=2`, `visual_fused=1`, `total=5`; the previous
   one-sided `8 Notice 1. -> 1.` false positive is gone.
+- `python -m pytest tests/test_compare_recall_strategies.py tests/test_image_text_recall.py tests/test_diff.py -q`
+  from `backend/` - 52 passed on 2026-06-13 local worktree.

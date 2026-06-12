@@ -1,6 +1,6 @@
 # PDF 差異比對系統 — 技術架構文件
 
-> 版本: 2026-05-08 | 更新摘要: 新增 SSIM 子區域變更定位、區域性 Tesseract OCR 整合、核心引擎優化
+> 版本: 2026-06-13 | 更新摘要: 校正現行 MinerU + Docling 並行解析、image-only visual fallback、可選 OCR recall (`alignment` / `heuristic` / `hybrid`) 與部署資源建議
 
 ---
 
@@ -29,7 +29,7 @@ graph TB
     end
 
     subgraph "MinerU Service (獨立容器)"
-        MINERU[mineru-api:18080<br/>pipeline backend<br/>chinese_cht]
+        MINERU[mineru-api-minerU:18080<br/>pipeline backend<br/>chinese_cht]
         MCACHE[(modelscope<br/>volume cache)]
     end
 
@@ -104,7 +104,8 @@ Client                         Server
 ```mermaid
 graph LR
     A[PDF 上傳] --> P[Layer 1: PyMuPDF fitz<br/>內嵌文字層 + char_bboxes]
-    P -->|is_image_pdf=true| PIX[直接進像素比對]
+    P -->|is_image_pdf=true| PIX[像素/視覺 fallback<br/>保留 reviewer 定位框]
+    PIX -->|ENABLE_IMAGE_TEXT_RECALL=true| OCRR[MinerU forced-OCR recall<br/>alignment / heuristic / hybrid]
     P -->|文字層存在| PAR{MinerU 優先}
     PAR -->|有設 MINERU_API_URL| C[Layer 2a: MinerU REST API<br/>pipeline / chinese_cht]
     PAR -->|未設定 MINERU_API_URL| E[Layer 2b: Docling<br/>佈局分析 + Tesseract]
@@ -113,6 +114,7 @@ graph LR
     E -->|fallback| W
     W -->|兩者皆失敗| F[Layer 3: pdftotext<br/>poppler -layout]
     F -->|失敗| G[Layer 4: Tesseract OCR<br/>pdftoppm 200dpi → 全頁 OCR]
+    OCRR --> H[ParsedDocument + recall candidates]
     W --> H[ParsedDocument]
     F --> H
     G --> H
@@ -129,7 +131,7 @@ graph LR
 | 用途 | 直接讀取 PDF 內嵌向量文字層，不做 OCR |
 | 關鍵特性 | 用 `rawdict` 格式取得**字元級 BBox**，是之後精準標記差異位置的核心資料 |
 | 圖片型偵測 | 每頁 < 10 字元 且 含圖片，且 ≥ 70% 頁面符合 → 標記 `is_image_pdf=True` |
-| is_image_pdf 後果 | 直接跳到像素比對，完全不啟動 OCR（避免圖片 PDF 做 OCR 產生大量雜訊）|
+| is_image_pdf 後果 | 預設走像素/視覺 fallback，保留可審核定位框；只有 `ENABLE_IMAGE_TEXT_RECALL=true` 時才額外跑 MinerU forced-OCR recall |
 | 座標系統 | PyMuPDF 使用 top-left origin，轉換為 PDF 標準 bottom-left origin |
 | 輸出 | `ParsedParagraph`（含 `char_bboxes: list[BBox]`） |
 
@@ -217,14 +219,17 @@ class ParsedDocument:
 ```mermaid
 graph TD
     A[ParsedDocument × 2] --> B{use_pixel_only?<br/>任一方 is_image_pdf}
-    B -->|是| PIX[C 像素 diff + D 嵌入圖片 diff]
+    B -->|是| PIX[C 像素 diff + D 嵌入圖片 diff<br/>保留 IMAGE_DIFF visual fallback]
+    PIX --> R{ENABLE_IMAGE_TEXT_RECALL?}
+    R -->|是| REC[MinerU forced-OCR recall<br/>strategy: alignment / heuristic / hybrid]
+    R -->|否| M
+    REC --> M
     B -->|否| TXT[文字模式]
     TXT --> E[A 段落 diff<br/>SequenceMatcher]
     TXT --> F[B 表格 diff<br/>cell-level + 聚合]
     TXT --> G[C 像素 diff<br/>補充驗證]
     TXT --> H[D 嵌入圖片 diff<br/>pHash]
     E & F & G & H --> M[_merge_nearby_diffs<br/>鄰近合併]
-    PIX --> M
     M --> N[deduplication<br/>框中框去除]
     N --> O[sort + assign ID<br/>d001, d002...]
     O --> P[DiffReport]
@@ -285,6 +290,18 @@ graph TD
 
 > **SSIM 與 OCR 協作 (2026-05-08)**：解決了以往感知雜湊只能偵測「大改」的問題。現在即使圖片內只改了一個數字（如：費率圖表、說明小字），也能透過 SSIM 精確定位變更區域，並用 Tesseract 讀出具體的修改內容（例如：2.4% → 2.8%）。
 
+#### [E] 影像型 PDF OCR Recall（可選）
+
+`ENABLE_IMAGE_TEXT_RECALL=false` 是正式預設。關閉時，image-only PDF 仍會保留 pixel / visual diff，避免真差異被刪掉；開啟時，後端會對新舊 PDF 強制跑 MinerU OCR，再補一層文字召回。
+
+| 策略 | 說明 | 用途 |
+|------|------|------|
+| `alignment` | 以 OCR 文字序列對齊，吸收重切段與 bbox 不穩 | 預設策略，適合先求穩定 |
+| `heuristic` | 舊版 bbox / 位置配對 | 回歸對照與問題定位 |
+| `hybrid` | 同跑 `alignment` 與 `heuristic`，由 `recall_hybrid_service.py` 評分、去重、壓碎片 | 商品 DM A/B 與 reviewer 可讀性評估 |
+
+合併輸出時，visual bbox / crop 仍是 reviewer 面對的定位證據；OCR 文字只是解釋層。這個設計是為了避免 dense table、公式或頁尾客服電話被 OCR 亂碼誤導。
+
 #### 後處理：鄰近合併與去重
 
 **`_merge_nearby_diffs()`**（2026-05-04 新增）
@@ -306,10 +323,11 @@ graph TD
 | 情境 | 主力技術 | 補充技術 | 說明 |
 |------|---------|---------|------|
 | 一般文字 PDF | fitz（文字）| 像素 diff | 像素補抓圖形/排版差異 |
-| 圖片型 PDF | 像素 diff | 嵌入圖片 pHash | 完全繞過文字層 |
+| 圖片型 PDF | 像素/視覺 diff | MinerU forced-OCR recall（可選）| 預設保留 visual bbox；OCR 只作解釋層，不取代視覺證據 |
 | 複雜中文表格 | MinerU（HTML 解析）| Docling（有 cell BBox）| MinerU 快，Docling 精確 |
 | 表格格子定位 | Docling cell_bboxes | table-level bbox 降級 | MinerU 無 cell 座標 |
 | 文字精準定位 | fitz char_bboxes | 線性插值降級 | 其他引擎無字元座標 |
+| 影像 PDF 文字召回 | `hybrid` strategy | `alignment` / `heuristic` A/B | 綜合文字序列對齊與 bbox heuristic，壓低 OCR 碎片 |
 | 相鄰碎片合併 | _merge_nearby_diffs | — | 解決解析器過度切割問題 |
 | 噪訊過濾 | NCC > 0.98 | 文字模糊匹配 ≥ 0.95 | 抑制 PDF 重新輸出的渲染差異 |
 
@@ -512,30 +530,42 @@ API:
 - `GET /api/system/resource-logs` — 最近 50 筆摘要
 - `GET /api/system/resource-logs/{task_id}` — 單一任務含取樣明細
 
-用途：評估部署到 OCI ARM / 地端筆電的可行性
+用途：評估部署到 macOS、Windows 工作站、Linux / OCI Server 的可行性；影像型 PDF OCR 為 CPU-heavy workload，請用實際 `resource_logs` 反推是否需要更多 CPU/RAM。
+PaddleOCR 實驗版開啟時會額外進行 PDF rasterize 與本機 OCR inference；第一階段只寫 `engine_stats.paddle_ocr` / `engine_warnings`，不改 final diff items。資源評估請同時看 report metadata 與 `resource_logs`。
+
+目前建議：
+
+| 平台 | 建議 |
+|------|------|
+| macOS | 24GB RAM 起；常跑商品 DM 回歸建議 48GB / 1TB |
+| Windows 10/11 工作站 | WSL2 + Docker Desktop，8 核 / 32GB / 1TB 起較穩 |
+| Windows Server | 不建議直接跑 Docker Desktop；建議以 Ubuntu VM 承載 Linux containers |
+| Linux / OCI Server | 正式服務首選，8 vCPU / 32GB / 512GB 起，長期主力 12+ vCPU / 64GB / 1TB |
 
 ## 8. 部署架構
 
 ```
 Docker Compose
-├── mineru-api (mineru-api:pipeline)
+├── mineru-api-minerU (mineru-api:pipeline)
 │   ├── mineru-api --pipeline-backend pipeline :18080
-│   └── Volume: mineru_model_cache → /root/.cache/modelscope
+│   └── Volume: mineru_model_cache_minerU → /root/.cache/modelscope
 │
-├── backend (pdf-check-backend:latest)
+├── backend-minerU (pdf-check-backend:latest)
 │   ├── FastAPI (uvicorn :8000)
 │   │   ├── Backend API (/api/*)
 │   │   ├── WebSocket (/ws/*)
 │   │   └── Static Files (React build → /static)
-│   ├── MINERU_API_URL=http://mineru-api:18080
-│   └── Volume: backend_runtime → /app/runtime
+│   ├── MINERU_API_URL=http://mineru-api-minerU:18080
+│   ├── ENABLE_IMAGE_TEXT_RECALL=false
+│   ├── IMAGE_TEXT_RECALL_STRATEGY=alignment
+│   └── Volume: backend_runtime_minerU → /app/runtime
 │       ├── uploads/old, uploads/new
 │       ├── exports/
 │       ├── snapshots/, crops/
 │       └── app.db
 │
 └── Network: internal (bridge)
-    └── backend depends_on mineru-api (service_healthy)
+    └── backend-minerU depends_on mineru-api-minerU (service_healthy)
 ```
 
 ### 8.1 MinerU 服務建構
@@ -544,7 +574,7 @@ Docker Compose
 
 ```bash
 # 僅重建 backend（不影響 MinerU 模型）
-docker compose build backend && docker compose up -d backend
+docker compose build backend-minerU && docker compose up -d backend-minerU
 
 # 完整重建（模型已在 volume，不會重新下載）
 docker compose up --build -d
@@ -573,9 +603,9 @@ docker compose up --build -d
 |------|------|------|
 | 密碼儲存 | PBKDF2 + salt | 標準安全等級 |
 | Token | HMAC-SHA256 自簽 | 適合內網部署 |
-| CORS | 允許所有來源 | 本地部署不需限制 |
+| CORS | 預設 `http://localhost:8001` | 由 `allowed_origins` 設定，正式反向代理網域需明確加入 |
 | HTTPS | 未啟用 | Docker 內網不需要 |
-| 預設帳號 | admin/admin123 | **首次登入後應修改密碼** |
+| 預設帳號 | 固定本機管理員 `admin` | 啟動時確保帳號存在且啟用；不產生 `.initial_admin_password`，不在 log 或畫面顯示初始密碼資訊 |
 
 ## 10. 變更清單
 

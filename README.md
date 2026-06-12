@@ -94,18 +94,9 @@ docker compose down
 
 系統第一次啟動時會建立 `admin` 管理者帳號。
 
-密碼來源：
+目前採固定本機管理員登入設定。系統不會產生 `.initial_admin_password`，也不會在 log 或畫面顯示初始密碼資訊。
 
-- 若有設定 `DEFAULT_ADMIN_PASSWORD`，就使用該密碼。
-- 若沒有設定，系統會自動產生密碼並寫入 runtime 目錄的 `.initial_admin_password`。
-
-第一次登入後，建議立刻到帳號管理頁修改密碼，並刪除 `.initial_admin_password`。
-
-Docker 環境可用以下方式讀取初始密碼：
-
-```bash
-docker exec pdf-check-minerU cat /app/runtime/.initial_admin_password
-```
+注意：啟動時會確保 `admin` 帳號存在、啟用且具管理員權限。若正式環境要改成非固定密碼，需調整後端 `ensure_default_admin()` 的啟動策略。
 
 ## 系統怎麼判斷差異
 
@@ -132,15 +123,79 @@ docker exec pdf-check-minerU cat /app/runtime/.initial_admin_password
 
 | 變數 | 預設值 | 白話說明 |
 |------|--------|----------|
-| `MINERU_API_URL` | `http://mineru-api-minerU:18080` | MinerU 解析服務位置 |
-| `DATA_DIR` | `/app/runtime` | 上傳檔案、資料庫、匯出檔案存放位置 |
+| `MINERU_API_URL` | 空值（Host） / `http://mineru-api-minerU:18080`（Docker） | MinerU 解析服務位置；空值時會略過 MinerU、走備援解析路徑 |
+| `DATA_DIR` | `<repo>/runtime`（Host） / `/app/runtime`（Docker） | 上傳檔案、資料庫、匯出檔案存放位置 |
+| `ENABLE_PADDLE_OCR_EXPERIMENT` | `false` | 實驗性本機 PaddleOCR 第二引擎；預設關閉，只寫入 `engine_stats` / `engine_warnings` 做 A/B 評估 |
+| `PADDLE_OCR_LANG` | `ch` | PaddleOCR 語言設定 |
+| `PADDLE_OCR_DPI` | `200` | PaddleOCR PDF rasterize DPI；越高越吃 CPU/RAM |
+| `PADDLE_OCR_MAX_PAGES` | `20` | 單份 PDF 最多實驗辨識頁數，避免測試時硬體負載失控 |
+| `PADDLE_OCR_MIN_CONFIDENCE` | `0.35` | PaddleOCR 候選文字最低信心分數；第一階段只影響實驗統計，不直接改正式差異 |
 | `OCR_LANGS` | `chi_tra+chi_sim+eng` | OCR 使用繁中、簡中與英文 |
+| `ENABLE_IMAGE_TEXT_RECALL` | `false` | 影像型 PDF 是否額外跑 MinerU OCR 召回層 |
+| `IMAGE_TEXT_RECALL_STRATEGY` | `alignment` | 召回層策略，可選 `alignment`、`heuristic`、`hybrid` |
 | `ENABLE_DOCLING_PARALLEL` | `true` | 是否同時跑 MinerU 與 Docling；預設開啟以沿用 MinerU 版原本的並行解析 |
 | `MINERU_PREFERRED_WAIT_SECONDS` | `0` | 並行解析時優先等待 MinerU 的秒數；`0` 表示回到誰先產生有效表格就先採用 |
 | `GENERATE_SNAPSHOTS` | `true` | 比對完成後是否產生頁面快照 |
 | `SNAPSHOT_DIFF_PAGES_ONLY` | `true` | 只為有差異的頁面產生快照 |
 | `JWT_SECRET` | 自動產生 | 登入 token 加密用密鑰 |
-| `DEFAULT_ADMIN_PASSWORD` | 空 | 初始 admin 密碼，建議正式部署時自行設定 |
+
+## 影像型 PDF 召回模式
+
+當新舊 PDF 都是掃描圖或圖片字時，純像素 diff 雖然能知道「哪裡有變」，但不一定能提供可直接閱讀的文字片段。這時可開啟召回層，強制用 MinerU OCR 補文字線索。
+
+- 正式預設仍是 `ENABLE_IMAGE_TEXT_RECALL=false`
+- 相容性預設策略是 `IMAGE_TEXT_RECALL_STRATEGY=alignment`
+- 若你在跑 `商品DM/` 這類 image-only 樣本回歸，建議先用 `hybrid` 看輸出品質
+
+| 策略 | 適合情境 | 特性 |
+|------|----------|------|
+| `alignment` | 先求穩定、要減少 OCR 重切段碎片 | 用文字序列對齊，比舊版 bbox 配對更能吃掉重分段噪音 |
+| `heuristic` | 要回看舊行為、做回歸對照 | 走舊的 bbox/位置配對路徑，適合拿來對比歷史結果 |
+| `hybrid` | 要在真實樣本上兼顧召回與可讀性 | 綜合 `alignment` 與 `heuristic`，會壓掉客服電話、日期碎片等雜訊，保留長中文新增、日期/文號、費率數字變更 |
+
+在已可連到 MinerU API 的後端環境，可直接用 A/B 腳本掃 `商品DM/`：
+
+```bash
+cd backend
+OCR_CACHE_DIR=/tmp/pdfcheck_ocr_cache \
+python scripts/compare_recall_strategies.py \
+  --dm-root ../商品DM \
+  --output /tmp/dm_recall_ab.json
+```
+
+說明：
+
+- 腳本會比較 `alignment` 與 `heuristic`，並預設額外輸出 `hybrid`
+- `OCR_CACHE_DIR` 會依 PDF 的 SHA-256 快取 OCR 結果，重跑時可省下大量時間
+- 更完整的真實容器回歸流程，請看 `docs/recall-regression-runbook.md`
+- 過去商品 DM 的 A/B 分析紀錄，請看 `docs/image_text_recall_strategy_ab_2026-05-26.md`
+
+## PaddleOCR 實驗版
+
+PaddleOCR 已接入第一版本機第二 OCR 引擎，但目前是企業導入前的 A/B 實驗模式：
+
+- 預設關閉，不影響現有 MinerU / Docling / visual diff 正式流程。
+- 不使用外部 OCR API，也不需要 API Token；PDF 不會因這個功能送出內網。
+- 第一階段只寫入 `engine_stats.paddle_ocr` 與 `engine_warnings`，不直接把候選結果升成正式差異。
+- 主要觀察影像型 PDF、掃描 PDF、圖片字、費率/百分比數字是否有漏報改善。
+- 正式 Docker image 預設不含 PaddleOCR 套件與模型；要實測需另外做 PaddleOCR profile 或在企業內網 image build 階段預載。
+
+快速單機測試：
+
+```bash
+cd backend
+ENABLE_PADDLE_OCR_EXPERIMENT=true \
+python scripts/run_paddleocr_experiment.py /path/old.pdf /path/new.pdf --force-image-mode
+```
+
+輸出重點看：
+
+- `paddle_ocr.candidate_diff_count`
+- `paddle_ocr.changed_numeric_tokens`
+- `paddle_ocr.unconfirmed_changed_numeric_tokens`
+- `engine_warnings`
+
+若 `unconfirmed_changed_numeric_tokens` 在真實樣本中經人工確認多數有效，下一階段才考慮把它升級為正式高風險差異；否則維持提示給 reviewer 覆核。完整說明請看 `docs/paddleocr-experiment.md`。
 
 ## 資料會存在哪裡
 
@@ -171,19 +226,32 @@ Docker 部署時，資料會存在 Docker volume，容器重啟後不會消失�
 
 ## 推薦硬體
 
-以 1 到 3 人同時使用作為一般情境。
+目前實際瓶頸不是前端，而是 Docker 常駐的 `backend-minerU` + `mineru-api-minerU`、MinerU/Docling 模型、影像型 PDF 的 OCR，以及大量快照/封存檔。預設 compose 不啟用 GPU，所以請先用 CPU 與 RAM 規劃；GPU 只視為未來加速選項，不是部署必要條件。
 
-| 情境 | 建議規格 |
-|------|----------|
-| 輕量測試 | 4 核 CPU、16GB RAM、100GB SSD |
-| 1 到 3 人穩定使用 | 4 到 8 核 CPU、24GB RAM、200GB 以上 SSD |
-| 較大 PDF 或多人同時使用 | 8 核以上 CPU、32GB RAM、512GB 以上 SSD |
+| 情境 | CPU | RAM | SSD | 建議用途 |
+|------|-----|-----|-----|----------|
+| 最低試跑 | 4 核 | 16GB | 120GB 以上 | 功能展示、短 PDF、少量比對；不適合長時間跑商品 DM 回歸 |
+| 單人正式使用 | 6 到 8 核 | 24GB | 256GB 以上 | 一般保險 DM / 條款比對、少量封存 |
+| 1 到 3 人穩定使用 | 8 核以上 | 32GB | 512GB 以上 | Docker 常駐、較長 PDF、週期性商品 DM 回歸 |
+| 長期主力 / 多任務 | 12 核以上 | 48 到 64GB | 1TB NVMe | 多份影像型 PDF、OCR A/B、保留大量 runtime 與匯出檔 |
 
-說明：
+實務建議：
 
-- MinerU 模型較吃記憶體。
-- PDF 頁數多、圖片多、表格多時，CPU 和 RAM 需求會上升。
-- GPU 不是必要，但若部署環境支援 CUDA，MinerU 解析速度通常會更好。
+- `16GB RAM` 只算能跑，不算舒服。MinerU、Docling、Docker Desktop、瀏覽器與開發工具同時開時很容易逼近上限。
+- `24GB RAM` 是單人使用的合理起點；要常跑 `商品DM/` 回歸或多份 PDF，建議直上 `32GB` 以上。
+- `256GB SSD` 不建議當長期主機。Docker image、ModelScope/Hugging Face 快取、runtime、匯出 PDF、快照 PNG 會持續累積。
+- 一份 4 到 6 頁的影像型商品 DM 若進 MinerU forced-OCR，CPU-only 環境可能跑數分鐘；多人同時使用時請用任務佇列或限制同時比對數。
+
+### 平台採購建議
+
+| 平台 | 建議規格 | 適合情境 | 備註 |
+|------|----------|----------|------|
+| macOS / Mac mini | `M4 / 24GB / 512GB` 起；長期主力建議 `M4 Pro / 48GB / 1TB` | 本機開發、小型內部機、1 到 3 人使用 | 不建議 `16GB` 或 `256GB`；M4 Pro 的 CPU 與記憶體頻寬比較適合常跑 OCR 回歸 |
+| Windows 10/11 工作站 | Intel Core i7/i9 或 AMD Ryzen 7/9、8 核以上、32GB RAM、1TB NVMe | 使用者端試跑、內部單機部署、需要 Windows 桌面操作 | 建議 Windows 11 Pro/Enterprise + WSL2 + Docker Desktop；BIOS/UEFI 必須開虛擬化 |
+| Windows Server 主機 | 8 到 16 vCPU、32 到 64GB RAM、512GB 到 1TB SSD | 公司既有 Windows Server 機房 | 不建議直接把 Docker Desktop 當正式服務；建議在 Hyper-V/VMware 上跑 Ubuntu VM，再於 VM 內用 Docker Engine 部署 |
+| Linux Server / OCI | 8 vCPU、32GB RAM、512GB SSD 起；長期主力建議 12+ vCPU、64GB RAM、1TB SSD | 正式內網服務、OCI VM、長時間常駐 | 最推薦的正式部署型態；x86_64 與 ARM64 都可，CPU-only OCR 速度取決於核心數與單核效能 |
+
+Apple 官方 Mac mini 規格目前顯示：M4 為 10 核 CPU、120GB/s 記憶體頻寬；M4 Pro 為 12 核 CPU、273GB/s 記憶體頻寬，並提供 Thunderbolt 5。官方規格與購買頁可參考：<https://www.apple.com/mac-mini/specs/>、<https://www.apple.com/shop/buy-mac/mac-mini>
 
 ## 開發與測試
 
@@ -291,6 +359,7 @@ npm run build
 | ModelScope model cache | MinerU 模型快取來源之一 | 模型下載後快取，可避免每次重建都重新下載大型模型 | https://www.modelscope.cn |
 | Hugging Face cache | 部分 Python/模型工具可能使用的模型快取路徑 | 保留常見模型快取位置，方便未來擴充或備援工具使用 | https://huggingface.co |
 | Tesseract OCR | 圖片文字辨識 | 當文字藏在圖片或掃描區塊時，可協助讀出圖片中的字 | https://github.com/tesseract-ocr/tesseract |
+| PaddleOCR | 實驗性第二 OCR 引擎 | 本機/內網 OCR 候選來源，不需外部 API Token；第一階段只做 A/B metadata，不直接改正式差異 | https://github.com/PaddlePaddle/PaddleOCR |
 | Poppler | PDF 工具組，提供部分 PDF 處理能力 | 是許多 PDF 工具常用底層元件，可補足 PDF 轉換與處理能力 | https://poppler.freedesktop.org |
 | SQLite | 本地資料庫 | 不需額外架資料庫服務，適合單機部署並保存審核與封存紀錄 | https://www.sqlite.org |
 | Docker | 容器化部署 | 把後端、前端與 MinerU 包在固定環境，降低不同電腦部署差異 | https://www.docker.com |
@@ -361,4 +430,6 @@ stop-mac.command          macOS 一鍵停止
 - 開發手冊：`docs/dev-handbook.md`
 - 技術架構：`docs/technical-architecture.md`
 - 效能量測：`docs/performance-benchmark.md`
+- 影像型 PDF 回歸 Runbook：`docs/recall-regression-runbook.md`
+- 商品 DM OCR A/B 紀錄：`docs/image_text_recall_strategy_ab_2026-05-26.md`
 - Docker 快速啟動：`DEPLOY.md`

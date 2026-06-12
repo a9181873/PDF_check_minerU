@@ -46,6 +46,70 @@ def test_generate_diff_report_detects_number_change():
     assert report.items[0].id == "d001"
 
 
+def test_generate_diff_report_records_engine_warnings_for_unreadable_pdf_paths():
+    old_doc = ParsedDocument(pages=1, paragraphs=[], tables=[], raw_json={}, is_image_pdf=True)
+    new_doc = ParsedDocument(pages=1, paragraphs=[], tables=[], raw_json={}, is_image_pdf=True)
+
+    report = generate_diff_report(
+        project_id="p001",
+        old_filename="old.pdf",
+        new_filename="new.pdf",
+        old_doc=old_doc,
+        new_doc=new_doc,
+        old_pdf_path="/tmp/does-not-exist-old.pdf",
+        new_pdf_path="/tmp/does-not-exist-new.pdf",
+    )
+
+    assert report.total_diffs == 0
+    assert report.engine_stats["mode"] == "image_pdf"
+    assert any(warning.startswith("pixel_error:") for warning in report.engine_warnings)
+    assert any(warning.startswith("image_error:") for warning in report.engine_warnings)
+
+
+def test_paddle_ocr_experiment_records_numeric_candidates(monkeypatch):
+    old_doc = ParsedDocument(pages=1, paragraphs=[], tables=[], raw_json={}, is_image_pdf=True)
+    new_doc = ParsedDocument(pages=1, paragraphs=[], tables=[], raw_json={}, is_image_pdf=True)
+    old_paddle = ParsedDocument(
+        pages=1,
+        paragraphs=[_paragraph("宣告利率 0.216%")],
+        tables=[],
+        raw_json={},
+        is_image_pdf=True,
+    )
+    new_paddle = ParsedDocument(
+        pages=1,
+        paragraphs=[_paragraph("宣告利率 0.195%")],
+        tables=[],
+        raw_json={},
+        is_image_pdf=True,
+    )
+    calls = iter([old_paddle, new_paddle])
+
+    monkeypatch.setattr("config.settings.enable_paddle_ocr_experiment", True)
+    monkeypatch.setattr("services.diff_service.diff_pixels", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr("services.diff_service.diff_images", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        "services.paddle_ocr_adapter.parse_image_pdf_via_paddleocr",
+        lambda *_args, **_kwargs: next(calls),
+    )
+
+    report = generate_diff_report(
+        project_id="p001",
+        old_filename="old.pdf",
+        new_filename="new.pdf",
+        old_doc=old_doc,
+        new_doc=new_doc,
+        old_pdf_path="/tmp/old.pdf",
+        new_pdf_path="/tmp/new.pdf",
+    )
+
+    paddle_stats = report.engine_stats["paddle_ocr"]
+    assert paddle_stats["enabled"] is True
+    assert paddle_stats["candidate_diff_count"] == 1
+    assert paddle_stats["unconfirmed_changed_numeric_tokens"] == ["0.195%", "0.216%"]
+    assert any(warning.startswith("paddle_ocr: detected 2 numeric tokens") for warning in report.engine_warnings)
+
+
 def test_aligned_recall_ignores_section_heading_glued_to_list_marker():
     old = [
         _paragraph("8 注意事項", page=4, y0=584.0, y1=650.0),

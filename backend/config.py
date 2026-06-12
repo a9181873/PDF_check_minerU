@@ -55,6 +55,16 @@ class Settings(BaseSettings):
     # position-matching path, or hybrid to score both paths together.
     image_text_recall_strategy: str = "alignment"
 
+    # Experimental local PaddleOCR second engine. OFF by default. When enabled,
+    # the diff report records PaddleOCR candidate diffs / numeric conflicts in
+    # engine_stats for A/B evaluation, but does not promote candidates into final
+    # reviewer-facing diff items yet.
+    enable_paddle_ocr_experiment: bool = False
+    paddle_ocr_lang: str = "ch"
+    paddle_ocr_dpi: int = 200
+    paddle_ocr_max_pages: int = 20
+    paddle_ocr_min_confidence: float = 0.35
+
     # Snapshot PNGs are audit convenience artifacts. Rendering every page is CPU
     # expensive, so default to pages that actually contain diffs.
     generate_snapshots: bool = True

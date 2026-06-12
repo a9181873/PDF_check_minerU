@@ -86,13 +86,14 @@ SQLite + runtime files + in-memory stores
 
 責任：
 
-- 集中管理 `DATA_DIR`, `HF_HOME`, `debug`, `allowed_origins`
-- 正規化 `DEBUG` 字串布林值
+- 集中管理 `DATA_DIR`、`MINERU_API_URL`、`ENABLE_IMAGE_TEXT_RECALL`、`IMAGE_TEXT_RECALL_STRATEGY`、`allowed_origins`
+- 正規化 `DEBUG` 與 `IMAGE_TEXT_RECALL_STRATEGY`
 
 注意：
 
-- 若本機沒有 `runtime/` 目錄，`data_dir` 會 fallback 到 `/app/runtime`
-- 本機開發建議明確設定 `DATA_DIR`
+- Host / 本機預設 `data_dir` 是 `<repo>/runtime`，容器則由 compose 用 `DATA_DIR=/app/runtime` 覆寫
+- 若要把 runtime 放到別的位置，再自行設定 `DATA_DIR`
+- `IMAGE_TEXT_RECALL_STRATEGY` 目前接受 `alignment`、`heuristic`、`hybrid`
 
 ### 3.3 `backend/api/routes_compare.py`
 
@@ -212,6 +213,14 @@ SQLite + runtime files + in-memory stores
 後處理：
 - **`_merge_nearby_diffs()`**：使用 Union-Find 演算法對空間鄰近的差異項進行物理聚合，解決解析器斷行產生的碎片標記。
 - **去重機制**：自動移除「框中框」重疊項。
+
+影像型 PDF 額外路徑：
+
+- `ENABLE_IMAGE_TEXT_RECALL=true` 時，`generate_diff_report()` 會在 pixel diff 之外，再用 MinerU forced-OCR 補召回層
+- `alignment`：用文字序列對齊處理 OCR 重切段
+- `heuristic`：沿用舊的 bbox/位置配對
+- `hybrid`：先各跑一次 `alignment` 與 `heuristic`，再交由 `recall_hybrid_service.py` 評分、去重、壓碎片
+- 合併輸出時會保留 reviewer 看得懂的 visual bbox，並把 OCR 文字片段當成解釋層，避免只剩零碎文字沒有定位
 
 ### 4.3 `checklist_service.py`
 

@@ -898,34 +898,35 @@ def get_archive_by_comparison(comparison_id: str) -> dict | None:
 
 
 def ensure_default_admin() -> None:
-    """Create default admin account if no users exist.
-
-    Password resolution order:
-    1. Env var DEFAULT_ADMIN_PASSWORD if set
-    2. Auto-generated random password written to runtime/.initial_admin_password
-       (file is chmod 600; admin should read it once then delete)
-    """
-    import logging
-    import os
-    import secrets
+    """Ensure the fixed local admin account exists and stays usable."""
     from config import settings as _settings
 
-    with get_connection() as conn:
-        count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-    if count != 0:
-        return
+    # Older builds wrote a generated password here. The fixed-admin flow must not
+    # leave password material lying around in runtime storage.
+    try:
+        (_settings.data_dir / ".initial_admin_password").unlink(missing_ok=True)
+    except OSError:
+        pass
 
-    password = os.environ.get("DEFAULT_ADMIN_PASSWORD", "").strip()
-    if not password:
-        password = secrets.token_urlsafe(16)
-        try:
-            pw_file = _settings.data_dir / ".initial_admin_password"
-            pw_file.write_text(password + "\n")
-            pw_file.chmod(0o600)
-            logging.warning(
-                "Default admin created. Initial password written to %s — read it and delete the file.",
-                pw_file,
+    fixed_password = "admin123"
+    now = utc_now_iso()
+    pw_hash = _make_password_hash(fixed_password)
+    with get_connection() as conn:
+        existing = conn.execute("SELECT id FROM users WHERE username = ?", ("admin",)).fetchone()
+        if existing:
+            conn.execute(
+                """
+                UPDATE users
+                SET display_name = ?, password_hash = ?, role = ?, is_active = 1, updated_at = ?
+                WHERE id = ?
+                """,
+                ("系統管理員", pw_hash, "admin", now, existing["id"]),
             )
-        except OSError:
-            logging.warning("Default admin initial password (save now): %s", password)
-    create_user("admin", "系統管理員", password, role="admin")
+        else:
+            conn.execute(
+                """
+                INSERT INTO users (id, username, display_name, password_hash, role, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+                """,
+                (str(uuid.uuid4()), "admin", "系統管理員", pw_hash, "admin", now, now),
+            )

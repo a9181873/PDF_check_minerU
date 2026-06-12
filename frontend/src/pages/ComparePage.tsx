@@ -8,7 +8,7 @@ import DiffListPanel from '../components/DiffListPanel';
 import SearchBar from '../components/SearchBar';
 import SyncScrollContainer from '../components/SyncScrollContainer';
 import VerificationHistoryModal from '../components/VerificationHistoryModal';
-import { checklistApi, buildAuthedUrl, buildWebSocketUrl, compareApi, reviewApi, archiveApi } from '../services/api';
+import { checklistApi, compareApi, reviewApi, archiveApi, createDownloadUrl, createWebSocketUrl } from '../services/api';
 import { ChecklistItem, DiffItem, DiffReport } from '../services/types';
 import { useCompareStore } from '../stores/compareStore';
 import { useCrossWindowSync } from '../hooks/useCrossWindowSync';
@@ -101,6 +101,7 @@ const ComparePage: React.FC = () => {
   const [archiving, setArchiving] = useState(false);
   const [archiveToast, setArchiveToast] = useState<string | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [pdfUrls, setPdfUrls] = useState<{ old: string | null; new: string | null }>({ old: null, new: null });
 
   const { broadcastScroll, broadcastPageChange, broadcastDiffSelect } = useCrossWindowSync(taskId || null);
   const { user: authUser, logout } = useAuthStore();
@@ -162,12 +163,22 @@ const ComparePage: React.FC = () => {
     let retryCount = 0;
     let reconnectTimer: number | undefined;
 
-    const connectWS = () => {
+    const connectWS = async () => {
       if (!isActive) {
         return;
       }
 
-      const socket = new WebSocket(buildWebSocketUrl(`/ws/compare/${taskId}`));
+      let socketUrl: string;
+      try {
+        socketUrl = await createWebSocketUrl(`/ws/compare/${taskId}`);
+      } catch {
+        return;
+      }
+      if (!isActive) {
+        return;
+      }
+
+      const socket = new WebSocket(socketUrl);
       wsConnectionRef.current = socket;
 
       socket.onopen = () => {
@@ -204,8 +215,17 @@ const ComparePage: React.FC = () => {
                 : message.data;
 
             if (payload) {
+              setStatus({
+                task_id: taskId,
+                status: 'done',
+                progress_percent: 100,
+                current_step: '完成',
+                error_message: null,
+              });
               setReport(payload);
+              setIsLoading(false);
               void loadChecklist(taskId, () => isActive);
+              socket.close();
             }
             return;
           }
@@ -224,12 +244,12 @@ const ComparePage: React.FC = () => {
         }
         if (isActive && retryCount < 5) {
           retryCount += 1;
-          reconnectTimer = window.setTimeout(connectWS, 1000 * retryCount);
+          reconnectTimer = window.setTimeout(() => void connectWS(), 1000 * retryCount);
         }
       };
     };
 
-    connectWS();
+    void connectWS();
 
     return () => {
       isActive = false;
@@ -248,6 +268,38 @@ const ComparePage: React.FC = () => {
       }
     };
   }, [loadChecklist, setReport, setStatus, taskId]);
+
+  useEffect(() => {
+    if (!taskId || status?.status !== 'done') {
+      setPdfUrls({ old: null, new: null });
+      return undefined;
+    }
+
+    let isActive = true;
+    setPdfUrls({ old: null, new: null });
+
+    const loadPdfUrls = async () => {
+      try {
+        const [oldUrl, newUrl] = await Promise.all([
+          createDownloadUrl(`/api/compare/${taskId}/pdf/old`),
+          createDownloadUrl(`/api/compare/${taskId}/pdf/new`),
+        ]);
+        if (isActive) {
+          setPdfUrls({ old: oldUrl, new: newUrl });
+        }
+      } catch {
+        if (isActive) {
+          setError('PDF 預覽票證建立失敗，請重新登入後再試');
+        }
+      }
+    };
+
+    void loadPdfUrls();
+
+    return () => {
+      isActive = false;
+    };
+  }, [status?.status, taskId]);
 
   useEffect(() => {
     if (!taskId) {
@@ -342,40 +394,30 @@ const ComparePage: React.FC = () => {
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [showExportMenu]);
 
-  const handleConfirmDiff = async (diffId: string, reviewer?: string, note?: string) => {
+  const handleConfirmDiff = async (diffId: string, note?: string) => {
     if (!taskId) {
-      return;
+      throw new Error('找不到比對任務');
     }
 
-    try {
-      await reviewApi.confirmDiff(taskId, {
-        diff_item_id: diffId,
-        action: 'confirmed',
-        reviewer,
-        note,
-      });
-      storeConfirmDiff(diffId, reviewer, note);
-    } catch (err) {
-      console.error('Failed to confirm diff:', err);
-    }
+    const result = await reviewApi.confirmDiff(taskId, {
+      diff_item_id: diffId,
+      action: 'confirmed',
+      note,
+    });
+    await storeConfirmDiff(diffId, result.reviewer, result.reviewed_at);
   };
 
-  const handleFlagDiff = async (diffId: string, reviewer?: string, note?: string) => {
+  const handleFlagDiff = async (diffId: string, note?: string) => {
     if (!taskId) {
-      return;
+      throw new Error('找不到比對任務');
     }
 
-    try {
-      await reviewApi.confirmDiff(taskId, {
-        diff_item_id: diffId,
-        action: 'flagged',
-        reviewer,
-        note,
-      });
-      storeFlagDiff(diffId, reviewer, note);
-    } catch (err) {
-      console.error('Failed to flag diff:', err);
-    }
+    const result = await reviewApi.confirmDiff(taskId, {
+      diff_item_id: diffId,
+      action: 'flagged',
+      note,
+    });
+    await storeFlagDiff(diffId, result.reviewer, result.reviewed_at);
   };
 
   const handleChecklistUpdate = async (itemId: string, updates: Partial<ChecklistItem>) => {
@@ -391,29 +433,34 @@ const ComparePage: React.FC = () => {
     }
   };
 
-  const handleExportDownload = (format: 'report' | 'excel' | 'pdf' | 'log' | 'log-csv' | 'log-txt') => {
+  const handleExportDownload = async (format: 'report' | 'excel' | 'pdf' | 'log' | 'log-csv' | 'log-txt') => {
     if (!taskId) {
       return;
     }
 
-    window.open(buildAuthedUrl(`/api/export/${taskId}/${format}`), '_blank', 'noopener,noreferrer');
-    setShowExportMenu(false);
+    try {
+      const url = await createDownloadUrl(`/api/export/${taskId}/${format}`);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      setShowExportMenu(false);
+    } catch {
+      setArchiveToast('下載票證建立失敗，請重新登入後再試');
+      setTimeout(() => setArchiveToast(null), 3500);
+    }
   };
 
   const handleVerifyAndArchive = async () => {
     if (!taskId) return;
     setArchiving(true);
     try {
-      const result = await archiveApi.verify(taskId, {
-        reviewer: authUser?.display_name || authUser?.username,
-      });
+      const result = await archiveApi.verify(taskId);
       const msg = result.is_new_archive
         ? '已存檔，建立新案例紀錄'
         : '已存檔，新增至既有案例紀錄';
       setArchiveToast(msg);
       setTimeout(() => setArchiveToast(null), 3500);
-    } catch {
-      setArchiveToast('存檔失敗，請稍後再試');
+    } catch (err: unknown) {
+      const detail = isAxiosError<{ detail?: string }>(err) ? err.response?.data?.detail : undefined;
+      setArchiveToast(detail || '存檔失敗，請稍後再試');
       setTimeout(() => setArchiveToast(null), 3500);
     } finally {
       setArchiving(false);
@@ -421,11 +468,7 @@ const ComparePage: React.FC = () => {
   };
 
   const getPdfUrl = (version: 'old' | 'new') => {
-    if (!taskId) {
-      return null;
-    }
-
-    return buildAuthedUrl(`/api/compare/${taskId}/pdf/${version}`);
+    return pdfUrls[version];
   };
 
   // Any non-terminal status (including snapshotting) is still in-progress
@@ -737,6 +780,23 @@ const ComparePage: React.FC = () => {
                 <span className="text-sm">
                   另偵測到 {report.suppressed_count} 處視覺/排版變更未列入內容差異，請對照頁面截圖再確認一次。
                 </span>
+              </div>
+            ) : null}
+
+            {report?.engine_warnings?.length ? (
+              <div className="mb-4 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-amber-800">
+                <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                <div className="min-w-0 text-sm">
+                  <div className="font-medium">比對引擎有降級或警示</div>
+                  <div className="mt-1 space-y-1">
+                    {report.engine_warnings.slice(0, 2).map((warning) => (
+                      <p key={warning} className="break-words">{warning}</p>
+                    ))}
+                    {report.engine_warnings.length > 2 ? (
+                      <p>另有 {report.engine_warnings.length - 2} 筆警示，請匯出完整 Log 查看。</p>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             ) : null}
 

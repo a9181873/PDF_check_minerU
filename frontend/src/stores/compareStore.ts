@@ -49,8 +49,8 @@ interface CompareState {
   setGrayscaleEnabled: (enabled: boolean) => void;
   openDiffPopup: (diff: DiffItem) => void;
   closeDiffPopup: () => void;
-  confirmDiff: (diffId: string, reviewer?: string, note?: string) => Promise<void>;
-  flagDiff: (diffId: string, reviewer?: string, note?: string) => Promise<void>;
+  confirmDiff: (diffId: string, reviewer?: string | null, reviewedAt?: string | null) => Promise<void>;
+  flagDiff: (diffId: string, reviewer?: string | null, reviewedAt?: string | null) => Promise<void>;
   
   // Computed
   getFilteredChecklist: () => ChecklistItem[];
@@ -214,14 +214,13 @@ export const useCompareStore = create<CompareState>()(
 
       closeDiffPopup: () => set({ diffPopupOpen: false, selectedDiffForPopup: null }),
 
-      confirmDiff: async (diffId, reviewer, note) => {
-        void note;
+      confirmDiff: async (diffId, reviewer, reviewedAt) => {
         const { taskId, report, searchQuery, reviewedOnly } = get();
         if (!taskId || !report) return;
 
         const updatedItems = report.items.map(item =>
           item.id === diffId
-            ? { ...item, reviewed: true, flagged: false, reviewed_by: reviewer || null, reviewed_at: new Date().toISOString() }
+            ? { ...item, reviewed: true, flagged: false, reviewed_by: reviewer || null, reviewed_at: reviewedAt || new Date().toISOString() }
             : item
         );
         const updatedReport = { ...report, items: updatedItems };
@@ -238,14 +237,13 @@ export const useCompareStore = create<CompareState>()(
         set({ report: updatedReport, filteredItems: filtered });
       },
 
-      flagDiff: async (diffId, reviewer, note) => {
-        void note;
+      flagDiff: async (diffId, reviewer, reviewedAt) => {
         const { taskId, report, searchQuery, reviewedOnly } = get();
         if (!taskId || !report) return;
 
         const updatedItems = report.items.map(item =>
           item.id === diffId
-            ? { ...item, reviewed: true, flagged: true, reviewed_by: reviewer || null, reviewed_at: new Date().toISOString() }
+            ? { ...item, reviewed: true, flagged: true, reviewed_by: reviewer || null, reviewed_at: reviewedAt || new Date().toISOString() }
             : item
         );
         const updatedReport = { ...report, items: updatedItems };

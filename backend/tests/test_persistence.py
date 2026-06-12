@@ -4,11 +4,14 @@ from config import settings
 from models.database import (
     add_review_log,
     create_comparison,
+    create_user,
     create_pdf_archive,
+    ensure_default_admin,
     ensure_default_project,
     get_archive_by_hashes,
     get_checklist,
     get_comparison_report,
+    get_user_by_username,
     get_review_counts,
     get_review_logs,
     get_review_logs_with_changes,
@@ -16,12 +19,14 @@ from models.database import (
     save_checklist,
     save_comparison_report_state,
     update_review_item_state,
+    verify_password,
 )
 from models.diff_models import CheckStatus, ChecklistItem, DiffItem, DiffReport, DiffType
 
 
 def _prepare_temp_db(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(settings, "db_path", tmp_path / "app.db")
+    monkeypatch.setattr(settings, "data_dir", tmp_path)
 
 
 def _create_comparison_record(comparison_id: str) -> None:
@@ -193,3 +198,34 @@ def test_archives_are_separated_by_case_number(monkeypatch, tmp_path: Path):
 
     assert get_archive_by_hashes("old-hash", "new-hash", "CASE-A")["id"] == "archive-a"
     assert get_archive_by_hashes("old-hash", "new-hash", "CASE-B")["id"] == "archive-b"
+
+
+def test_default_admin_is_fixed_and_does_not_write_initial_password_file(monkeypatch, tmp_path: Path):
+    _prepare_temp_db(monkeypatch, tmp_path)
+    init_db()
+    stale_password_file = tmp_path / ".initial_admin_password"
+    stale_password_file.write_text("old-secret\n", encoding="utf-8")
+
+    ensure_default_admin()
+
+    admin = get_user_by_username("admin")
+    assert admin is not None
+    assert admin["role"] == "admin"
+    assert admin["is_active"] == 1
+    assert verify_password("admin123", admin["password_hash"])
+    assert not stale_password_file.exists()
+
+
+def test_default_admin_resets_existing_admin_to_fixed_credentials(monkeypatch, tmp_path: Path):
+    _prepare_temp_db(monkeypatch, tmp_path)
+    init_db()
+    create_user("admin", "舊管理員", "not-admin123", role="reviewer")
+
+    ensure_default_admin()
+
+    admin = get_user_by_username("admin")
+    assert admin is not None
+    assert admin["display_name"] == "系統管理員"
+    assert admin["role"] == "admin"
+    assert admin["is_active"] == 1
+    assert verify_password("admin123", admin["password_hash"])

@@ -126,11 +126,11 @@ Reviewer conclusions from this pass:
 
 - PDF-content review: current split is correct; image-only EDMs should be handled by pixel/OCR guardrails, while native text PDFs should keep text-layer diffs.
 - Algorithm review: keep tests for same-text movement, small footer priority OCR, and priority-vs-nearby-text merge behavior.
-- Environment/model review: do not use bare host Python as the truth source; use the backend container. Do not introduce PaddleOCR or another local model unless fixed samples prove better recall without garbage text.
+- Environment/model review: do not use bare host Python as the truth source; use the backend container. PaddleOCR may remain as a disabled metadata-only experiment, but it must not change final diff items until fixed samples prove better recall without garbage text.
 
 ### Model Guidance
 
-MinerU and Docling are already the intended parallel parsers. Do not add another local model just to mask OCR noise. Add a new local OCR/layout model only after a fixed sample suite proves it improves text recall without reintroducing garbage text or hiding protected footer/header changes.
+MinerU and Docling are already the intended parallel parsers. Do not add another local model just to mask OCR noise. The optional PaddleOCR path is allowed only as an off-by-default A/B metadata experiment. Promote a new local OCR/layout model to final diff generation only after a fixed sample suite proves it improves text recall without reintroducing garbage text or hiding protected footer/header changes.
 
 ## MinerU + Docling Parsing Rule
 
