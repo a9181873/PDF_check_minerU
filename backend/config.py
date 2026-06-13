@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     # expensive, so default to pages that actually contain diffs.
     generate_snapshots: bool = True
     snapshot_diff_pages_only: bool = True
+    # Speed path: parse old/new PDFs concurrently and let audit artifacts render
+    # after the report is already available to reviewers.
+    parallel_pdf_parse: bool = True
+    postprocess_artifacts_after_done: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

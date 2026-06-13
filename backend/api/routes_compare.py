@@ -1,7 +1,11 @@
 import io
+import logging
 import re
+import threading
+import time
 import uuid
 import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
@@ -33,6 +37,7 @@ from services.parser_service import parse_pdf, save_markdown
 router = APIRouter(prefix="/api/compare", tags=["compare"], dependencies=[Depends(get_current_user)])
 
 _PDF_CACHE_HEADERS = {"Cache-Control": "private, max-age=86400"}
+_logger = logging.getLogger(__name__)
 
 
 def _assert_pdf(file: UploadFile) -> None:
@@ -99,6 +104,116 @@ def _markdown_output_paths(task_id: str) -> tuple[Path, Path]:
     )
 
 
+def _elapsed_since(started_at: float) -> float:
+    return round(time.perf_counter() - started_at, 3)
+
+
+def _parse_pdf_with_timing(file_path: str):
+    started_at = time.perf_counter()
+    doc = parse_pdf(file_path)
+    return doc, _elapsed_since(started_at)
+
+
+def _parse_pdf_pair(task_id: str, old_path: str, new_path: str):
+    started_at = time.perf_counter()
+    timings: dict[str, float] = {}
+
+    if not settings.parallel_pdf_parse:
+        _set_task_progress(task_id, "parsing", 10, "解析舊版 PDF")
+        old_doc, timings["parse_old_seconds"] = _parse_pdf_with_timing(old_path)
+        _set_task_progress(task_id, "parsing", 45, "解析新版 PDF")
+        new_doc, timings["parse_new_seconds"] = _parse_pdf_with_timing(new_path)
+        timings["parse_total_seconds"] = _elapsed_since(started_at)
+        return old_doc, new_doc, timings
+
+    _set_task_progress(task_id, "parsing", 10, "並行解析新舊 PDF")
+    results = {}
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix=f"parse-{task_id[:8]}") as pool:
+        futures = {
+            pool.submit(_parse_pdf_with_timing, old_path): "old",
+            pool.submit(_parse_pdf_with_timing, new_path): "new",
+        }
+        for future in as_completed(futures):
+            side = futures[future]
+            doc, elapsed = future.result()
+            results[side] = doc
+            timings[f"parse_{side}_seconds"] = elapsed
+            _set_task_progress(
+                task_id,
+                "parsing",
+                30 if len(results) == 1 else 55,
+                "舊版 PDF 解析完成" if side == "old" else "新版 PDF 解析完成",
+            )
+
+    timings["parse_total_seconds"] = _elapsed_since(started_at)
+    return results["old"], results["new"], timings
+
+
+def _generate_review_artifacts(
+    task_id: str,
+    old_path: str,
+    new_path: str,
+    report,
+) -> dict[str, float]:
+    timings: dict[str, float] = {}
+    started_at = time.perf_counter()
+
+    if settings.generate_snapshots:
+        snap_started = time.perf_counter()
+        try:
+            from services.snapshot_service import generate_comparison_snapshots
+
+            settings.snapshots_dir.mkdir(parents=True, exist_ok=True)
+            snap_dir = generate_comparison_snapshots(
+                task_id=task_id,
+                old_pdf_path=old_path,
+                new_pdf_path=new_path,
+                report=report,
+                snapshot_base_dir=settings.snapshots_dir,
+                diff_pages_only=settings.snapshot_diff_pages_only,
+            )
+            save_snapshot_dir(task_id, str(snap_dir))
+        except Exception as exc:
+            _logger.warning("Snapshot generation failed for task %s: %s", task_id, exc)
+        finally:
+            timings["snapshot_seconds"] = _elapsed_since(snap_started)
+
+    crop_started = time.perf_counter()
+    try:
+        from services.snapshot_service import generate_diff_crops
+
+        settings.crops_dir.mkdir(parents=True, exist_ok=True)
+        generate_diff_crops(
+            task_id=task_id,
+            old_pdf_path=old_path,
+            new_pdf_path=new_path,
+            report=report,
+            crops_base_dir=settings.crops_dir,
+        )
+    except Exception as exc:
+        _logger.warning("Crop generation failed for task %s: %s", task_id, exc)
+    finally:
+        timings["crop_seconds"] = _elapsed_since(crop_started)
+        timings["artifact_total_seconds"] = _elapsed_since(started_at)
+        _logger.info("Generated review artifacts for task %s: %s", task_id, timings)
+    return timings
+
+
+def _start_review_artifact_generation(
+    task_id: str,
+    old_path: str,
+    new_path: str,
+    report,
+) -> None:
+    worker = threading.Thread(
+        target=_generate_review_artifacts,
+        args=(task_id, old_path, new_path, report),
+        name=f"artifacts-{task_id[:8]}",
+        daemon=True,
+    )
+    worker.start()
+
+
 def _find_uploaded_pdf(task_id: str, row, version: str) -> Path | None:
     upload_dir = settings.old_upload_dir if version == "old" else settings.new_upload_dir
     original_filename = row["old_filename"] if version == "old" else row["new_filename"]
@@ -128,16 +243,16 @@ def _run_compare_task(
     from services.resource_monitor import ResourceMonitor, save_resource_log
     monitor = ResourceMonitor(task_id)
     monitor.start()
+    task_started_at = time.perf_counter()
+    timings: dict[str, float] = {}
 
     try:
         update_comparison_status(task_id, "parsing")
-        _set_task_progress(task_id, "parsing", 10, "parsing old pdf")
-        old_doc = parse_pdf(old_path)
-
-        _set_task_progress(task_id, "parsing", 45, "parsing new pdf")
+        old_doc, new_doc, parse_timings = _parse_pdf_pair(task_id, old_path, new_path)
+        timings.update(parse_timings)
         old_doc_engine = old_doc.raw_json.get("engine", "unknown")
-        new_doc = parse_pdf(new_path)
 
+        markdown_started_at = time.perf_counter()
         old_md_path, new_md_path = _markdown_output_paths(task_id)
         save_markdown(old_doc, old_md_path, source_name=old_name)
         save_markdown(new_doc, new_md_path, source_name=new_name)
@@ -146,9 +261,11 @@ def _run_compare_task(
             old_markdown_path=str(old_md_path),
             new_markdown_path=str(new_md_path),
         )
+        timings["markdown_seconds"] = _elapsed_since(markdown_started_at)
 
         update_comparison_status(task_id, "diffing")
         _set_task_progress(task_id, "diffing", 80, "running diff engine")
+        diff_started_at = time.perf_counter()
         report = generate_diff_report(
             project_id=project_id,
             old_filename=old_name,
@@ -158,48 +275,32 @@ def _run_compare_task(
             old_pdf_path=old_path,
             new_pdf_path=new_path,
         )
+        timings["diff_seconds"] = _elapsed_since(diff_started_at)
         report.case_number = case_number.strip() if case_number else None
         if not report.summary:
             report.summary = f"parser_old={old_doc_engine}, parser_new={new_doc.raw_json.get('engine', 'unknown')}"
+        report.engine_stats["pipeline_timings_seconds"] = {
+            **report.engine_stats.get("pipeline_timings_seconds", {}),
+            **timings,
+            "report_ready_seconds": _elapsed_since(task_started_at),
+        }
+        report.engine_stats["pipeline_options"] = {
+            **report.engine_stats.get("pipeline_options", {}),
+            "parallel_pdf_parse": bool(settings.parallel_pdf_parse),
+            "postprocess_artifacts_after_done": bool(settings.postprocess_artifacts_after_done),
+        }
+
+        if not settings.postprocess_artifacts_after_done:
+            _set_task_progress(task_id, "snapshotting", 90, "產生截圖與裁切")
+            report.engine_stats["artifact_timings_seconds"] = _generate_review_artifacts(
+                task_id,
+                old_path,
+                new_path,
+                report,
+            )
 
         save_diff_report(task_id, report)
         del old_doc, new_doc
-
-        _set_task_progress(task_id, "snapshotting", 90, "saving snapshots")
-        if settings.generate_snapshots:
-            try:
-                from services.snapshot_service import generate_comparison_snapshots
-                settings.snapshots_dir.mkdir(parents=True, exist_ok=True)
-                snap_dir = generate_comparison_snapshots(
-                    task_id=task_id,
-                    old_pdf_path=old_path,
-                    new_pdf_path=new_path,
-                    report=report,
-                    snapshot_base_dir=settings.snapshots_dir,
-                    diff_pages_only=settings.snapshot_diff_pages_only,
-                )
-                save_snapshot_dir(task_id, str(snap_dir))
-            except Exception as exc:
-                import logging
-                logging.getLogger(__name__).warning(
-                    "Snapshot generation failed for task %s: %s", task_id, exc
-                )
-
-        try:
-            from services.snapshot_service import generate_diff_crops
-            settings.crops_dir.mkdir(parents=True, exist_ok=True)
-            generate_diff_crops(
-                task_id=task_id,
-                old_pdf_path=old_path,
-                new_pdf_path=new_path,
-                report=report,
-                crops_base_dir=settings.crops_dir,
-            )
-        except Exception as exc:
-            import logging
-            logging.getLogger(__name__).warning(
-                "Crop generation failed for task %s: %s", task_id, exc
-            )
 
         def updater(state):
             state.status = "done"
@@ -216,6 +317,12 @@ def _run_compare_task(
             save_resource_log(res_log)
         except Exception:
             pass
+
+        if settings.postprocess_artifacts_after_done:
+            try:
+                _start_review_artifact_generation(task_id, old_path, new_path, report)
+            except Exception as exc:
+                _logger.warning("Failed to start review artifact generation for task %s: %s", task_id, exc)
 
     except Exception as exc:  # pragma: no cover - defensive wrapper
         monitor.stop(old_filename=old_name, new_filename=new_name)
