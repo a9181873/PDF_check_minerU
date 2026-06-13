@@ -148,7 +148,7 @@ def test_generate_diff_report_detects_added_paragraph():
     assert report.items[0].diff_type == DiffType.ADDED
 
 
-def test_generate_diff_report_hides_wording_only_change():
+def test_generate_diff_report_detects_wording_change():
     old_doc = ParsedDocument(
         pages=1,
         paragraphs=[_paragraph("本公司負責給付")],
@@ -170,7 +170,8 @@ def test_generate_diff_report_hides_wording_only_change():
         new_doc=new_doc,
     )
 
-    assert report.total_diffs == 0
+    assert report.total_diffs == 1
+    assert report.items[0].diff_type == DiffType.TEXT_MODIFIED
 
 
 def _word(x0: float, y0: float, x1: float, y1: float, text: str):
@@ -494,7 +495,7 @@ def test_image_only_visual_fallback_can_be_retained():
     assert stats["retained_visual"] == 1
 
 
-def test_non_numeric_filter_can_keep_image_fallback():
+def test_content_filter_suppresses_pure_image_fallback():
     image_only = DiffItem(
         id="",
         diff_type=DiffType.IMAGE_DIFF,
@@ -508,10 +509,123 @@ def test_non_numeric_filter_can_keep_image_fallback():
 
     assert _drop_non_numeric_modifications([image_only]) == []
     kept = _drop_non_numeric_modifications([image_only], keep_image_diffs=True)
-    assert kept == [image_only]
+    assert kept == []
 
 
-def test_generate_diff_report_retains_visual_fallback_for_image_pdf(monkeypatch):
+def test_content_filter_can_keep_explained_image_fallback():
+    explained = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_value="舊文字",
+        new_value="新文字",
+        old_bbox=BBox(page=1, x0=20, y0=80, x1=560, y1=760),
+        new_bbox=BBox(page=1, x0=20, y0=80, x1=560, y1=760),
+        context="Page 1 表格/版面變更; OCR/text: Page 1 內容變更",
+        confidence=0.95,
+    )
+
+    assert _drop_non_numeric_modifications([explained], keep_image_diffs=True) == [explained]
+
+
+def test_image_pdf_text_gate_suppresses_single_glyph_ocr_drift():
+    noise = DiffItem(
+        id="",
+        diff_type=DiffType.TEXT_MODIFIED,
+        old_value="之經濟弱勢或特定身分者",
+        new_value="之經濟駱勢或特是身分者",
+        old_bbox=BBox(page=1, x0=20, y0=80, x1=560, y1=100),
+        new_bbox=BBox(page=1, x0=20, y0=80, x1=560, y1=100),
+        context="Page 1 內容變更",
+        confidence=0.95,
+    )
+    stats = {}
+
+    assert _drop_non_numeric_modifications([noise], image_pdf_text_gate=True, stats=stats) == []
+    assert stats["suppressed_ocr_text"] == 1
+
+
+def test_image_pdf_text_gate_keeps_title_phrase_change_together():
+    title = DiffItem(
+        id="",
+        diff_type=DiffType.TEXT_MODIFIED,
+        old_value="台灣人壽新扶愛微型傷害保險",
+        new_value="台灣人壽新扶愛微型癌症保險",
+        old_bbox=BBox(page=1, x0=80, y0=640, x1=520, y1=700),
+        new_bbox=BBox(page=1, x0=80, y0=640, x1=520, y1=700),
+        context="Page 1 內容變更",
+        confidence=0.95,
+    )
+
+    assert _drop_non_numeric_modifications([title], image_pdf_text_gate=True) == [title]
+
+
+def test_image_pdf_text_gate_keeps_title_phrase_addition():
+    title = DiffItem(
+        id="",
+        diff_type=DiffType.TEXT_MODIFIED,
+        old_value="台灣人壽新扶愛微型傷害保險",
+        new_value="台灣人壽新扶愛微型傷害保險甲型",
+        old_bbox=BBox(page=1, x0=80, y0=640, x1=520, y1=700),
+        new_bbox=BBox(page=1, x0=80, y0=640, x1=540, y1=700),
+        context="Page 1 內容變更",
+        confidence=0.95,
+    )
+
+    assert _drop_non_numeric_modifications([title], image_pdf_text_gate=True) == [title]
+
+
+def test_image_pdf_text_gate_suppresses_long_high_similarity_ocr_replacement():
+    noise = DiffItem(
+        id="",
+        diff_type=DiffType.TEXT_MODIFIED,
+        old_value=(
+            "因遭受意外傷害事故，自意外傷害事故發生之日起180日以內死亡者，"
+            "其身故保險金變更為喪葬費用保險金。"
+        ),
+        new_value=(
+            "因遭受意外傷害事故，自意外傷害事故發生之日起180日以內死亡者，"
+            "其身故保險金變更為卅基費用保險金。"
+        ),
+        old_bbox=BBox(page=2, x0=220, y0=280, x1=440, y1=380),
+        new_bbox=BBox(page=2, x0=220, y0=280, x1=440, y1=380),
+        context="Page 2 內容變更",
+        confidence=0.95,
+    )
+
+    assert _drop_non_numeric_modifications([noise], image_pdf_text_gate=True) == []
+
+
+def test_image_pdf_text_gate_suppresses_isolated_single_digit_ocr_drift():
+    noise = DiffItem(
+        id="",
+        diff_type=DiffType.TEXT_MODIFIED,
+        old_value="7 自權閣呈說明\n情境範例說明",
+        new_value="了\n情境範例說明",
+        old_bbox=BBox(page=2, x0=40, y0=760, x1=200, y1=805),
+        new_bbox=BBox(page=2, x0=40, y0=760, x1=200, y1=805),
+        context="Page 2 內容變更",
+        confidence=0.95,
+    )
+
+    assert _drop_non_numeric_modifications([noise], image_pdf_text_gate=True) == []
+
+
+def test_image_pdf_text_gate_keeps_strong_numeric_ocr_change():
+    item = DiffItem(
+        id="",
+        diff_type=DiffType.TEXT_MODIFIED,
+        old_value="保險金額50萬元",
+        new_value="保險金額100萬元",
+        old_bbox=BBox(page=2, x0=40, y0=760, x1=200, y1=805),
+        new_bbox=BBox(page=2, x0=40, y0=760, x1=200, y1=805),
+        context="Page 2 內容變更",
+        confidence=0.95,
+    )
+
+    assert _drop_non_numeric_modifications([item], image_pdf_text_gate=True) == [item]
+
+
+def test_generate_diff_report_suppresses_pure_visual_fallback_for_image_pdf(monkeypatch):
     image_only = DiffItem(
         id="",
         diff_type=DiffType.IMAGE_DIFF,
@@ -538,10 +652,10 @@ def test_generate_diff_report_retains_visual_fallback_for_image_pdf(monkeypatch)
         new_pdf_path="/tmp/new.pdf",
     )
 
-    assert report.total_diffs == 1
-    assert report.items[0].diff_type == DiffType.IMAGE_DIFF
+    assert report.total_diffs == 0
+    assert report.items == []
     assert report.suppressed_count == 0
-    assert "visual_retained=1" in (report.summary or "")
+    assert "visual_suppressed=1" in (report.summary or "")
 
 
 def test_generate_diff_report_fuses_visual_region_with_alignment_recall(monkeypatch):
@@ -589,10 +703,9 @@ def test_generate_diff_report_fuses_visual_region_with_alignment_recall(monkeypa
 
     assert report.total_diffs == 1
     assert report.items[0].diff_type == DiffType.NUMBER_MODIFIED
-    assert report.items[0].old_bbox == visual_region.old_bbox
     assert "3.90" in (report.items[0].old_value or "")
     assert "4.00" in (report.items[0].new_value or "")
-    assert "visual_fused=1" in (report.summary or "")
+    assert "visual_suppressed=1" in (report.summary or "")
 
 
 def test_generate_diff_report_can_use_alignment_recall_strategy(monkeypatch):

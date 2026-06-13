@@ -301,6 +301,102 @@ def _is_reliable_ocr_pair(old_text: str | None, new_text: str | None) -> bool:
     return _is_reliable_ocr_text(old_text) and _is_reliable_ocr_text(new_text)
 
 
+def _ocr_content_key(text: str | None) -> str:
+    clean = _deep_normalize(text or "")
+    return "".join(ch for ch in clean if ch.isalnum() or _CJK_RE.match(ch))
+
+
+def _has_phrase_level_text_delta(old_key: str, new_key: str) -> bool:
+    matcher = SequenceMatcher(None, old_key, new_key)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        old_seg = old_key[i1:i2]
+        new_seg = new_key[j1:j2]
+
+        def _is_phrase(seg: str) -> bool:
+            cjk_count = sum(1 for ch in seg if _CJK_RE.match(ch))
+            alnum_count = sum(1 for ch in seg if ch.isalnum())
+            return cjk_count >= 2 or alnum_count >= 3
+
+        if tag in {"insert", "delete"} and _is_phrase(old_seg or new_seg):
+            return True
+        if tag == "replace" and _is_phrase(old_seg) and _is_phrase(new_seg):
+            return True
+    return False
+
+
+def _has_strong_numeric_ocr_change(old_text: str | None, new_text: str | None) -> bool:
+    old_numbers = _extract_numbers(old_text)
+    new_numbers = _extract_numbers(new_text)
+    if sorted(old_numbers) == sorted(new_numbers):
+        return False
+
+    def _strong(token: str) -> bool:
+        digits = re.sub(r"\D", "", token)
+        return len(digits) >= 2 or "." in token or "%" in token
+
+    all_numbers = old_numbers + new_numbers
+    if not any(_strong(token) for token in all_numbers):
+        return False
+    if old_numbers and new_numbers:
+        return True
+    return any(len(re.sub(r"\D", "", token)) >= 3 for token in all_numbers)
+
+
+def _is_title_like_image_text_region(old_key: str, new_key: str, bbox: BBox | None) -> bool:
+    if not bbox:
+        return False
+    return (
+        max(len(old_key), len(new_key)) <= 40
+        and (bbox.y1 - bbox.y0) >= 24
+        and (bbox.x1 - bbox.x0) >= 90
+    )
+
+
+def _is_reliable_image_pdf_text_diff(
+    old_text: str | None,
+    new_text: str | None,
+    *,
+    bbox: BBox | None = None,
+) -> bool:
+    """Gate text-only OCR diffs from image PDFs.
+
+    Local OCR is useful for finding candidate text, but near-identical CJK strings
+    often differ only because Tesseract misread one glyph. Keep priority fields,
+    changed numbers, and clearly different content blocks; drop close text-only
+    OCR drift.
+    """
+    if _has_meaningful_ocr_pattern(old_text) or _has_meaningful_ocr_pattern(new_text):
+        return True
+    if _has_strong_numeric_ocr_change(old_text, new_text):
+        return True
+    if not _is_reliable_ocr_pair(old_text, new_text):
+        return False
+
+    old_key = _ocr_content_key(old_text)
+    new_key = _ocr_content_key(new_text)
+    if not old_key or not new_key:
+        return False
+    if min(len(old_key), len(new_key)) < 8:
+        return False
+
+    ratio = SequenceMatcher(None, old_key, new_key).ratio()
+    if ratio >= 0.82:
+        return (
+            _has_phrase_level_text_delta(old_key, new_key)
+            and _is_title_like_image_text_region(old_key, new_key, bbox)
+        )
+
+    max_len = max(len(old_key), len(new_key))
+    len_delta = abs(len(old_key) - len(new_key))
+    if min(len(old_key), len(new_key)) >= 18 and ratio <= 0.72:
+        return True
+    if len_delta >= max(6, int(max_len * 0.25)) and ratio <= 0.55:
+        return True
+    return ratio <= 0.55
+
+
 def _ocr_pixmap_text(pix, *, lang: str = "chi_tra+eng", psm: str = "6") -> str:
     try:
         import os as _os
@@ -2289,34 +2385,37 @@ def _drop_non_numeric_modifications(
     items: list[DiffItem],
     *,
     keep_image_diffs: bool = False,
+    image_pdf_text_gate: bool = False,
+    stats: dict | None = None,
 ) -> list[DiffItem]:
-    """Keep added/removed blocks and any change whose numbers differ; drop
-    wording-only edits that carry no numeric change.
+    """Keep content-level changes and drop pure visual noise.
 
-    Added/deleted items are structural presence changes (a whole new or removed
-    block) and are kept regardless, since they are not "text differences" in the
-    modify-in-place sense the reviewer asked to suppress. Comprehensive markers
-    (整頁版面變更 / 整表替換) are deliberate whole-page/table aggregates and are
-    always kept so a genuine wholesale redesign is flagged in full.
-
-    IMAGE_DIFF items are kept too: they are located, crop-backed visual regions a
-    reviewer must still see (a layout/table/clause change that carried no extractable
-    number). Dropping them was the bug that turned real, visible changes into a
-    "N changes, go look yourself" count — a content review must never hide a region
-    it detected. Only modify-in-place text edits with no numeric change are dropped
-    (wording/OCR drift the reviewer asked to suppress); the visual region behind such
-    an edit, if any, survives separately as its own IMAGE_DIFF item.
+    The product-DM review target is text, numbers, and table content. Pixel/image
+    regions are useful as candidates, but a plain IMAGE_DIFF with no reliable text
+    is usually color, antialiasing, shadow, or tiny placement drift in image-only
+    PDFs. Those should not become formal review items.
     """
     kept: list[DiffItem] = []
     for item in items:
         if item.diff_type == DiffType.IMAGE_DIFF:
-            if keep_image_diffs:
+            if keep_image_diffs and (item.old_value or item.new_value):
                 kept.append(item)
         elif item.diff_type in (DiffType.ADDED, DiffType.DELETED):
             kept.append(item)
-        elif item.context and any(m in item.context for m in _COMPREHENSIVE_MARKERS):
+        elif item.diff_type in (DiffType.TEXT_MODIFIED, DiffType.NUMBER_MODIFIED):
+            if not is_meaningful_diff(item.old_value, item.new_value):
+                continue
+            if image_pdf_text_gate and item.diff_type == DiffType.TEXT_MODIFIED:
+                if not _is_reliable_image_pdf_text_diff(
+                    item.old_value,
+                    item.new_value,
+                    bbox=item.new_bbox or item.old_bbox,
+                ):
+                    if stats is not None:
+                        stats["suppressed_ocr_text"] = stats.get("suppressed_ocr_text", 0) + 1
+                    continue
             kept.append(item)
-        elif _numbers_changed(item.old_value, item.new_value):
+        elif item.context and any(m in item.context for m in _COMPREHENSIVE_MARKERS) and (item.old_value or item.new_value):
             kept.append(item)
     return kept
 
@@ -2501,7 +2600,7 @@ def generate_diff_report(
             pixel_diffs,
             img_diffs,
             stats=stats,
-            keep_image_diffs=True,
+            keep_image_diffs=False,
         )
         if paddle_diffs:
             stats["paddle_ocr"] = _summarize_paddle_ocr_experiment(
@@ -2519,8 +2618,8 @@ def generate_diff_report(
         summary = f"{mode}; pixel={len(pixel_diffs)}, img={imgc}, recall={len(recall_diffs)}"
         if stats.get("recall_strategy"):
             summary += f", recall_strategy={stats['recall_strategy']}"
-        if stats.get("retained_visual"):
-            summary += f", visual_retained={int(stats['retained_visual'])}"
+        if stats.get("suppressed_visual"):
+            summary += f", visual_suppressed={int(stats['suppressed_visual'])}"
         if stats.get("fused_visual"):
             summary += f", visual_fused={int(stats['fused_visual'])}"
         stats["mode"] = mode
@@ -2559,10 +2658,15 @@ def generate_diff_report(
         stats["pixel_diff_count"] = pxc
         stats["image_diff_count"] = imgc
 
-    # Final content filter: drop wording-only edits (no numeric change), keeping
-    # number changes and structural add/remove. Re-number ids after filtering so
-    # they stay sequential (d001, d002, …).
-    merged_items = _drop_non_numeric_modifications(merged_items, keep_image_diffs=use_pixel_only)
+    # Final content filter: keep text/number/table-level content changes and drop
+    # pure image/color/layout noise. Re-number ids after filtering so they stay
+    # sequential (d001, d002, …).
+    merged_items = _drop_non_numeric_modifications(
+        merged_items,
+        keep_image_diffs=False,
+        image_pdf_text_gate=bool(use_pixel_only),
+        stats=stats,
+    )
     for index, item in enumerate(merged_items, start=1):
         item.id = f"d{index:03d}"
     stats["final_diff_count"] = len(merged_items)
@@ -2576,8 +2680,9 @@ def generate_diff_report(
         total_diffs=len(merged_items),
         items=merged_items,
         summary=summary,
-        # Visual regions are now surfaced as items (see merge_diff_results), so nothing
-        # is hidden from the reviewer — keep the field for back-compat but report 0.
+        # Pure visual/color regions are intentionally hidden from the formal
+        # content list; keep this quiet in the UI because the reviewer asked to
+        # ignore color-only differences.
         suppressed_count=0,
         engine_stats=stats,
         engine_warnings=engine_warnings,
