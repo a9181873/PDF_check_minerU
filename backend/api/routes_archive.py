@@ -25,6 +25,8 @@ from services.archive_service import (
 
 router = APIRouter(prefix="/api/archive", tags=["archive"], dependencies=[Depends(get_current_user)])
 
+_PDF_CACHE_HEADERS = {"Cache-Control": "private, max-age=86400"}
+
 
 class VerifyRequest(BaseModel):
     notes: str | None = None
@@ -186,4 +188,5 @@ async def download_archive_file(archive_id: str, file_type: str):
         path=file_path,
         filename=filename_map[file_type],
         media_type="application/pdf",
+        headers=_PDF_CACHE_HEADERS,
     )

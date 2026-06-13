@@ -1,7 +1,8 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useCompareStore } from '../stores/compareStore';
-import { compareApi, createDownloadUrl } from '../services/api';
+import { compareApi, createPdfViewerSource } from '../services/api';
+import type { PdfViewerSource } from '../services/api';
 import { useCrossWindowSync } from '../hooks/useCrossWindowSync';
 import { DiffItem } from '../services/types';
 
@@ -38,7 +39,7 @@ const PopoutPage: React.FC = () => {
   } = useCompareStore();
 
   const [isLoading, setIsLoading] = useState(true);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | PdfViewerSource | null>(null);
   const { broadcastScroll, broadcastPageChange, broadcastDiffSelect } = useCrossWindowSync(taskId || null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const isSyncingRef = React.useRef(false);
@@ -55,10 +56,8 @@ const PopoutPage: React.FC = () => {
 
       const loadComparison = async () => {
         try {
-          const [reportData, nextPdfUrl] = await Promise.all([
-            compareApi.getResult(taskId),
-            createDownloadUrl(`/api/compare/${taskId}/pdf/${version}`),
-          ]);
+          const reportData = await compareApi.getResult(taskId);
+          const nextPdfUrl = createPdfViewerSource(`/api/compare/${taskId}/pdf/${version}`);
           if (isActive) {
             setReport(reportData);
             setPdfUrl(nextPdfUrl);

@@ -8,7 +8,8 @@ import DiffListPanel from '../components/DiffListPanel';
 import SearchBar from '../components/SearchBar';
 import SyncScrollContainer from '../components/SyncScrollContainer';
 import VerificationHistoryModal from '../components/VerificationHistoryModal';
-import { checklistApi, compareApi, reviewApi, archiveApi, createDownloadUrl, createWebSocketUrl } from '../services/api';
+import { checklistApi, compareApi, reviewApi, archiveApi, createDownloadUrl, createPdfViewerSource, createWebSocketUrl } from '../services/api';
+import type { PdfViewerSource } from '../services/api';
 import { ChecklistItem, DiffItem, DiffReport } from '../services/types';
 import { useCompareStore } from '../stores/compareStore';
 import { useCrossWindowSync } from '../hooks/useCrossWindowSync';
@@ -101,7 +102,7 @@ const ComparePage: React.FC = () => {
   const [archiving, setArchiving] = useState(false);
   const [archiveToast, setArchiveToast] = useState<string | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
-  const [pdfUrls, setPdfUrls] = useState<{ old: string | null; new: string | null }>({ old: null, new: null });
+  const [pdfUrls, setPdfUrls] = useState<{ old: string | PdfViewerSource | null; new: string | PdfViewerSource | null }>({ old: null, new: null });
 
   const { broadcastScroll, broadcastPageChange, broadcastDiffSelect } = useCrossWindowSync(taskId || null);
   const { user: authUser, logout } = useAuthStore();
@@ -275,30 +276,12 @@ const ComparePage: React.FC = () => {
       return undefined;
     }
 
-    let isActive = true;
     setPdfUrls({ old: null, new: null });
-
-    const loadPdfUrls = async () => {
-      try {
-        const [oldUrl, newUrl] = await Promise.all([
-          createDownloadUrl(`/api/compare/${taskId}/pdf/old`),
-          createDownloadUrl(`/api/compare/${taskId}/pdf/new`),
-        ]);
-        if (isActive) {
-          setPdfUrls({ old: oldUrl, new: newUrl });
-        }
-      } catch {
-        if (isActive) {
-          setError('PDF 預覽票證建立失敗，請重新登入後再試');
-        }
-      }
-    };
-
-    void loadPdfUrls();
-
-    return () => {
-      isActive = false;
-    };
+    setPdfUrls({
+      old: createPdfViewerSource(`/api/compare/${taskId}/pdf/old`),
+      new: createPdfViewerSource(`/api/compare/${taskId}/pdf/new`),
+    });
+    return undefined;
   }, [status?.status, taskId]);
 
   useEffect(() => {
@@ -532,8 +515,8 @@ const ComparePage: React.FC = () => {
   const stats = getStats();
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,_#f5f5f5_0%,_#edf3ee_100%)] flex flex-col">
-      <header className="relative z-10 border-b border-[#dfe7e2] bg-white/90 px-6 pt-2 pb-2 backdrop-blur">
+    <div className="h-screen overflow-hidden bg-[linear-gradient(180deg,_#f5f5f5_0%,_#edf3ee_100%)] flex flex-col">
+      <header className="relative z-10 shrink-0 border-b border-[#dfe7e2] bg-white/90 px-6 pt-2 pb-2 backdrop-blur">
         {/* Row 1: Title */}
         <div className="flex flex-wrap items-center gap-2.5 mb-1.5">
           <button
@@ -736,15 +719,15 @@ const ComparePage: React.FC = () => {
         </div>
       </header>
 
-      <div className="flex-1 flex overflow-hidden">
-        <aside className="w-80 bg-white/88 border-r border-[#dfe7e2] flex flex-col backdrop-blur">
-          <div className="p-4 border-b border-[#e7ece8]">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-medium text-gray-900">差異摘要</h2>
+      <div className="min-h-0 flex-1 flex overflow-hidden">
+        <aside className="w-72 bg-white/88 border-r border-[#dfe7e2] flex flex-col backdrop-blur">
+          <div className="p-3 border-b border-[#e7ece8]">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-base font-medium text-gray-900">差異摘要</h2>
               <button
                 type="button"
                 onClick={toggleReviewedOnly}
-                className={`p-2 rounded-xl border transition-colors ${
+                className={`p-1.5 rounded-lg border transition-colors ${
                   reviewedOnly
                     ? 'border-primary-200 bg-primary-50 text-primary-700'
                     : 'border-gray-200 bg-[#F5F5F5] text-gray-700 hover:bg-gray-100'
@@ -755,38 +738,41 @@ const ComparePage: React.FC = () => {
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="rounded-2xl border border-primary-100 bg-primary-50 p-3">
-                <div className="text-sm text-primary-700">總差異</div>
-                <div className="text-2xl font-bold text-primary-900">{stats.total}</div>
+            <div className="grid grid-cols-4 gap-1.5 mb-2">
+              <div className="rounded-lg border border-primary-100 bg-primary-50 p-2">
+                <div className="text-[11px] text-primary-700">總數</div>
+                <div className="text-lg font-bold leading-tight text-primary-900">{stats.total}</div>
               </div>
-              <div className="rounded-2xl border border-[#dcefe5] bg-[#eef7f1] p-3">
-                <div className="text-sm text-primary-700">已審核</div>
-                <div className="text-2xl font-bold text-primary-900">{stats.reviewed}</div>
+              <div className="rounded-lg border border-[#dcefe5] bg-[#eef7f1] p-2">
+                <div className="text-[11px] text-primary-700">已審</div>
+                <div className="text-lg font-bold leading-tight text-primary-900">{stats.reviewed}</div>
               </div>
-              <div className="rounded-2xl border border-gray-200 bg-[#F5F5F5] p-3">
-                <div className="text-sm text-gray-600">待審核</div>
-                <div className="text-2xl font-bold text-gray-900">{stats.pending}</div>
+              <div className="rounded-lg border border-gray-200 bg-[#F5F5F5] p-2">
+                <div className="text-[11px] text-gray-600">待審</div>
+                <div className="text-lg font-bold leading-tight text-gray-900">{stats.pending}</div>
               </div>
-              <div className="rounded-2xl border border-red-100 bg-red-50 p-3">
-                <div className="text-sm text-red-700">異常</div>
-                <div className="text-2xl font-bold text-red-900">{stats.flagged}</div>
+              <div
+                className="rounded-lg border border-red-100 bg-red-50 p-2"
+                title="審核人員按「標記問題」的差異筆數"
+              >
+                <div className="text-[11px] text-red-700">問題</div>
+                <div className="text-lg font-bold leading-tight text-red-900">{stats.flagged}</div>
               </div>
             </div>
 
             {report?.suppressed_count ? (
-              <div className="mb-4 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-amber-800">
-                <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-                <span className="text-sm">
+              <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-800">
+                <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                <span className="text-xs">
                   另偵測到 {report.suppressed_count} 處視覺/排版變更未列入內容差異，請對照頁面截圖再確認一次。
                 </span>
               </div>
             ) : null}
 
             {report?.engine_warnings?.length ? (
-              <div className="mb-4 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-amber-800">
-                <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-                <div className="min-w-0 text-sm">
+              <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-800">
+                <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                <div className="min-w-0 text-xs">
                   <div className="font-medium">比對引擎有降級或警示</div>
                   <div className="mt-1 space-y-1">
                     {report.engine_warnings.slice(0, 2).map((warning) => (
@@ -800,21 +786,21 @@ const ComparePage: React.FC = () => {
               </div>
             ) : null}
 
-            <div className="space-y-2 rounded-2xl bg-[#F5F5F5] p-4">
-              <div className="flex items-center justify-between text-sm">
+            <div className="space-y-1 rounded-lg bg-[#F5F5F5] p-2">
+              <div className="flex items-center justify-between text-xs">
                 <span className="text-gray-600">新增內容</span>
                 <span className="font-medium text-gray-900">{stats.added}</span>
               </div>
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center justify-between text-xs">
                 <span className="text-gray-600">刪除內容</span>
                 <span className="font-medium text-gray-900">{stats.deleted}</span>
               </div>
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center justify-between text-xs">
                 <span className="text-gray-600">數值修改</span>
                 <span className="font-medium text-gray-900">{stats.modified}</span>
               </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">版面/區域變更（附截圖）</span>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-600">版面/區域</span>
                 <span className="font-medium text-gray-900">{stats.visual}</span>
               </div>
             </div>
@@ -1006,7 +992,7 @@ const ComparePage: React.FC = () => {
         />
       </Suspense>
 
-      <footer className="bg-white/90 border-t border-[#dfe7e2] px-6 py-3 backdrop-blur">
+      <footer className="shrink-0 bg-white/90 border-t border-[#dfe7e2] px-6 py-3 backdrop-blur">
         <div className="flex items-center justify-between text-sm text-gray-600">
           <div className="flex items-center space-x-4">
             <span>{report?.old_filename} ↔ {report?.new_filename}</span>

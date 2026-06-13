@@ -3,6 +3,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import { Loader2, ZoomIn, ZoomOut, RotateCw } from 'lucide-react';
 import DiffOverlay from './DiffOverlay';
 import { DiffItem } from '../services/types';
+import type { PdfViewerSource } from '../services/api';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -10,7 +11,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 ).toString();
 
 interface PDFViewerProps {
-  file: string | File | null;
+  file: string | File | PdfViewerSource | null;
   currentPage: number;
   onPageChange?: (page: number) => void;
   scale?: number;
@@ -44,17 +45,19 @@ interface PdfPageProxyLike {
   originalHeight?: number;
   width?: number;
   height?: number;
-  cleanup?: () => void;
   getViewport: (options: { scale: number; rotation?: number }) => { width: number; height: number };
 }
 
 interface PdfDocumentProxyLike {
   numPages: number;
-  getPage: (pageNumber: number) => Promise<PdfPageProxyLike>;
 }
 
 const DEFAULT_PAGE_WIDTH = 595;
 const DEFAULT_PAGE_HEIGHT = 842;
+const MAX_CANVAS_DEVICE_PIXEL_RATIO = 1.5;
+
+const isBrowserFile = (value: unknown): value is File =>
+  typeof File !== 'undefined' && value instanceof File;
 
 const PDFViewer: React.FC<PDFViewerProps> = ({
   file,
@@ -84,13 +87,19 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const loadSeqRef = useRef(0);
+  const renderDevicePixelRatio = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return 1;
+    }
+    return Math.min(window.devicePixelRatio || 1, MAX_CANVAS_DEVICE_PIXEL_RATIO);
+  }, []);
 
   const documentKey =
     typeof file === 'string'
       ? file
-      : file
+      : isBrowserFile(file)
         ? `${file.name}-${file.lastModified}-${file.size}`
-        : 'empty';
+        : file?.url ?? 'empty';
 
   const selectedDiffPage = useMemo(() => {
     if (!selectedDiffId) return null;
@@ -100,6 +109,24 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
       ? diff?.old_bbox?.page ?? diff?.new_bbox?.page ?? null
       : diff?.new_bbox?.page ?? diff?.old_bbox?.page ?? null;
   }, [diffItems, selectedDiffId, side]);
+  const selectedDiffPageDimension = selectedDiffPage ? pageDimensions.get(selectedDiffPage) : null;
+
+  const diffItemsByPage = useMemo(() => {
+    const grouped = new Map<number, DiffItem[]>();
+    diffItems.forEach((diff) => {
+      const bbox = side === 'old' ? diff.old_bbox : diff.new_bbox;
+      if (!bbox) {
+        return;
+      }
+      const pageDiffs = grouped.get(bbox.page);
+      if (pageDiffs) {
+        pageDiffs.push(diff);
+      } else {
+        grouped.set(bbox.page, [diff]);
+      }
+    });
+    return grouped;
+  }, [diffItems, side]);
 
   const includePageWindow = useCallback((source: Set<number>, page: number, totalPages: number | null) => {
     const next = new Set(source);
@@ -135,7 +162,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [selectedDiffId, numPages]);
+  }, [selectedDiffId, numPages, selectedDiffPage, selectedDiffPageDimension]);
 
   useEffect(() => () => {
     loadSeqRef.current += 1;
@@ -200,35 +227,12 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     };
   }, [currentPage, includePageWindow, numPages]);
 
-  const handleDocumentLoadSuccess = async (pdf: PdfDocumentProxyLike) => {
-    const sequence = loadSeqRef.current;
+  const handleDocumentLoadSuccess = (pdf: PdfDocumentProxyLike) => {
     const totalPages = pdf.numPages;
     setNumPages(totalPages);
     setIsLoading(false);
     setError(null);
     setVisiblePages((prev) => includePageWindow(prev, currentPage, totalPages));
-
-    const dimensions = new Map<number, PageDimension>();
-    try {
-      for (let pageNum = 1; pageNum <= totalPages; pageNum += 1) {
-        if (sequence !== loadSeqRef.current) {
-          return;
-        }
-        const page = await pdf.getPage(pageNum);
-        const viewport = page.getViewport({ scale: 1, rotation: 0 });
-        dimensions.set(pageNum, {
-          pdfWidth: viewport.width,
-          pdfHeight: viewport.height,
-        });
-        page.cleanup?.();
-      }
-
-      if (sequence === loadSeqRef.current) {
-        setPageDimensions(dimensions);
-      }
-    } catch (dimensionError) {
-      console.error('PDF page dimension load error:', dimensionError);
-    }
   };
 
   const handleDocumentLoadError = (loadError: Error) => {
@@ -252,8 +256,9 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     const sequence = loadSeqRef.current;
     // Only store scale-independent PDF point dimensions.
     // Rendered pixel size is not stored — the overlay uses % positioning instead.
-    const pdfWidth = page.originalWidth ?? (page.width ?? DEFAULT_PAGE_WIDTH * scale) / scale;
-    const pdfHeight = page.originalHeight ?? (page.height ?? DEFAULT_PAGE_HEIGHT * scale) / scale;
+    const viewport = page.getViewport({ scale: 1, rotation: 0 });
+    const pdfWidth = page.originalWidth ?? viewport.width ?? page.width ?? DEFAULT_PAGE_WIDTH;
+    const pdfHeight = page.originalHeight ?? viewport.height ?? page.height ?? DEFAULT_PAGE_HEIGHT;
 
     setPageDimensions((prev) => {
       if (sequence !== loadSeqRef.current) {
@@ -267,7 +272,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
       next.set(pageNum, { pdfWidth, pdfHeight });
       return next;
     });
-  }, [scale]);
+  }, []);
 
   const setPageContainerRef = useCallback((pageNum: number, el: HTMLDivElement | null) => {
     if (el) {
@@ -434,6 +439,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                 <div>
                   {numPages && Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
                     const dims = pageDimensions.get(pageNum);
+                    const pageDiffItems = diffItemsByPage.get(pageNum) ?? [];
                     const isRotatedSideways = Math.abs(rotation % 180) === 90;
                     const pdfWidth = dims?.pdfWidth ?? DEFAULT_PAGE_WIDTH;
                     const pdfHeight = dims?.pdfHeight ?? DEFAULT_PAGE_HEIGHT;
@@ -464,6 +470,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                                   rotate={rotation}
                                   renderTextLayer={false}
                                   renderAnnotationLayer={false}
+                                  devicePixelRatio={renderDevicePixelRatio}
                                   className="pdf-page shadow-md"
                                   onLoadSuccess={(page) => handlePageLoadSuccess(pageNum, page)}
                                 />
@@ -479,9 +486,9 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                             </div>
                           )}
                           {/* Per-page diff overlay — outside grayscale wrapper so colors stay vivid */}
-                          {shouldRenderPage && dims && diffItems.length > 0 && (
+                          {shouldRenderPage && dims && pageDiffItems.length > 0 && (
                             <DiffOverlay
-                              diffItems={diffItems}
+                              diffItems={pageDiffItems}
                               selectedDiffId={selectedDiffId}
                               pageNumber={pageNum}
                               pdfPageWidth={dims.pdfWidth}

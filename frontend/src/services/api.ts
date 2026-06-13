@@ -55,6 +55,25 @@ export const createDownloadUrl = async (path: string) => {
   return `${base}${sep}download_token=${encodeURIComponent(response.data.token)}`;
 };
 
+export interface PdfViewerSource {
+  url: string;
+  httpHeaders?: Record<string, string>;
+}
+
+export const createPdfViewerSource = (path: string): string | PdfViewerSource => {
+  const url = buildApiUrl(path);
+  const token = localStorage.getItem('auth_token');
+  if (!token) {
+    return url;
+  }
+  return {
+    url,
+    httpHeaders: {
+      Authorization: `Bearer ${token}`,
+    },
+  };
+};
+
 export const buildWebSocketUrl = (path: string) => {
   const baseOrigin = WS_BASE || API_BASE || window.location.origin;
   const url = new URL(path, `${baseOrigin}/`);

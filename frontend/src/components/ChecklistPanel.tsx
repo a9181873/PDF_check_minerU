@@ -66,7 +66,7 @@ const ChecklistPanel: React.FC<ChecklistPanelProps> = ({
       case CheckStatus.CONFIRMED:
         return '已確認';
       case CheckStatus.ANOMALY:
-        return '異常';
+        return '標記問題';
       case CheckStatus.MISSING:
         return '未找到';
       case CheckStatus.PENDING:
@@ -162,9 +162,10 @@ const ChecklistPanel: React.FC<ChecklistPanelProps> = ({
           <button
             onClick={() => setFilter(CheckStatus.ANOMALY)}
             className={`px-4 py-2.5 rounded-lg transition-colors flex items-center space-x-2 ${filter === CheckStatus.ANOMALY ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+            title="人工標記需要追查的項目"
           >
             {getStatusIcon(CheckStatus.ANOMALY)}
-            <span>異常</span>
+            <span>標記問題</span>
           </button>
         </div>
       </div>
@@ -260,9 +261,9 @@ const ChecklistPanel: React.FC<ChecklistPanelProps> = ({
                         <button
                           onClick={() => handleStatusChange(item.item_id, CheckStatus.ANOMALY)}
                           className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm"
-                          title="標記為異常"
+                          title="標記為需要追查"
                         >
-                          異常
+                          標記問題
                         </button>
                       </div>
                     </td>
@@ -297,7 +298,7 @@ const ChecklistPanel: React.FC<ChecklistPanelProps> = ({
           </div>
         </div>
         <div className="bg-red-50 p-4 rounded-lg">
-          <div className="text-sm text-red-700">異常</div>
+          <div className="text-sm text-red-700">標記問題</div>
           <div className="text-2xl font-bold text-red-900">
             {items.filter(i => i.status === CheckStatus.ANOMALY).length}
           </div>

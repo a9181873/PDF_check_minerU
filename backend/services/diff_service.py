@@ -1194,11 +1194,21 @@ def diff_pixels(
                 if _deep_normalize(old_priority or "") == _deep_normalize(new_priority or ""):
                     continue
 
-                if component_boxes:
-                    x0_px = min(b[0] for b in component_boxes)
-                    y0_px = min(b[1] for b in component_boxes)
-                    x1_px = max(b[2] for b in component_boxes)
-                    y1_px = max(b[3] for b in component_boxes)
+                bbox_component_boxes = component_boxes
+                if label == "footer" and component_boxes:
+                    right_edge_px = int(page_w * 0.45 * pt_to_px)
+                    right_boxes = [
+                        b for b in component_boxes
+                        if ((b[0] + b[2]) / 2) >= right_edge_px or b[2] >= int(page_w * 0.65 * pt_to_px)
+                    ]
+                    if right_boxes:
+                        bbox_component_boxes = right_boxes
+
+                if bbox_component_boxes:
+                    x0_px = min(b[0] for b in bbox_component_boxes)
+                    y0_px = min(b[1] for b in bbox_component_boxes)
+                    x1_px = max(b[2] for b in bbox_component_boxes)
+                    y1_px = max(b[3] for b in bbox_component_boxes)
                     pad_x = int(16 * pt_to_px)
                     pad_y = int(6 * pt_to_px)
                     x0_pt = max(0.0, (x0_px - pad_x) / pt_to_px)
@@ -1206,7 +1216,13 @@ def diff_pixels(
                     y0_top_pt = max(0.0, (y0_px - pad_y) / pt_to_px)
                     y1_top_pt = min(page_h, (y1_px + pad_y) / pt_to_px)
                 else:
-                    x0_pt, y0_top_pt, x1_pt, y1_top_pt = rect.x0, rect.y0, rect.x1, rect.y1
+                    if label == "footer":
+                        x0_pt = page_w * 0.45
+                        y0_top_pt = rect.y0
+                        x1_pt = rect.x1
+                        y1_top_pt = rect.y1
+                    else:
+                        x0_pt, y0_top_pt, x1_pt, y1_top_pt = rect.x0, rect.y0, rect.x1, rect.y1
 
                 bbox = BBox(
                     page=page_no,
@@ -1424,6 +1440,14 @@ def diff_pixels(
                 patch_area = patch_w * patch_h
                 # Require both width and height > 40px to prevent flagging thin grid lines as large regions
                 is_large_region = patch_area > 8000 and patch_w > 40 and patch_h > 40
+                is_large_text_band = (
+                    is_large_region
+                    and not ot
+                    and not nt
+                    and patch_h <= int(90 * dpi / 72.0)
+                    and patch_w >= int(80 * dpi / 72.0)
+                    and patch_area <= 260_000
+                )
 
                 # If there's no native text AND it's just a thin graphic line, it's rendering noise
                 if not ot and not nt and (patch_h < 20 or patch_w < 20):
@@ -1437,7 +1461,7 @@ def diff_pixels(
                     not is_large_region
                     and ((not ot and not nt) or (is_small_region and (not ot or not nt)))
                 )
-                if should_ocr:
+                if should_ocr or is_large_text_band:
                     try:
                         import subprocess, tempfile, os as _os
                         from PIL import Image as _PILImage, ImageFilter as _PILFilter

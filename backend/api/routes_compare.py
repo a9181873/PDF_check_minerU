@@ -32,6 +32,8 @@ from services.parser_service import parse_pdf, save_markdown
 
 router = APIRouter(prefix="/api/compare", tags=["compare"], dependencies=[Depends(get_current_user)])
 
+_PDF_CACHE_HEADERS = {"Cache-Control": "private, max-age=86400"}
+
 
 def _assert_pdf(file: UploadFile) -> None:
     filename = file.filename or ""
@@ -505,7 +507,12 @@ async def download_pdf(task_id: str, version: str):
     original_filename = row["old_filename"] if normalized == "old" else row["new_filename"]
     pdf_path = _find_uploaded_pdf(task_id, row, normalized)
     if pdf_path:
-        return FileResponse(pdf_path, media_type="application/pdf", filename=original_filename)
+        return FileResponse(
+            pdf_path,
+            media_type="application/pdf",
+            filename=original_filename,
+            headers=_PDF_CACHE_HEADERS,
+        )
 
     raise HTTPException(status_code=404, detail="PDF file not found")
 
