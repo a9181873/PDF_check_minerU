@@ -14,11 +14,16 @@ interface SyncScrollContainerProps {
 }
 
 const PDF_SCROLLER_SELECTOR = '[data-pdf-scroller="true"]';
+type PaneSide = 'left' | 'right';
 
 const getScrollElement = (pane: HTMLDivElement | null): HTMLElement | null => {
   if (!pane) return null;
   return pane.querySelector<HTMLElement>(PDF_SCROLLER_SELECTOR) ?? pane;
 };
+
+const getScrollableDistance = (el: HTMLElement): number => Math.max(0, el.scrollHeight - el.clientHeight);
+
+const clampRatio = (ratio: number): number => Math.min(1, Math.max(0, ratio));
 
 const SyncScrollContainer: React.FC<SyncScrollContainerProps> = ({
   leftContent,
@@ -33,53 +38,94 @@ const SyncScrollContainer: React.FC<SyncScrollContainerProps> = ({
 }) => {
   const leftRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
-  const isSyncingRef = useRef(false);
-  const unlockTimerRef = useRef<number | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const pendingSyncRef = useRef<{ source: PaneSide; ratio: number } | null>(null);
+  const programmaticScrollRef = useRef<Record<PaneSide, { top: number; until: number } | null>>({
+    left: null,
+    right: null,
+  });
 
-  // Sync scroll positions
-  const syncScroll = useCallback((source: 'left' | 'right', target: 'left' | 'right', sourceScrollEl?: HTMLElement) => {
-    if (!syncEnabled || isSyncingRef.current) return;
+  const getPaneRef = useCallback((side: PaneSide) => (side === 'left' ? leftRef.current : rightRef.current), []);
 
-    isSyncingRef.current = true;
+  const shouldIgnoreProgrammaticScroll = useCallback((side: PaneSide, el: HTMLElement) => {
+    const marker = programmaticScrollRef.current[side];
+    if (!marker) return false;
 
-    const sourcePane = source === 'left' ? leftRef.current : rightRef.current;
-    const targetPane = target === 'left' ? leftRef.current : rightRef.current;
-    const sourceEl = sourceScrollEl ?? getScrollElement(sourcePane);
-    const targetEl = getScrollElement(targetPane);
-
-    if (sourceEl && targetEl) {
-      const sourceScrollTop = sourceEl.scrollTop;
-      const sourceScrollHeight = sourceEl.scrollHeight;
-      const sourceClientHeight = sourceEl.clientHeight;
-      const targetScrollHeight = targetEl.scrollHeight;
-      const targetClientHeight = targetEl.clientHeight;
-      const sourceScrollable = sourceScrollHeight - sourceClientHeight;
-      const targetScrollable = targetScrollHeight - targetClientHeight;
-
-      if (sourceScrollable > 0 && targetScrollable > 0) {
-        const sourceRatio = sourceScrollTop / sourceScrollable;
-        targetEl.scrollTop = sourceRatio * targetScrollable;
-        onScrollSync?.(source === 'left' ? 'old' : 'new', sourceRatio);
-      }
+    if (performance.now() > marker.until) {
+      programmaticScrollRef.current[side] = null;
+      return false;
     }
 
-    if (unlockTimerRef.current) {
-      window.clearTimeout(unlockTimerRef.current);
+    if (Math.abs(el.scrollTop - marker.top) <= 2) {
+      programmaticScrollRef.current[side] = null;
+      return true;
     }
-    unlockTimerRef.current = window.setTimeout(() => {
-      isSyncingRef.current = false;
-    }, 150);
-  }, [onScrollSync, syncEnabled]);
+
+    return false;
+  }, []);
+
+  const applyScrollRatio = useCallback((side: PaneSide, ratio: number) => {
+    const el = getScrollElement(getPaneRef(side));
+    if (!el) return;
+
+    const scrollable = getScrollableDistance(el);
+    if (scrollable <= 0) return;
+
+    const targetTop = clampRatio(ratio) * scrollable;
+    if (Math.abs(el.scrollTop - targetTop) <= 1) return;
+
+    el.scrollTop = targetTop;
+    programmaticScrollRef.current[side] = {
+      top: el.scrollTop,
+      until: performance.now() + 100,
+    };
+  }, [getPaneRef]);
+
+  // Sync scroll positions on the next paint. This keeps both panes visually locked
+  // during fast wheel/trackpad scrolling without letting programmatic scroll events
+  // bounce back and throttle the user's active pane.
+  const syncScroll = useCallback((source: PaneSide, sourceScrollEl?: HTMLElement) => {
+    if (!syncEnabled) return;
+
+    const sourceEl = sourceScrollEl ?? getScrollElement(getPaneRef(source));
+    if (!sourceEl) return;
+
+    const sourceScrollable = getScrollableDistance(sourceEl);
+    if (sourceScrollable <= 0) return;
+
+    pendingSyncRef.current = {
+      source,
+      ratio: clampRatio(sourceEl.scrollTop / sourceScrollable),
+    };
+
+    if (rafRef.current !== null) return;
+
+    rafRef.current = window.requestAnimationFrame(() => {
+      rafRef.current = null;
+
+      const pending = pendingSyncRef.current;
+      pendingSyncRef.current = null;
+      if (!pending) return;
+
+      const target: PaneSide = pending.source === 'left' ? 'right' : 'left';
+      applyScrollRatio(target, pending.ratio);
+      onScrollSync?.(pending.source === 'left' ? 'old' : 'new', pending.ratio);
+    });
+  }, [applyScrollRatio, getPaneRef, onScrollSync, syncEnabled]);
 
   useEffect(() => {
     const leftEl = leftRef.current;
     const rightEl = rightRef.current;
     
     const handleLeftScroll = (event: Event) => {
-      syncScroll('left', 'right', event.target as HTMLElement);
+      const el = event.target as HTMLElement;
+      if (shouldIgnoreProgrammaticScroll('left', el)) return;
+      syncScroll('left', el);
     };
     const handleRightScroll = (event: Event) => {
-      syncScroll('right', 'left', event.target as HTMLElement);
+      const el = event.target as HTMLElement;
+      if (shouldIgnoreProgrammaticScroll('right', el)) return;
+      syncScroll('right', el);
     };
     
     if (leftEl) {
@@ -97,11 +143,12 @@ const SyncScrollContainer: React.FC<SyncScrollContainerProps> = ({
       if (rightEl) {
         rightEl.removeEventListener('scroll', handleRightScroll, true);
       }
-      if (unlockTimerRef.current) {
-        window.clearTimeout(unlockTimerRef.current);
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
       }
     };
-  }, [syncScroll]);
+  }, [shouldIgnoreProgrammaticScroll, syncScroll]);
 
   // Listen for incoming cross-window scroll events
   useEffect(() => {
@@ -109,21 +156,13 @@ const SyncScrollContainer: React.FC<SyncScrollContainerProps> = ({
       const customEvent = e as CustomEvent<{ source: 'old' | 'new', ratio: number }>;
       const { ratio } = customEvent.detail;
 
-      isSyncingRef.current = true;
-      for (const pane of [leftRef.current, rightRef.current]) {
-        const el = getScrollElement(pane);
-        if (!el) continue;
-        const scrollable = el.scrollHeight - el.clientHeight;
-        if (scrollable > 0) el.scrollTop = ratio * scrollable;
-      }
-
-      if (unlockTimerRef.current) window.clearTimeout(unlockTimerRef.current);
-      unlockTimerRef.current = window.setTimeout(() => { isSyncingRef.current = false; }, 150);
+      applyScrollRatio('left', ratio);
+      applyScrollRatio('right', ratio);
     };
 
     window.addEventListener('cross-window-scroll', handleCrossWindowScroll);
     return () => window.removeEventListener('cross-window-scroll', handleCrossWindowScroll);
-  }, []);
+  }, [applyScrollRatio]);
 
   const handleToggleLeftPanel = () => {
     onLeftHiddenToggle?.(!leftHidden);
