@@ -5,6 +5,7 @@ from services.diff_service import (
     _extract_priority_ocr_text,
     _is_reliable_ocr_pair,
     _is_reliable_ocr_text,
+    _numeric_ocr_confusion_count,
     _same_native_text_is_rendering_noise,
     diff_aligned_paragraphs,
     generate_diff_report,
@@ -626,11 +627,66 @@ def test_image_pdf_text_gate_keeps_strong_numeric_ocr_change():
     assert _drop_non_numeric_modifications([item], image_pdf_text_gate=True) == [item]
 
 
+def test_image_pdf_text_gate_suppresses_number_diff_when_numbers_do_not_change():
+    item = DiffItem(
+        id="",
+        diff_type=DiffType.NUMBER_MODIFIED,
+        old_value="(本保險為非保證續保之保險商品。\n(免費申訴電話 :0800-213-269。",
+        new_value="(本保險為非保證續保之保險商品。)\n(免費申訴電話 : 0800-213-269。)",
+        old_bbox=BBox(page=1, x0=40, y0=720, x1=260, y1=780),
+        new_bbox=BBox(page=1, x0=40, y0=720, x1=260, y1=780),
+        context="Page 1 圖片數字變更",
+        confidence=0.95,
+    )
+    stats = {}
+
+    assert _drop_non_numeric_modifications([item], image_pdf_text_gate=True, stats=stats) == []
+    assert stats["suppressed_ocr_text"] == 1
+
+
+def test_image_pdf_text_gate_suppresses_single_digit_ocr_number_change():
+    item = DiffItem(
+        id="",
+        diff_type=DiffType.NUMBER_MODIFIED,
+        old_value="2",
+        new_value="3",
+        old_bbox=BBox(page=3, x0=40, y0=720, x1=60, y1=740),
+        new_bbox=BBox(page=3, x0=40, y0=720, x1=60, y1=740),
+        context="Page 3 圖片數字變更",
+        confidence=0.95,
+    )
+
+    assert _drop_non_numeric_modifications([item], image_pdf_text_gate=True) == []
+
+
+def test_image_pdf_text_gate_keeps_number_diff_with_strong_numeric_change():
+    item = DiffItem(
+        id="",
+        diff_type=DiffType.NUMBER_MODIFIED,
+        old_value="保險金額50萬元",
+        new_value="保險金額100萬元",
+        old_bbox=BBox(page=2, x0=40, y0=760, x1=200, y1=805),
+        new_bbox=BBox(page=2, x0=40, y0=760, x1=200, y1=805),
+        context="Page 2 內容變更",
+        confidence=0.95,
+    )
+
+    assert _drop_non_numeric_modifications([item], image_pdf_text_gate=True) == [item]
+
+
 def test_compact_numeric_ocr_pair_recovers_small_graphic_number_change():
     assert _compact_numeric_ocr_pair("24", "28%") == ("24", "28")
     assert _compact_numeric_ocr_pair("24", "281") == ("24", "28")
     assert _compact_numeric_ocr_pair("244", "284") == ("24", "28")
+    assert _compact_numeric_ocr_pair("2", "3") is None
+    assert _compact_numeric_ocr_pair("9", "1") is None
     assert _compact_numeric_ocr_pair("7 自權閣呈說明", "了") is None
+
+
+def test_numeric_ocr_confusion_count_detects_letters_inside_numbers():
+    assert _numeric_ocr_confusion_count("給付祝壽保險金 447,6i12 美元") == 1
+    assert _numeric_ocr_confusion_count("463,07 1.O00O 美元") >= 1
+    assert _numeric_ocr_confusion_count("給付祝壽保險金 447,612 美元") == 0
 
 
 def test_generate_diff_report_suppresses_pure_visual_fallback_for_image_pdf(monkeypatch):

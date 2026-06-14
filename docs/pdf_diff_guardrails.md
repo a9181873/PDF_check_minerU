@@ -160,18 +160,27 @@ Required result:
   - Old: `Version: 2026.02; Control No: OP-2602-0081`
   - New: `Version: 2026.05; Control No: 2605-OP-0029`
 - Pure visual/color/image diffs without reliable text or numbers should remain suppressed from the formal review list.
+- Regression samples should include `慈愛微型`, `新扶愛`, `美保發`, `美利保`, and `臻美利` under `商品DM/` when available locally.
+- `新扶愛` must not surface phone/spacing/punctuation-only OCR drift as `NUMBER_MODIFIED` just because unchanged numbers such as `0800`, `40`, `310`, or `15` appear in the cropped text.
+- `慈愛微型` must not surface one-digit list/sequence noise such as `2 -> 3`, `3 -> 5`, or `9 -> 1` as formal differences.
+- `美利保` amount OCR should prefer high-zoom rereads when numeric text contains likely letter substitutions, e.g. avoid presenting `447,6i12` when `447,612` can be read from the same crop.
 
 ### Implementation Rules
 
 - Do not restore full-page OCR as the main image-only strategy. It is slower and reintroduces noisy text false positives.
 - Keep the pixel-first strategy: locate changed regions first, then OCR only relevant local regions.
 - Tiny graphic numerals may OCR with unit artifacts, e.g. `24年` as `244` or `28年` as `281` / `28%`. Normalize these compact numeric OCR pairs before presenting them.
+- Compact numeric fallback should reject isolated one-digit pairs unless a stronger priority pattern exists; single digits are too often list markers or OCR drift.
+- For image-only PDFs, OCR reliability gating applies to both `TEXT_MODIFIED` and `NUMBER_MODIFIED`; unchanged numbers inside noisy text must not bypass the gate.
+- Only label a diff as `圖片數字變更` when the surfaced values are compact numeric OCR values. Longer text blocks with changed numbers should use normal content context.
+- If numeric OCR contains likely substitutions such as `i/I/O` inside numeric runs, one extra high-zoom local reread is allowed for the same crop. Do not expand that into full-page OCR.
 - Skip the compact-number fallback in header/footer bands because protected `control/version` OCR owns those regions.
 - Keep `PaddleOCR` off by default and metadata-only until fixed samples prove better recall without extra noise.
 
 ### Performance Notes
 
 - The compact-number fallback adds one extra high-zoom Tesseract pass only for small changed image regions.
+- Numeric OCR cleanup adds one extra high-zoom pass only when the first local OCR result has obvious numeric letter substitutions.
 - Runtime impact should scale with changed-region count, not page count.
 - Expected behavior for the `fengshouai` sample is still a small diff set: image PDF summary with `pixel=6`, two formal `number_modified` items, and pure visual candidates suppressed.
 

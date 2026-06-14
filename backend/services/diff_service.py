@@ -22,6 +22,9 @@ _VERSION_DATE_RE = re.compile(r"\b((?:20)?\d{2,3}\.\d{2})\b")
 _CJK_RE = re.compile(r"[\u3400-\u9fff]")
 _CJK_RUN_RE = re.compile(r"[\u3400-\u9fff]{6,}")
 _UPPER_BRACKET_NOISE_RE = re.compile(r"\[[A-Z]{2,}")
+_NUMERIC_OCR_CONFUSION_RE = re.compile(
+    r"(?<=[\d,.\s])[iIlLoO](?=[\d,.\s])|(?<=\d)[iIlLoO](?=\d)"
+)
 # Summation/integral/product/root/contour operators: a math FORMULA, never legitimate
 # prose in these DMs. MinerU OCRs such blocks as garbage (e.g. the actuarial reserve
 # formula "C V + \u2211E n d(1+i) m-t\u2026"); they cannot be reliably diffed, so the pixel path
@@ -104,6 +107,13 @@ def _extract_numbers(text: str | None) -> list[str]:
     if not text:
         return []
     return NUMBER_PATTERN.findall(_deep_normalize(text))
+
+
+def _numeric_ocr_confusion_count(text: str | None) -> int:
+    """Count likely OCR letter substitutions inside numeric runs."""
+    if not text:
+        return 0
+    return len(_NUMERIC_OCR_CONFUSION_RE.findall(_deep_normalize(text)))
 
 
 def _numbers_changed(old_value: str | None, new_value: str | None) -> bool:
@@ -374,6 +384,8 @@ def _compact_numeric_ocr_pair(old_text: str | None, new_text: str | None) -> tup
         old_digits = old_digits[:2]
 
     if old_digits == new_digits:
+        return None
+    if len(old_digits) == 1 and len(new_digits) == 1:
         return None
     if len(old_digits) > 4 or len(new_digits) > 4:
         return None
@@ -1646,6 +1658,38 @@ def diff_pixels(
                         ocr_old_raw = _ocr_patch(pix_o)
                         ocr_new_raw = _ocr_patch(pix_n)
 
+                        raw_numeric_confusions = (
+                            _numeric_ocr_confusion_count(ocr_old_raw)
+                            + _numeric_ocr_confusion_count(ocr_new_raw)
+                        )
+                        if raw_numeric_confusions:
+                            hi_old_raw = _ocr_page_region(
+                                page_old,
+                                clip_rect,
+                                zoom=6.0,
+                                lang="chi_tra+eng",
+                                psm="6",
+                            )
+                            hi_new_raw = _ocr_page_region(
+                                page_new,
+                                clip_rect,
+                                zoom=6.0,
+                                lang="chi_tra+eng",
+                                psm="6",
+                            )
+                            hi_numeric_confusions = (
+                                _numeric_ocr_confusion_count(hi_old_raw)
+                                + _numeric_ocr_confusion_count(hi_new_raw)
+                            )
+                            if (
+                                hi_old_raw
+                                and hi_new_raw
+                                and hi_numeric_confusions < raw_numeric_confusions
+                                and _is_reliable_ocr_pair(hi_old_raw, hi_new_raw)
+                            ):
+                                ocr_old_raw = hi_old_raw
+                                ocr_new_raw = hi_new_raw
+
                         ocr_old_norm = _deep_normalize(ocr_old_raw)
                         ocr_new_norm = _deep_normalize(ocr_new_raw)
 
@@ -1717,12 +1761,23 @@ def diff_pixels(
                 new_text: str | None = None
                 diff_type = DiffType.IMAGE_DIFF
                 context_label = f"Page {page_no} 圖形差異 ({actual_px:,} px)"
+                is_compact_numeric_image_change = False
 
                 if ot or nt:
                     old_text = _clip_text(ot)
                     new_text = _clip_text(nt)
                     diff_type = _guess_diff_type(old_text, new_text)
-                    if diff_type == DiffType.NUMBER_MODIFIED and not same_text_moved:
+                    compact_pair = _compact_numeric_ocr_pair(old_text, new_text)
+                    is_compact_numeric_image_change = (
+                        compact_pair is not None
+                        and old_text == compact_pair[0]
+                        and new_text == compact_pair[1]
+                    )
+                    if (
+                        diff_type == DiffType.NUMBER_MODIFIED
+                        and is_compact_numeric_image_change
+                        and not same_text_moved
+                    ):
                         context_label = f"Page {page_no} 圖片數字變更"
                     else:
                         context_label = f"Page {page_no} text position changed" if same_text_moved else f"Page {page_no} 內容變更"
@@ -2486,7 +2541,7 @@ def _drop_non_numeric_modifications(
         elif item.diff_type in (DiffType.TEXT_MODIFIED, DiffType.NUMBER_MODIFIED):
             if not is_meaningful_diff(item.old_value, item.new_value):
                 continue
-            if image_pdf_text_gate and item.diff_type == DiffType.TEXT_MODIFIED:
+            if image_pdf_text_gate and item.diff_type in (DiffType.TEXT_MODIFIED, DiffType.NUMBER_MODIFIED):
                 if not _is_reliable_image_pdf_text_diff(
                     item.old_value,
                     item.new_value,
