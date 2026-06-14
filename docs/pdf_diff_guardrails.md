@@ -2,6 +2,8 @@
 
 This file records decisions that must be preserved in future fixes. Read it before changing PDF parsing, OCR, visual diff grouping, or OCI deployment settings.
 
+Start with `docs/pdf_diff_recent_summary_2026-06-14.md` for the latest combined summary of scroll sync, compare readiness, image-PDF OCR filtering, compact numeric diffs, golden samples, and OCI deployment cautions.
+
 ## 2026-05-20 Image PDF Footer/OCR Fix
 
 Commit: `f23c2ba fix: protect image PDF footer diffs`
