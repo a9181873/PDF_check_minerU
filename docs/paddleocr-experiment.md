@@ -12,6 +12,29 @@
 - 目前正式差異清單仍以既有 MinerU / Docling / PyMuPDF / visual diff 為準。
 - 目前基礎 image 不預載 PaddleOCR；真實模型測試需另做 PaddleOCR Docker profile 或在測試機安裝套件與模型。
 
+## 目前正式流程
+
+正式差異清單不是全頁 OCR，也不是 PaddleOCR。現行主流程採分層策略：
+
+| 層級 | 技術 | 用途 | 是否進正式差異 |
+|---|---|---|---|
+| 文字層 | PyMuPDF / fitz | 直接讀 PDF 內建文字，避免 OCR 誤讀 | 是 |
+| 表格層 | MinerU / Docling | 補表格與 cell bbox；有文字層 PDF 會併入表格比對 | 是 |
+| 影像定位 | PyMuPDF raster + pixel diff | image-only PDF 先找出哪裡有變，不直接全頁 OCR | 候選定位 |
+| 局部 OCR | Tesseract | 只對差異框做小範圍 OCR，例如 footer 版號、Control No、圖片內小數字 | 可靠時才進正式差異 |
+| 圖片比較 | ImageHash / SSIM | 偵測嵌入圖片內容變化 | 可靠文字/數字才進正式差異 |
+| 實驗層 | PaddleOCR | A/B 候選與統計 | 預設不進正式差異 |
+
+已驗證案例：
+
+- `台灣人壽鳳守愛防癌定期健康保險_商品DM_20260213適用.pdf`
+- `台灣人壽鳳守愛防癌定期健康保險_商品DM_20260506適用.pdf`
+
+預期正式差異包含：
+
+- `Page 2 圖片數字變更: 24 -> 28`
+- `Page 6 footer control/version: Version 2026.02 / OP-2602-0081 -> Version 2026.05 / 2605-OP-0029`
+
 ## 啟用方式
 
 預設關閉。測試時用環境變數開啟：
@@ -52,6 +75,14 @@ paddle_ocr: detected N numeric tokens not confirmed by primary diff
 ```
 
 ## 硬體影響
+
+正式流程的效能策略：
+
+- **不做全頁 OCR**：image-only PDF 先用低 DPI 快速掃描找有差異頁，再只針對差異區塊處理。
+- **只做局部 OCR**：Tesseract 只跑 header/footer 高價值欄位與小型差異框，不對整份 PDF 全量 OCR。
+- **圖片小數字 fallback**：像 `24年 -> 28年` 這類小框會多做一次放大局部 OCR；成本跟差異框數量成正比，通常遠低於全頁 OCR。
+- **PaddleOCR 預設關閉**：不會增加正式任務時間；開啟後只做實驗統計。
+- **快取/背景化**：old/new 解析可並行，截圖/crop 可在報告完成後背景產生，避免拖慢差異清單可用時間。
 
 | 模式 | 影響 |
 |---|---|

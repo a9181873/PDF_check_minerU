@@ -141,6 +141,40 @@ The original MinerU version used parallel table parsing. Keep that behavior.
 - `backend/config.py` defaults should match this.
 - `docker-compose.yml` should explicitly set these env vars for `backend-minerU`.
 
+## 2026-06-14 Compact Image Number Diff Rule
+
+### Case That Must Keep Passing
+
+Files:
+
+- `台灣人壽鳳守愛防癌定期健康保險_商品DM_20260213適用.pdf`
+- `台灣人壽鳳守愛防癌定期健康保險_商品DM_20260506適用.pdf`
+
+Required result:
+
+- Page 2 image/graphic number change must be surfaced as a formal `NUMBER_MODIFIED` item:
+  - Old: `24`
+  - New: `28`
+  - Context: `Page 2 圖片數字變更`
+- Page 6 footer-right priority field must still be detected:
+  - Old: `Version: 2026.02; Control No: OP-2602-0081`
+  - New: `Version: 2026.05; Control No: 2605-OP-0029`
+- Pure visual/color/image diffs without reliable text or numbers should remain suppressed from the formal review list.
+
+### Implementation Rules
+
+- Do not restore full-page OCR as the main image-only strategy. It is slower and reintroduces noisy text false positives.
+- Keep the pixel-first strategy: locate changed regions first, then OCR only relevant local regions.
+- Tiny graphic numerals may OCR with unit artifacts, e.g. `24年` as `244` or `28年` as `281` / `28%`. Normalize these compact numeric OCR pairs before presenting them.
+- Skip the compact-number fallback in header/footer bands because protected `control/version` OCR owns those regions.
+- Keep `PaddleOCR` off by default and metadata-only until fixed samples prove better recall without extra noise.
+
+### Performance Notes
+
+- The compact-number fallback adds one extra high-zoom Tesseract pass only for small changed image regions.
+- Runtime impact should scale with changed-region count, not page count.
+- Expected behavior for the `fengshouai` sample is still a small diff set: image PDF summary with `pixel=6`, two formal `number_modified` items, and pure visual candidates suppressed.
+
 Historical source:
 
 - `db3334a feat: 效能優化 (並行解析...)` had MinerU and Docling submitted together.
