@@ -1,5 +1,6 @@
 from models.diff_models import BBox, DiffItem, DiffType
 from services.diff_service import (
+    _compact_numeric_ocr_pair,
     _drop_non_numeric_modifications,
     _extract_priority_ocr_text,
     _is_reliable_ocr_pair,
@@ -623,6 +624,13 @@ def test_image_pdf_text_gate_keeps_strong_numeric_ocr_change():
     )
 
     assert _drop_non_numeric_modifications([item], image_pdf_text_gate=True) == [item]
+
+
+def test_compact_numeric_ocr_pair_recovers_small_graphic_number_change():
+    assert _compact_numeric_ocr_pair("24", "28%") == ("24", "28")
+    assert _compact_numeric_ocr_pair("24", "281") == ("24", "28")
+    assert _compact_numeric_ocr_pair("244", "284") == ("24", "28")
+    assert _compact_numeric_ocr_pair("7 自權閣呈說明", "了") is None
 
 
 def test_generate_diff_report_suppresses_pure_visual_fallback_for_image_pdf(monkeypatch):

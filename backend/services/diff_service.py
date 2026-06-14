@@ -344,6 +344,42 @@ def _has_strong_numeric_ocr_change(old_text: str | None, new_text: str | None) -
     return any(len(re.sub(r"\D", "", token)) >= 3 for token in all_numbers)
 
 
+def _compact_numeric_ocr_pair(old_text: str | None, new_text: str | None) -> tuple[str, str] | None:
+    old_numbers = _extract_numbers(old_text)
+    new_numbers = _extract_numbers(new_text)
+    if len(old_numbers) != 1 or len(new_numbers) != 1:
+        return None
+
+    old_digits = re.sub(r"\D", "", old_numbers[0])
+    new_digits = re.sub(r"\D", "", new_numbers[0])
+    if not old_digits or not new_digits:
+        return None
+
+    # Tiny graphic labels such as "24年" can OCR as "244"; trim one shared
+    # trailing pseudo-unit digit when at least one side has an extra digit.
+    if (
+        old_digits[-1:] == new_digits[-1:]
+        and min(len(old_digits), len(new_digits)) >= 2
+        and max(len(old_digits), len(new_digits)) <= 3
+        and (len(old_digits) > 2 or len(new_digits) > 2)
+    ):
+        if len(old_digits) > 2:
+            old_digits = old_digits[:-1]
+        if len(new_digits) > 2:
+            new_digits = new_digits[:-1]
+
+    if len(old_digits) == 2 and len(new_digits) == 3 and old_digits != new_digits[:2]:
+        new_digits = new_digits[:2]
+    elif len(new_digits) == 2 and len(old_digits) == 3 and new_digits != old_digits[:2]:
+        old_digits = old_digits[:2]
+
+    if old_digits == new_digits:
+        return None
+    if len(old_digits) > 4 or len(new_digits) > 4:
+        return None
+    return old_digits, new_digits
+
+
 def _is_title_like_image_text_region(old_key: str, new_key: str, bbox: BBox | None) -> bool:
     if not bbox:
         return False
@@ -1557,10 +1593,11 @@ def diff_pixels(
                     not is_large_region
                     and ((not ot and not nt) or (is_small_region and (not ot or not nt)))
                 )
+                report_bbox = bbox
                 if should_ocr or is_large_text_band:
                     try:
                         import subprocess, tempfile, os as _os
-                        from PIL import Image as _PILImage, ImageFilter as _PILFilter
+                        from PIL import Image as _PILImage
 
                         # Render only the diff patch at 3× DPI for OCR clarity
                         clip_rect = fitz.Rect(fx0, fy0, fx1, fy1)
@@ -1616,7 +1653,7 @@ def diff_pixels(
                         old_stripped = ocr_old_norm.replace(" ", "") if ocr_old_norm else ""
                         new_stripped = ocr_new_norm.replace(" ", "") if ocr_new_norm else ""
 
-                        if old_stripped and new_stripped and old_stripped == new_stripped:
+                        if old_stripped and new_stripped and old_stripped == new_stripped and not is_small_region:
                             continue
 
                         priority_old = _extract_priority_ocr_text(ocr_old_raw)
@@ -1630,6 +1667,47 @@ def diff_pixels(
                         elif ocr_old_raw and ocr_new_raw and _is_reliable_ocr_pair(ocr_old_raw, ocr_new_raw):
                             ot = _sanitize_ocr_text(ocr_old_raw)
                             nt = _sanitize_ocr_text(ocr_new_raw)
+                        elif is_small_region:
+                            # Very small graphic numerals are often too tight for
+                            # the standard OCR crop. Try one expanded numeric-only
+                            # pass, but skip header/footer where the protected
+                            # control/version OCR already owns the signal.
+                            in_header_footer = (
+                                fitz_rect.y1 <= ph_pt * 0.12
+                                or fitz_rect.y0 >= ph_pt * 0.88
+                            )
+                            if not in_header_footer:
+                                pad_pt = 4.0
+                                numeric_rect = fitz.Rect(
+                                    max(0.0, fx0 - pad_pt),
+                                    max(0.0, fy0 - pad_pt),
+                                    min(float(page_new.rect.width), fx1 + pad_pt),
+                                    min(float(page_new.rect.height), fy1 + pad_pt),
+                                )
+                                numeric_old_raw = _ocr_page_region(
+                                    page_old,
+                                    numeric_rect,
+                                    zoom=6.0,
+                                    lang="chi_tra+eng",
+                                    psm="6",
+                                )
+                                numeric_new_raw = _ocr_page_region(
+                                    page_new,
+                                    numeric_rect,
+                                    zoom=6.0,
+                                    lang="chi_tra+eng",
+                                    psm="6",
+                                )
+                                numeric_pair = _compact_numeric_ocr_pair(numeric_old_raw, numeric_new_raw)
+                                if numeric_pair:
+                                    ot, nt = numeric_pair
+                                    report_bbox = BBox(
+                                        page=page_no,
+                                        x0=numeric_rect.x0,
+                                        y0=ph_pt - numeric_rect.y1,
+                                        x1=numeric_rect.x1,
+                                        y1=ph_pt - numeric_rect.y0,
+                                    )
 
                     except Exception:
                         pass  # OCR unavailable or timed out → fall through
@@ -1643,8 +1721,11 @@ def diff_pixels(
                 if ot or nt:
                     old_text = _clip_text(ot)
                     new_text = _clip_text(nt)
-                    diff_type = DiffType.TEXT_MODIFIED
-                    context_label = f"Page {page_no} text position changed" if same_text_moved else f"Page {page_no} 內容變更"
+                    diff_type = _guess_diff_type(old_text, new_text)
+                    if diff_type == DiffType.NUMBER_MODIFIED and not same_text_moved:
+                        context_label = f"Page {page_no} 圖片數字變更"
+                    else:
+                        context_label = f"Page {page_no} text position changed" if same_text_moved else f"Page {page_no} 內容變更"
                 elif is_large_region:
                     # Large region with no text = table/layout structural change.
                     # Report as IMAGE_DIFF WITH screenshots (don't suppress).
@@ -1664,8 +1745,8 @@ def diff_pixels(
                         diff_type=diff_type,
                         old_value=old_text,
                         new_value=new_text,
-                        old_bbox=bbox,
-                        new_bbox=bbox,
+                        old_bbox=report_bbox,
+                        new_bbox=report_bbox,
                         # Crops are generated once on disk by snapshot_service and
                         # loaded lazily by the UI. Keeping them out of the report
                         # prevents large base64 strings from bloating memory and JSON.
