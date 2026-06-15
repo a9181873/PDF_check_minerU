@@ -764,7 +764,7 @@ const ComparePage: React.FC = () => {
               <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-800">
                 <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
                 <span className="text-xs">
-                  另偵測到 {report.suppressed_count} 處視覺/排版變更未列入內容差異，請對照頁面截圖再確認一次。
+                  另有 {report.suppressed_count} 處低可信度表格/版面候選已降噪，請以清單項目與頁面截圖為主。
                 </span>
               </div>
             ) : null}

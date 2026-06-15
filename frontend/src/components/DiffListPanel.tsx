@@ -51,7 +51,7 @@ const getDiffLabel = (type: DiffType) => {
     case DiffType.TEXT_MODIFIED:
       return '文字修改';
     case DiffType.IMAGE_DIFF:
-      return '視覺差異';
+      return '表格/版面';
     default:
       return '修改';
   }
@@ -105,7 +105,7 @@ const DiffListPanel: React.FC<DiffListPanelProps> = ({
                     <div className="text-xs text-gray-500 mb-1">差異摘要</div>
                     <p className="text-sm text-gray-800 line-clamp-2">
                       {item.diff_type === DiffType.IMAGE_DIFF
-                        ? '視覺或排版變更，無純文字'
+                        ? '表格或版面結構變更，請對照截圖核對'
                         : item.old_value && item.new_value
                         ? getTrimmedDiffText(item.old_value, item.new_value)
                         : item.new_value ?? item.old_value ?? item.context}

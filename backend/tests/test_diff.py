@@ -1,6 +1,7 @@
 from models.diff_models import BBox, DiffItem, DiffType
 from services.diff_service import (
     _compact_numeric_ocr_pair,
+    _coalesce_reviewable_visual_items,
     _drop_non_numeric_modifications,
     _extract_priority_ocr_text,
     _is_reliable_ocr_pair,
@@ -497,7 +498,7 @@ def test_image_only_visual_fallback_can_be_retained():
     assert stats["retained_visual"] == 1
 
 
-def test_content_filter_suppresses_pure_image_fallback():
+def test_content_filter_keeps_reviewable_table_visual_fallback():
     image_only = DiffItem(
         id="",
         diff_type=DiffType.IMAGE_DIFF,
@@ -511,7 +512,71 @@ def test_content_filter_suppresses_pure_image_fallback():
 
     assert _drop_non_numeric_modifications([image_only]) == []
     kept = _drop_non_numeric_modifications([image_only], keep_image_diffs=True)
-    assert kept == []
+    assert kept == [image_only]
+
+
+def test_content_filter_suppresses_small_visual_noise_even_in_image_mode():
+    small_noise = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_value=None,
+        new_value=None,
+        old_bbox=BBox(page=1, x0=20, y0=80, x1=45, y1=100),
+        new_bbox=BBox(page=1, x0=20, y0=80, x1=45, y1=100),
+        context="Page 1 圖形差異 (128 px)",
+        confidence=0.95,
+    )
+    stats = {}
+
+    assert _drop_non_numeric_modifications(
+        [small_noise],
+        keep_image_diffs=True,
+        stats=stats,
+    ) == []
+    assert stats["suppressed_visual"] == 1
+
+
+def test_coalesce_reviewable_visual_items_groups_same_page_regions():
+    first = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_value=None,
+        new_value=None,
+        old_bbox=BBox(page=1, x0=20, y0=80, x1=250, y1=220),
+        new_bbox=BBox(page=1, x0=20, y0=80, x1=250, y1=220),
+        context="Page 1 表格/版面變更",
+        confidence=0.90,
+    )
+    second = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_value=None,
+        new_value=None,
+        old_bbox=BBox(page=1, x0=260, y0=200, x1=560, y1=420),
+        new_bbox=BBox(page=1, x0=260, y0=200, x1=560, y1=420),
+        context="Page 1 表格/版面變更",
+        confidence=0.95,
+    )
+    footer = DiffItem(
+        id="",
+        diff_type=DiffType.NUMBER_MODIFIED,
+        old_value="Version: 2024.10",
+        new_value="Version: 2025.10",
+        old_bbox=BBox(page=1, x0=450, y0=10, x1=560, y1=40),
+        new_bbox=BBox(page=1, x0=450, y0=10, x1=560, y1=40),
+        context="Page 1 footer control/version",
+        confidence=0.98,
+    )
+    stats = {}
+
+    merged = _coalesce_reviewable_visual_items([first, second, footer], stats=stats)
+
+    visual_items = [item for item in merged if item.diff_type == DiffType.IMAGE_DIFF]
+    assert len(visual_items) == 1
+    assert visual_items[0].new_bbox == BBox(page=1, x0=20, y0=80, x1=560, y1=420)
+    assert "2 區域" in visual_items[0].context
+    assert any(item.diff_type == DiffType.NUMBER_MODIFIED for item in merged)
+    assert stats["coalesced_visual_regions"] == 1
 
 
 def test_content_filter_can_keep_explained_image_fallback():
@@ -627,6 +692,29 @@ def test_image_pdf_text_gate_keeps_strong_numeric_ocr_change():
     assert _drop_non_numeric_modifications([item], image_pdf_text_gate=True) == [item]
 
 
+def test_image_pdf_text_gate_suppresses_long_noisy_numeric_ocr():
+    item = DiffItem(
+        id="",
+        diff_type=DiffType.NUMBER_MODIFIED,
+        old_value=(
+            "註1: 上表與累計增加保險金額之相關數值為假設每年宣告利率3.90%"
+            "下計算，且為人工試算容有四捨五入之誤差，實際金額以系統計算為主。"
+        ),
+        new_value=(
+            "註1:上上表與累計增加保險金額之相關數信旋假設每年宮告利率3.9036。"
+            "註9:林站只說部分保章生度有本本保險多議于能之身歷完全人能饋失人。"
+        ),
+        old_bbox=BBox(page=3, x0=40, y0=80, x1=560, y1=160),
+        new_bbox=BBox(page=3, x0=40, y0=80, x1=560, y1=160),
+        context="Page 3 內容變更",
+        confidence=0.95,
+    )
+    stats = {}
+
+    assert _drop_non_numeric_modifications([item], image_pdf_text_gate=True, stats=stats) == []
+    assert stats["suppressed_ocr_text"] == 1
+
+
 def test_image_pdf_text_gate_suppresses_number_diff_when_numbers_do_not_change():
     item = DiffItem(
         id="",
@@ -689,7 +777,7 @@ def test_numeric_ocr_confusion_count_detects_letters_inside_numbers():
     assert _numeric_ocr_confusion_count("給付祝壽保險金 447,612 美元") == 0
 
 
-def test_generate_diff_report_suppresses_pure_visual_fallback_for_image_pdf(monkeypatch):
+def test_generate_diff_report_keeps_table_visual_fallback_for_image_pdf(monkeypatch):
     image_only = DiffItem(
         id="",
         diff_type=DiffType.IMAGE_DIFF,
@@ -716,10 +804,44 @@ def test_generate_diff_report_suppresses_pure_visual_fallback_for_image_pdf(monk
         new_pdf_path="/tmp/new.pdf",
     )
 
+    assert report.total_diffs == 1
+    assert report.items[0].diff_type == DiffType.IMAGE_DIFF
+    assert report.items[0].context == "Page 1 表格/版面變更"
+    assert report.suppressed_count == 0
+    assert "visual_retained=1" in (report.summary or "")
+
+
+def test_generate_diff_report_suppresses_small_visual_noise_for_image_pdf(monkeypatch):
+    small_noise = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_value=None,
+        new_value=None,
+        old_bbox=BBox(page=1, x0=20, y0=80, x1=45, y1=100),
+        new_bbox=BBox(page=1, x0=20, y0=80, x1=45, y1=100),
+        context="Page 1 圖形差異 (128 px)",
+        confidence=0.95,
+    )
+    old_doc = ParsedDocument(pages=1, paragraphs=[], tables=[], raw_json={}, is_image_pdf=True)
+    new_doc = ParsedDocument(pages=1, paragraphs=[], tables=[], raw_json={}, is_image_pdf=True)
+
+    monkeypatch.setattr("services.diff_service.diff_pixels", lambda *_args, **_kwargs: [small_noise])
+    monkeypatch.setattr("services.diff_service.diff_images", lambda *_args, **_kwargs: [])
+
+    report = generate_diff_report(
+        project_id="p001",
+        old_filename="old.pdf",
+        new_filename="new.pdf",
+        old_doc=old_doc,
+        new_doc=new_doc,
+        old_pdf_path="/tmp/old.pdf",
+        new_pdf_path="/tmp/new.pdf",
+    )
+
     assert report.total_diffs == 0
     assert report.items == []
-    assert report.suppressed_count == 0
-    assert "visual_suppressed=1" in (report.summary or "")
+    assert report.suppressed_count == 1
+    assert "visual_suppressed_final=1" in (report.summary or "")
 
 
 def test_generate_diff_report_fuses_visual_region_with_alignment_recall(monkeypatch):
@@ -769,7 +891,7 @@ def test_generate_diff_report_fuses_visual_region_with_alignment_recall(monkeypa
     assert report.items[0].diff_type == DiffType.NUMBER_MODIFIED
     assert "3.90" in (report.items[0].old_value or "")
     assert "4.00" in (report.items[0].new_value or "")
-    assert "visual_suppressed=1" in (report.summary or "")
+    assert "visual_fused=1" in (report.summary or "")
 
 
 def test_generate_diff_report_can_use_alignment_recall_strategy(monkeypatch):

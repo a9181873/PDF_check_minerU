@@ -417,14 +417,19 @@ def _is_reliable_image_pdf_text_diff(
     """
     if _has_meaningful_ocr_pattern(old_text) or _has_meaningful_ocr_pattern(new_text):
         return True
-    if _has_strong_numeric_ocr_change(old_text, new_text):
-        return True
-    if not _is_reliable_ocr_pair(old_text, new_text):
-        return False
+    has_strong_numeric_change = _has_strong_numeric_ocr_change(old_text, new_text)
 
     old_key = _ocr_content_key(old_text)
     new_key = _ocr_content_key(new_text)
     if not old_key or not new_key:
+        return False
+    if has_strong_numeric_change:
+        if _compact_numeric_ocr_pair(old_text, new_text) or max(len(old_key), len(new_key)) <= 40:
+            return True
+        return False
+    if not _is_reliable_ocr_pair(old_text, new_text):
+        return False
+    if max(len(old_key), len(new_key)) > 80:
         return False
     if min(len(old_key), len(new_key)) < 8:
         return False
@@ -1249,6 +1254,8 @@ def diff_pixels(
         n_old = len(doc_old)
         n_new = len(doc_new)
         shared = min(n_old, n_new)
+        if engine_stats is not None:
+            engine_stats["pixel_pages_scanned"] = shared
 
         # Flag entire pages as added/deleted when page counts differ
         for page_i in range(shared, max(n_old, n_new)):
@@ -1329,24 +1336,48 @@ def diff_pixels(
                         component_px,
                     ))
 
-                old_raw = _ocr_page_region(page_old, rect, zoom=4.0, lang="chi_tra+eng", psm="6")
-                new_raw = _ocr_page_region(page_new, rect, zoom=4.0, lang="chi_tra+eng", psm="6")
+                if not component_boxes:
+                    continue
+
+                bbox_component_boxes = component_boxes
+                if label == "footer":
+                    right_edge_px = int(page_w * 0.45 * pt_to_px)
+                    right_boxes = [
+                        b for b in component_boxes
+                        if ((b[0] + b[2]) / 2) >= right_edge_px or b[2] >= int(page_w * 0.65 * pt_to_px)
+                    ]
+                    if not right_boxes:
+                        if engine_stats is not None:
+                            engine_stats["pixel_priority_ocr_skips"] = engine_stats.get("pixel_priority_ocr_skips", 0) + 1
+                        continue
+                    bbox_component_boxes = right_boxes
+
+                x0_px = min(b[0] for b in bbox_component_boxes)
+                y0_px = min(b[1] for b in bbox_component_boxes)
+                x1_px = max(b[2] for b in bbox_component_boxes)
+                y1_px = max(b[3] for b in bbox_component_boxes)
+                ocr_pad_x_pt = 140.0 if label == "footer" else 48.0
+                ocr_pad_y_pt = 14.0 if label == "footer" else 10.0
+                ocr_rect = fitz.Rect(
+                    max(0.0, (x0_px / pt_to_px) - ocr_pad_x_pt),
+                    max(rect.y0, (y0_px / pt_to_px) - ocr_pad_y_pt),
+                    min(page_w, (x1_px / pt_to_px) + ocr_pad_x_pt),
+                    min(rect.y1, (y1_px / pt_to_px) + ocr_pad_y_pt),
+                )
+                if engine_stats is not None:
+                    engine_stats["pixel_priority_ocr_attempts"] = engine_stats.get("pixel_priority_ocr_attempts", 0) + 1
+                    engine_stats["pixel_ocr_calls_total"] = engine_stats.get("pixel_ocr_calls_total", 0) + 2
+
+                old_raw = _ocr_page_region(page_old, ocr_rect, zoom=4.0, lang="chi_tra+eng", psm="6")
+                new_raw = _ocr_page_region(page_new, ocr_rect, zoom=4.0, lang="chi_tra+eng", psm="6")
                 old_priority = _extract_priority_ocr_text(old_raw)
                 new_priority = _extract_priority_ocr_text(new_raw)
                 if not old_priority and not new_priority:
                     continue
                 if _deep_normalize(old_priority or "") == _deep_normalize(new_priority or ""):
                     continue
-
-                bbox_component_boxes = component_boxes
-                if label == "footer" and component_boxes:
-                    right_edge_px = int(page_w * 0.45 * pt_to_px)
-                    right_boxes = [
-                        b for b in component_boxes
-                        if ((b[0] + b[2]) / 2) >= right_edge_px or b[2] >= int(page_w * 0.65 * pt_to_px)
-                    ]
-                    if right_boxes:
-                        bbox_component_boxes = right_boxes
+                if engine_stats is not None:
+                    engine_stats["pixel_priority_ocr_regions"] = engine_stats.get("pixel_priority_ocr_regions", 0) + 1
 
                 if bbox_component_boxes:
                     x0_px = min(b[0] for b in bbox_component_boxes)
@@ -1403,6 +1434,8 @@ def diff_pixels(
             _scan_mask = np.abs(_ao.astype(np.int16) - _an.astype(np.int16)) > threshold
             if int(_scan_mask.sum()) >= _scan_min_area:
                 _diff_pages.add(_pi)
+        if engine_stats is not None:
+            engine_stats["pixel_pages_with_diffs"] = len(_diff_pages)
 
         for page_i in range(shared):
             if page_i not in _diff_pages:
@@ -1440,6 +1473,12 @@ def diff_pixels(
             # Fine-grained splitting/merge control happens later.
             dilated = ndimage.binary_dilation(mask, structure=struct, iterations=4)
             labeled, n_regions = ndimage.label(dilated)
+            if engine_stats is not None:
+                engine_stats["pixel_raw_regions"] = engine_stats.get("pixel_raw_regions", 0) + int(n_regions)
+            page_ocr_candidates = 0
+            page_numeric_fallback_candidates = 0
+            page_ocr_limit = 14 if n_regions > 45 else 28
+            page_numeric_fallback_limit = 4 if n_regions > 45 else 8
 
             for rid in range(1, n_regions + 1):
                 region = labeled == rid
@@ -1592,6 +1631,26 @@ def diff_pixels(
                     and patch_w >= int(80 * dpi / 72.0)
                     and patch_area <= 260_000
                 )
+                is_mid_text_band = (
+                    not is_large_region
+                    and not is_small_region
+                    and not ot
+                    and not nt
+                    and patch_h <= int(80 * dpi / 72.0)
+                    and patch_w >= int(80 * dpi / 72.0)
+                    and patch_area <= 90_000
+                )
+                if engine_stats is not None:
+                    if is_large_region and not is_large_text_band:
+                        category = "large_visual"
+                    elif is_large_text_band or is_mid_text_band:
+                        category = "text_band"
+                    elif is_small_region:
+                        category = "small"
+                    else:
+                        category = "mid_visual"
+                    category_counts = engine_stats.setdefault("pixel_region_categories", {})
+                    category_counts[category] = category_counts.get(category, 0) + 1
 
                 # If there's no native text AND it's just a thin graphic line, it's rendering noise
                 if not ot and not nt and (patch_h < 20 or patch_w < 20):
@@ -1602,11 +1661,23 @@ def diff_pixels(
                 # (b) Small region with at least one side missing text — likely a
                 #     digit/glyph baked into a raster image (e.g. infographic numbers).
                 should_ocr = (
-                    not is_large_region
-                    and ((not ot and not nt) or (is_small_region and (not ot or not nt)))
+                    (
+                        is_small_region
+                        and ((not ot and not nt) or (not ot or not nt))
+                    )
+                    or is_mid_text_band
                 )
                 report_bbox = bbox
-                if should_ocr or is_large_text_band:
+                wants_ocr = should_ocr or is_large_text_band
+                if wants_ocr and page_ocr_candidates >= page_ocr_limit:
+                    if engine_stats is not None:
+                        engine_stats["pixel_ocr_budget_skips"] = engine_stats.get("pixel_ocr_budget_skips", 0) + 1
+                    should_ocr = False
+                    wants_ocr = False
+                if wants_ocr:
+                    page_ocr_candidates += 1
+                    if engine_stats is not None:
+                        engine_stats["pixel_pre_ocr_candidates"] = engine_stats.get("pixel_pre_ocr_candidates", 0) + 1
                     try:
                         import subprocess, tempfile, os as _os
                         from PIL import Image as _PILImage
@@ -1657,6 +1728,8 @@ def diff_pixels(
 
                         ocr_old_raw = _ocr_patch(pix_o)
                         ocr_new_raw = _ocr_patch(pix_n)
+                        if engine_stats is not None:
+                            engine_stats["pixel_ocr_calls_total"] = engine_stats.get("pixel_ocr_calls_total", 0) + 2
 
                         raw_numeric_confusions = (
                             _numeric_ocr_confusion_count(ocr_old_raw)
@@ -1677,6 +1750,9 @@ def diff_pixels(
                                 lang="chi_tra+eng",
                                 psm="6",
                             )
+                            if engine_stats is not None:
+                                engine_stats["pixel_high_zoom_ocr_calls"] = engine_stats.get("pixel_high_zoom_ocr_calls", 0) + 2
+                                engine_stats["pixel_ocr_calls_total"] = engine_stats.get("pixel_ocr_calls_total", 0) + 2
                             hi_numeric_confusions = (
                                 _numeric_ocr_confusion_count(hi_old_raw)
                                 + _numeric_ocr_confusion_count(hi_new_raw)
@@ -1720,7 +1796,11 @@ def diff_pixels(
                                 fitz_rect.y1 <= ph_pt * 0.12
                                 or fitz_rect.y0 >= ph_pt * 0.88
                             )
-                            if not in_header_footer:
+                            if page_numeric_fallback_candidates >= page_numeric_fallback_limit:
+                                if engine_stats is not None:
+                                    engine_stats["pixel_numeric_fallback_skips"] = engine_stats.get("pixel_numeric_fallback_skips", 0) + 1
+                            elif not in_header_footer:
+                                page_numeric_fallback_candidates += 1
                                 pad_pt = 4.0
                                 numeric_rect = fitz.Rect(
                                     max(0.0, fx0 - pad_pt),
@@ -1742,6 +1822,9 @@ def diff_pixels(
                                     lang="chi_tra+eng",
                                     psm="6",
                                 )
+                                if engine_stats is not None:
+                                    engine_stats["pixel_numeric_fallback_ocr_calls"] = engine_stats.get("pixel_numeric_fallback_ocr_calls", 0) + 2
+                                    engine_stats["pixel_ocr_calls_total"] = engine_stats.get("pixel_ocr_calls_total", 0) + 2
                                 numeric_pair = _compact_numeric_ocr_pair(numeric_old_raw, numeric_new_raw)
                                 if numeric_pair:
                                     ot, nt = numeric_pair
@@ -1786,6 +1869,8 @@ def diff_pixels(
                     # Report as IMAGE_DIFF WITH screenshots (don't suppress).
                     diff_type = DiffType.IMAGE_DIFF
                     context_label = f"Page {page_no} 表格/版面變更"
+                    if engine_stats is not None:
+                        engine_stats["pixel_large_visual_candidates"] = engine_stats.get("pixel_large_visual_candidates", 0) + 1
 
                 # Only suppress mid-size graphic noise (lines, borders, anti-aliasing).
                 # Large visual diffs (tables, layout) AND tiny-but-real changes
@@ -2149,6 +2234,93 @@ def _bbox_area(bbox: BBox | None) -> float:
     if not bbox:
         return 0.0
     return max(0.0, bbox.x1 - bbox.x0) * max(0.0, bbox.y1 - bbox.y0)
+
+
+def _is_reviewable_visual_item(item: DiffItem) -> bool:
+    """Pure visual items that still matter for text/number/table review.
+
+    Image-only PDFs can have large table/layout changes with no trustworthy OCR
+    text. Those must stay visible as reviewer-facing evidence. Small graphic
+    specks, rules, and color/antialiasing drift should still be suppressed.
+    """
+    if item.diff_type != DiffType.IMAGE_DIFF:
+        return False
+    if item.old_value or item.new_value:
+        return True
+    context = item.context or ""
+    if "表格/版面變更" not in context:
+        return False
+    return _bbox_area(item.new_bbox or item.old_bbox) >= 1_200
+
+
+def _bbox_union(boxes: list[BBox]) -> BBox | None:
+    if not boxes:
+        return None
+    return BBox(
+        page=boxes[0].page,
+        x0=min(box.x0 for box in boxes),
+        y0=min(box.y0 for box in boxes),
+        x1=max(box.x1 for box in boxes),
+        y1=max(box.y1 for box in boxes),
+    )
+
+
+def _coalesce_reviewable_visual_items(items: list[DiffItem], stats: dict | None = None) -> list[DiffItem]:
+    """Collapse many pure visual table/layout regions on the same page.
+
+    This keeps the zero-miss fallback for image-only PDFs without flooding the
+    reviewer with dozens of adjacent table-layout boxes on one page.
+    """
+    from collections import defaultdict
+
+    grouped: dict[int, list[DiffItem]] = defaultdict(list)
+    passthrough: list[DiffItem] = []
+
+    for item in items:
+        bbox = item.new_bbox or item.old_bbox
+        is_pure_reviewable_visual = (
+            item.diff_type == DiffType.IMAGE_DIFF
+            and not item.old_value
+            and not item.new_value
+            and _is_reviewable_visual_item(item)
+            and bbox is not None
+        )
+        if is_pure_reviewable_visual:
+            grouped[bbox.page].append(item)
+        else:
+            passthrough.append(item)
+
+    if not grouped:
+        return items
+
+    coalesced: list[DiffItem] = []
+    removed_count = 0
+    for page, group in grouped.items():
+        if len(group) == 1:
+            coalesced.append(group[0])
+            continue
+        old_boxes = [item.old_bbox for item in group if item.old_bbox]
+        new_boxes = [item.new_bbox for item in group if item.new_bbox]
+        old_bbox = _bbox_union(old_boxes)
+        new_bbox = _bbox_union(new_boxes)
+        confidence = max(item.confidence for item in group)
+        removed_count += len(group) - 1
+        coalesced.append(
+            DiffItem(
+                id="",
+                diff_type=DiffType.IMAGE_DIFF,
+                old_value=None,
+                new_value=None,
+                old_bbox=old_bbox,
+                new_bbox=new_bbox,
+                context=f"Page {page} 表格/版面變更（{len(group)} 區域）",
+                confidence=confidence,
+            )
+        )
+
+    if stats is not None and removed_count:
+        stats["coalesced_visual_regions"] = stats.get("coalesced_visual_regions", 0) + removed_count
+    return sorted([*passthrough, *coalesced], key=_sort_key)
 
 
 def _bbox_intersection_area(a: BBox | None, b: BBox | None) -> float:
@@ -2534,8 +2706,10 @@ def _drop_non_numeric_modifications(
     kept: list[DiffItem] = []
     for item in items:
         if item.diff_type == DiffType.IMAGE_DIFF:
-            if keep_image_diffs and (item.old_value or item.new_value):
+            if keep_image_diffs and _is_reviewable_visual_item(item):
                 kept.append(item)
+            elif stats is not None:
+                stats["suppressed_visual"] = stats.get("suppressed_visual", 0) + 1
         elif item.diff_type in (DiffType.ADDED, DiffType.DELETED):
             kept.append(item)
         elif item.diff_type in (DiffType.TEXT_MODIFIED, DiffType.NUMBER_MODIFIED):
@@ -2736,7 +2910,7 @@ def generate_diff_report(
             pixel_diffs,
             img_diffs,
             stats=stats,
-            keep_image_diffs=False,
+            keep_image_diffs=True,
         )
         if paddle_diffs:
             stats["paddle_ocr"] = _summarize_paddle_ocr_experiment(
@@ -2756,6 +2930,8 @@ def generate_diff_report(
             summary += f", recall_strategy={stats['recall_strategy']}"
         if stats.get("suppressed_visual"):
             summary += f", visual_suppressed={int(stats['suppressed_visual'])}"
+        if stats.get("retained_visual"):
+            summary += f", visual_retained={int(stats['retained_visual'])}"
         if stats.get("fused_visual"):
             summary += f", visual_fused={int(stats['fused_visual'])}"
         stats["mode"] = mode
@@ -2799,14 +2975,21 @@ def generate_diff_report(
     # sequential (d001, d002, …).
     merged_items = _drop_non_numeric_modifications(
         merged_items,
-        keep_image_diffs=False,
+        keep_image_diffs=bool(use_pixel_only),
         image_pdf_text_gate=bool(use_pixel_only),
         stats=stats,
     )
+    if use_pixel_only:
+        merged_items = _coalesce_reviewable_visual_items(merged_items, stats=stats)
     for index, item in enumerate(merged_items, start=1):
         item.id = f"d{index:03d}"
     stats["final_diff_count"] = len(merged_items)
-    stats["suppressed_count"] = 0
+    if use_pixel_only and stats.get("suppressed_visual"):
+        summary += f", visual_suppressed_final={int(stats['suppressed_visual'])}"
+    if use_pixel_only and stats.get("coalesced_visual_regions"):
+        summary += f", visual_coalesced={int(stats['coalesced_visual_regions'])}"
+    suppressed_count = int(stats.get("suppressed_visual", 0)) if use_pixel_only else 0
+    stats["suppressed_count"] = suppressed_count
 
     return DiffReport(
         project_id=project_id,
@@ -2816,10 +2999,7 @@ def generate_diff_report(
         total_diffs=len(merged_items),
         items=merged_items,
         summary=summary,
-        # Pure visual/color regions are intentionally hidden from the formal
-        # content list; keep this quiet in the UI because the reviewer asked to
-        # ignore color-only differences.
-        suppressed_count=0,
+        suppressed_count=suppressed_count,
         engine_stats=stats,
         engine_warnings=engine_warnings,
     )

@@ -30,6 +30,8 @@ const getDiffLabel = (type: DiffType) => {
       return '數值修改';
     case DiffType.TEXT_MODIFIED:
       return '文字修改';
+    case DiffType.IMAGE_DIFF:
+      return '表格/版面';
     default:
       return '內容修改';
   }
@@ -228,7 +230,7 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
       return '無法載入截圖';
     }
     if (isImageDiff) {
-      return side === 'old' ? '無原始文字（純視覺差異）' : '無修訂文字（純視覺差異）';
+      return side === 'old' ? '無原始文字，請看區域截圖' : '無修訂文字，請看區域截圖';
     }
     return side === 'old' ? '無原始內容' : '無修訂內容';
   };
