@@ -132,16 +132,18 @@ Reviewer conclusions from this pass:
 
 ### Model Guidance
 
-MinerU and Docling are already the intended parallel parsers. Do not add another local model just to mask OCR noise. The optional PaddleOCR path is allowed only as an off-by-default A/B metadata experiment. Promote a new local OCR/layout model to final diff generation only after a fixed sample suite proves it improves text recall without reintroducing garbage text or hiding protected footer/header changes.
+MinerU and Docling remain the approved heavy parsers, but the optimized default runs them through a deterministic fallback chain rather than together. Do not add another local model just to mask OCR noise. The optional PaddleOCR path is allowed only as an off-by-default A/B metadata experiment. Promote a new local OCR/layout model to final diff generation only after a fixed sample suite proves it improves text recall without reintroducing garbage text or hiding protected footer/header changes.
 
 ## MinerU + Docling Parsing Rule
 
-The original MinerU version used parallel table parsing. Keep that behavior.
+The original MinerU version used parallel table parsing. Since 2026-06-27, the supported production default is:
 
-- `ENABLE_DOCLING_PARALLEL=true`
-- `MINERU_PREFERRED_WAIT_SECONDS=0`
-- `backend/config.py` defaults should match this.
-- `docker-compose.yml` should explicitly set these env vars for `backend-minerU`.
+- `TABLE_PARSER_STRATEGY=docling_first`
+- `ENABLE_LIGHTWEIGHT_TABLE_PROBE=true`
+- `HEAVY_PARSER_MAX_CONCURRENCY=1`
+- `ENABLE_PARSER_CACHE=true`
+- `parallel_race` is allowed only for controlled regression A/B.
+- `backend/config.py` and `docker-compose.yml` defaults must match.
 
 ## 2026-06-14 Compact Image Number Diff Rule
 
@@ -186,16 +188,18 @@ Required result:
 - Runtime impact should scale with changed-region count, not page count.
 - Expected behavior for the `fengshouai` sample is still a small diff set: image PDF summary with `pixel=6`, two formal `number_modified` items, and pure visual candidates suppressed.
 
-Historical source:
+Historical source（舊版行為，2026-06-27 已由循序路由取代）：
 
 - `db3334a feat: 效能優化 (並行解析...)` had MinerU and Docling submitted together.
 - `fc21cab` changed this to opt-in fallback. That was later corrected because the user remembered the original parallel behavior and wanted it preserved.
 
-Do not describe Docling as only a fallback in current docs. Current intent:
+Current intent:
 
-- MinerU provides strong Chinese/table content extraction.
-- Docling provides useful cell-level bbox data.
-- The two are complementary and should run in parallel for table parsing.
+- PyMuPDF first performs a no-model table probe.
+- Docling is the default first heavy table parser because it provides cell-level bbox data.
+- MinerU remains the fallback for tables Docling misses or cannot parse.
+- Do not run both by default and discard one result. `parallel_race` is regression-only.
+- OpenDataLoader remains optional until fixed samples validate its row/cell mapping.
 
 ## OCI Deployment Guardrails
 

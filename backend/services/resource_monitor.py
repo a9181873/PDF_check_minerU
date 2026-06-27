@@ -68,6 +68,7 @@ class ResourceMonitor:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._has_psutil = False
+        self._tracked_processes: dict[int, object] = {}
         try:
             import psutil  # noqa: F401
             self._has_psutil = True
@@ -104,14 +105,44 @@ class ResourceMonitor:
         if not self._has_psutil:
             return
         import psutil
-        proc = psutil.Process(os.getpid())
+
+        root = psutil.Process(os.getpid())
+
+        def refresh_process_tree() -> list:
+            live = [root]
+            try:
+                live.extend(root.children(recursive=True))
+            except psutil.Error:
+                pass
+            live_by_pid = {proc.pid: proc for proc in live if proc.is_running()}
+            for pid, proc in live_by_pid.items():
+                if pid not in self._tracked_processes:
+                    try:
+                        proc.cpu_percent(interval=None)
+                    except psutil.Error:
+                        continue
+                    self._tracked_processes[pid] = proc
+            self._tracked_processes = {
+                pid: proc for pid, proc in self._tracked_processes.items() if pid in live_by_pid
+            }
+            return list(self._tracked_processes.values())
+
+        refresh_process_tree()
+        self._stop_event.wait(min(0.5, self.interval))
         while not self._stop_event.is_set():
             try:
-                cpu = proc.cpu_percent(interval=0.5)
-                mem_info = proc.memory_info()
-                mem_mb = round(mem_info.rss / (1024 ** 2), 1)
+                processes = refresh_process_tree()
+                cpu = 0.0
+                rss = 0
+                for proc in processes:
+                    try:
+                        cpu += proc.cpu_percent(interval=None)
+                        rss += proc.memory_info().rss
+                    except psutil.Error:
+                        continue
+                mem_mb = round(rss / (1024 ** 2), 1)
                 vm = psutil.virtual_memory()
-                mem_pct = round(mem_info.rss / vm.total * 100, 1)
+                mem_pct = round(rss / vm.total * 100, 1)
                 snap = ResourceSnapshot(
                     timestamp=datetime.now(timezone.utc).isoformat(),
                     cpu_percent=cpu,

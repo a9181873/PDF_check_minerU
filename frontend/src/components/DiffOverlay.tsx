@@ -1,5 +1,6 @@
 import React from 'react';
 import { DiffItem, DiffType } from '../services/types';
+import { getTrimmedDiffText } from '../utils/diffHelpers';
 
 interface DiffOverlayProps {
   diffItems: DiffItem[];
@@ -45,33 +46,6 @@ const getDiffLabel = (type: DiffType) => {
     default:
       return '修改';
   }
-};
-
-const getCommonPrefixLength = (a: string, b: string) => {
-  let i = 0;
-  while (i < a.length && i < b.length && a[i] === b[i]) i++;
-  return i;
-};
-
-const getCommonSuffixLength = (a: string, b: string, prefixLen: number) => {
-  let i = 0;
-  while (i + prefixLen < a.length && i + prefixLen < b.length && a[a.length - 1 - i] === b[b.length - 1 - i]) i++;
-  return i;
-};
-
-const getTrimmedDiffText = (oldValue: string, newValue: string) => {
-  const prefixLen = getCommonPrefixLength(oldValue, newValue);
-  const suffixLen = getCommonSuffixLength(oldValue, newValue, prefixLen);
-  const trimText = (value: string) => {
-    if (prefixLen + suffixLen >= value.length) return value.trim();
-    return value.slice(prefixLen, value.length - suffixLen).trim();
-  };
-  const oldSnippet = trimText(oldValue);
-  const newSnippet = trimText(newValue);
-  if (!oldSnippet && !newSnippet) {
-    return `${oldValue} → ${newValue}`;
-  }
-  return `${oldSnippet || '[刪除]'} → ${newSnippet || '[新增]'}`;
 };
 
 const DiffOverlay: React.FC<DiffOverlayProps> = ({

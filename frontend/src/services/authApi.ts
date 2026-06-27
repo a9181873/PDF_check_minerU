@@ -1,22 +1,5 @@
-import axios from 'axios';
 import { AuthUser } from '../stores/authStore';
-
-const normalizeBase = (value?: string) => (value ? value.replace(/\/+$/, '') : '');
-const API_BASE = normalizeBase(import.meta.env.VITE_API_BASE);
-
-const authApi = axios.create({
-  baseURL: API_BASE || undefined,
-  headers: { 'Content-Type': 'application/json' },
-});
-
-// Attach token to all requests
-authApi.interceptors.request.use((config) => {
-  const token = localStorage.getItem('auth_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+import { httpClient as authApi } from './httpClient';
 
 export interface LoginResponse {
   token: string;

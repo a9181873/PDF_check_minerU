@@ -27,7 +27,7 @@ PDF Check MinerU 是一套用來比對「舊版 PDF」與「新版 PDF」差異�
 - 若審核紀錄被修改，保留修改前後摘要
 - 匯出標註 PDF、Excel、審核紀錄 TXT/CSV
 - 留存 PDF 與核驗歷史，之後可查詢當時的審核結果
-- 同時使用 MinerU 與 Docling 解析表格，保留 MinerU 表格內容與 Docling 格子座標互補
+- 先用 PyMuPDF 快篩表格，再依 Docling → MinerU 循序解析，兼顧格子座標與複雜表格 fallback
 
 ## 使用流程
 
@@ -133,8 +133,14 @@ docker compose down
 | `OCR_LANGS` | `chi_tra+chi_sim+eng` | OCR 使用繁中、簡中與英文 |
 | `ENABLE_IMAGE_TEXT_RECALL` | `false` | 影像型 PDF 是否額外跑 MinerU OCR 召回層 |
 | `IMAGE_TEXT_RECALL_STRATEGY` | `alignment` | 召回層策略，可選 `alignment`、`heuristic`、`hybrid` |
-| `ENABLE_DOCLING_PARALLEL` | `true` | 是否同時跑 MinerU 與 Docling；預設開啟以沿用 MinerU 版原本的並行解析 |
-| `MINERU_PREFERRED_WAIT_SECONDS` | `0` | 並行解析時優先等待 MinerU 的秒數；`0` 表示回到誰先產生有效表格就先採用 |
+| `TABLE_PARSER_STRATEGY` | `docling_first` | 表格引擎順序；預設先取 Docling cell bbox，無表格時才 fallback MinerU。`parallel_race` 僅供舊版 A/B |
+| `ENABLE_LIGHTWEIGHT_TABLE_PROBE` | `true` | 先用 PyMuPDF 幾何線條／數字格網快篩；無表格跡象時不載入重型引擎 |
+| `HEAVY_PARSER_MAX_CONCURRENCY` | `1` | MinerU／Docling／OpenDataLoader 同時執行上限，避免 CPU-only 主機過度併發 |
+| `ENABLE_PARSER_CACHE` | `true` | 依 PDF SHA-256 快取解析結果；同一服務程序內重複比對不重新解析 |
+| `PARSER_CACHE_MAX_ENTRIES` | `8` | 記憶體解析快取最多保留文件數 |
+| `ENABLE_PIXEL_DIFF_CACHE` | `true` | 依新舊 PDF 內容雜湊快取像素/NCC/OCR 結果，重新比對時不重跑 OCR |
+| `PIXEL_DIFF_CACHE_MAX_ENTRIES` | `8` | 記憶體像素差異快取最多保留文件配對數 |
+| `ENABLE_DOCLING_PARALLEL` | `true` | 舊版相容設定；只有 `TABLE_PARSER_STRATEGY=parallel_race` 的 A/B 情境才有意義 |
 | `GENERATE_SNAPSHOTS` | `true` | 比對完成後是否產生頁面快照 |
 | `SNAPSHOT_DIFF_PAGES_ONLY` | `true` | 只為有差異的頁面產生快照 |
 | `JWT_SECRET` | 自動產生 | 登入 token 加密用密鑰 |
@@ -324,7 +330,7 @@ npm run build
 | Pydantic | `>=2.6` | 資料驗證與型別模型 | 可在資料進出 API 時先檢查格式，降低錯誤資料寫入審核紀錄的風險 | https://docs.pydantic.dev |
 | pydantic-settings | `>=2.2` | 從環境變數讀取設定 | 讓本機、Docker、OCI 可以用同一份程式搭配不同設定部署 | https://docs.pydantic.dev/latest/concepts/pydantic_settings |
 | python-multipart | `>=0.0.9` | 接收 PDF 上傳表單 | FastAPI 接收 PDF 檔案上傳時需要它解析 multipart form data | https://github.com/Kludex/python-multipart |
-| Docling | `>=2.0` | 表格格子座標與解析互補 | 與 MinerU 並行取得 cell-level bbox，MinerU 不可用時也能避免服務中斷 | https://github.com/docling-project/docling |
+| Docling | `>=2.0` | 預設重型表格解析器 | 只在輕量快篩發現表格跡象時啟動，優先取得 cell-level bbox | https://github.com/docling-project/docling |
 | pandas | `>=2.0` | 表格資料處理 | 表格差異需要逐列逐欄比較，pandas 適合處理這類結構化資料 | https://pandas.pydata.org |
 | openpyxl | `>=3.1` | Excel 匯入與匯出 | 審核人員常用 Excel 檢視報表，也支援匯入核對清單 | https://openpyxl.readthedocs.io |
 | PyMuPDF | `>=1.23` | PDF 讀取、渲染、標註匯出 | 可直接處理 PDF 頁面、座標與標註，是產生標註 PDF 的核心工具 | https://pymupdf.readthedocs.io |
@@ -355,7 +361,7 @@ npm run build
 
 | 名稱 | 用途 | 為什麼使用 | 來源 |
 |------|------|------------|------|
-| MinerU | 主要 PDF 解析器，輸出文字、表格與版面資訊 | 對複雜 PDF、中文文件與表格解析較適合，並與 Docling 並行互補 | https://github.com/opendatalab/MinerU |
+| MinerU | 複雜表格與可選影像 OCR fallback | Docling 無有效表格或啟用影像召回時使用，避免平常常駐重複運算 | https://github.com/opendatalab/MinerU |
 | ModelScope model cache | MinerU 模型快取來源之一 | 模型下載後快取，可避免每次重建都重新下載大型模型 | https://www.modelscope.cn |
 | Hugging Face cache | 部分 Python/模型工具可能使用的模型快取路徑 | 保留常見模型快取位置，方便未來擴充或備援工具使用 | https://huggingface.co |
 | Tesseract OCR | 圖片文字辨識 | 當文字藏在圖片或掃描區塊時，可協助讀出圖片中的字 | https://github.com/tesseract-ocr/tesseract |
@@ -395,11 +401,11 @@ npm run build
 
 | 優先 | 建議 | 為什麼 |
 |------|------|--------|
-| P1 | 依 PDF hash 快取解析結果 | 同一份 PDF 被重複比對時，不必重新解析，可大幅節省時間 |
+| 已完成 | 依 PDF hash 快取解析結果 | 使用 SHA-256 bounded cache + single-flight，同一份 PDF 不重複解析 |
 | P1 | 先做頁級變更偵測 | 先判斷哪些頁可能有變，再把重型 OCR/SSIM 放到可疑頁面 |
 | P1 | 把 snapshot 改成可控產生 | 預設可只在留存或匯出時產生，降低平常比對的等待時間 |
-| P2 | 對大 PDF 做任務佇列 | 限制同時解析數，避免多人同時使用時互相搶 CPU/RAM |
-| P2 | 前端延遲載入重型元件 | 只有進入比對頁才載入 PDF runtime，首頁維持快速開啟 |
+| 已完成（程序內） | 對大 PDF 做有限任務佇列 | `COMPARE_MAX_CONCURRENCY` + `COMPARE_MAX_PENDING_TASKS` 限制執行與等待數；若需跨重啟復原，再升級外部持久化佇列 |
+| 已完成 | 前端延遲載入重型元件 | 只有進入比對頁才載入 PDF runtime，首頁維持快速開啟 |
 
 ### 同步做：更省資源
 
@@ -407,7 +413,7 @@ npm run build
 |------|------|--------|
 | P0 | 正式 runtime 移除測試工具 | `pytest` 只放 `requirements-dev.txt`，降低正式容器套件數與資安掃描噪音 |
 | P0 | 補齊 `.dockerignore` | 排除 `.venv`、runtime、dist、node_modules，避免 Docker build context 從 KB 變成 GB |
-| P1 | 保持 MinerU + Docling 預設並行 | 沿用原本較會抓到表格/格子座標的流程，避免退回單一路徑造成漏抓 |
+| 已完成 | 重型表格引擎改為可回退的循序路由 | 預設 Docling → MinerU，避免兩個都跑但只採用其中一份結果 |
 | P1 | 只對疑似圖片差異跑 OCR | OCR 成本高，集中在必要區域可省資源 |
 | P1 | 只保存必要 snapshot | 有差異頁優先保存，完整快照改成使用者需要時再產生 |
 | P2 | 建立資源用量儀表 | 長期記錄每次任務的頁數、耗時、CPU、RAM，作為硬體規格調整依據 |

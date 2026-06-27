@@ -1,8 +1,8 @@
 import threading
 
-from api import routes_compare
 from api.task_store import TASK_STORE
 from models.diff_models import DiffReport
+from services import compare_orchestrator
 from services.parser_service import ParsedDocument
 
 
@@ -25,11 +25,11 @@ def test_parse_pdf_pair_runs_old_and_new_in_parallel(monkeypatch):
         barrier.wait(timeout=2)
         return _parsed_doc(engine=path)
 
-    monkeypatch.setattr(routes_compare.settings, "parallel_pdf_parse", True)
-    monkeypatch.setattr(routes_compare, "parse_pdf", fake_parse_pdf)
+    monkeypatch.setattr(compare_orchestrator.settings, "parallel_pdf_parse", True)
+    monkeypatch.setattr(compare_orchestrator, "parse_pdf", fake_parse_pdf)
 
     try:
-        old_doc, new_doc, timings = routes_compare._parse_pdf_pair(task_id, "old.pdf", "new.pdf")
+        old_doc, new_doc, timings = compare_orchestrator.parse_pdf_pair(task_id, "old.pdf", "new.pdf")
     finally:
         TASK_STORE.delete(task_id)
 
@@ -72,21 +72,21 @@ def test_compare_task_records_speed_options_and_starts_artifacts_after_done(monk
             engine_stats={},
         )
 
-    monkeypatch.setattr(routes_compare.settings, "parallel_pdf_parse", False)
-    monkeypatch.setattr(routes_compare.settings, "postprocess_artifacts_after_done", True)
-    monkeypatch.setattr(routes_compare, "parse_pdf", lambda path: _parsed_doc(engine=path))
-    monkeypatch.setattr(routes_compare, "save_markdown", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(routes_compare, "save_markdown_paths", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(routes_compare, "update_comparison_status", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(routes_compare, "save_comparison_error", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(routes_compare, "generate_diff_report", fake_generate_diff_report)
-    monkeypatch.setattr(routes_compare, "save_diff_report", lambda _task_id, report: saved_reports.append(report))
-    monkeypatch.setattr(routes_compare, "_start_review_artifact_generation", fake_start_artifacts)
+    monkeypatch.setattr(compare_orchestrator.settings, "parallel_pdf_parse", False)
+    monkeypatch.setattr(compare_orchestrator.settings, "postprocess_artifacts_after_done", True)
+    monkeypatch.setattr(compare_orchestrator, "parse_pdf", lambda path: _parsed_doc(engine=path))
+    monkeypatch.setattr(compare_orchestrator, "save_markdown", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(compare_orchestrator, "save_markdown_paths", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(compare_orchestrator, "update_comparison_status", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(compare_orchestrator, "save_comparison_error", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(compare_orchestrator, "generate_diff_report", fake_generate_diff_report)
+    monkeypatch.setattr(compare_orchestrator, "save_diff_report", lambda _task_id, report: saved_reports.append(report))
+    monkeypatch.setattr(compare_orchestrator, "_start_review_artifact_generation", fake_start_artifacts)
     monkeypatch.setattr("services.resource_monitor.ResourceMonitor", FakeMonitor)
     monkeypatch.setattr("services.resource_monitor.save_resource_log", lambda *_args, **_kwargs: None)
 
     try:
-        routes_compare._run_compare_task(
+        compare_orchestrator.run_compare_task(
             task_id=task_id,
             project_id="default",
             case_number=None,

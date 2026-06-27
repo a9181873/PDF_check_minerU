@@ -1,9 +1,15 @@
+import hashlib
 import json
 import math
 import os
+import re
 import subprocess
 import tempfile
+import threading
+import time
 import unicodedata
+from collections import OrderedDict
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -45,6 +51,82 @@ class ParsedDocument:
     raw_json: dict
     markdown_text: str | None = None
     is_image_pdf: bool = False
+
+
+_PARSE_CACHE_LOCK = threading.RLock()
+_PARSE_CACHE: OrderedDict[str, ParsedDocument] = OrderedDict()
+_PARSE_INFLIGHT: dict[str, threading.Event] = {}
+_HEAVY_SEMAPHORE_LOCK = threading.Lock()
+_HEAVY_SEMAPHORES: dict[int, threading.BoundedSemaphore] = {}
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _parser_cache_key(pdf_path: Path) -> str:
+    from config import settings
+
+    fingerprint = "|".join(
+        [
+            "parser-v2",
+            settings.table_parser_strategy,
+            str(bool(settings.enable_docling_parallel)),
+            str(bool(settings.enable_lightweight_table_probe)),
+            str(float(settings.mineru_preferred_wait_seconds)),
+            str(settings.mineru_api_url or os.getenv("MINERU_API_URL", "")),
+            os.getenv("OCR_LANGS", "chi_tra+chi_sim+eng"),
+        ]
+    )
+    return f"{_sha256_file(pdf_path)}:{hashlib.sha256(fingerprint.encode()).hexdigest()[:16]}"
+
+
+def _with_cache_status(document: ParsedDocument, *, hit: bool) -> ParsedDocument:
+    raw_json = dict(document.raw_json or {})
+    routing = dict(raw_json.get("routing") or {})
+    routing["cache_hit"] = hit
+    raw_json["routing"] = routing
+    return ParsedDocument(
+        pages=document.pages,
+        paragraphs=document.paragraphs,
+        tables=document.tables,
+        raw_json=raw_json,
+        markdown_text=document.markdown_text,
+        is_image_pdf=document.is_image_pdf,
+    )
+
+
+def clear_parse_cache() -> None:
+    """Clear the bounded in-process parse cache (tests / controlled maintenance)."""
+    with _PARSE_CACHE_LOCK:
+        _PARSE_CACHE.clear()
+        for event in _PARSE_INFLIGHT.values():
+            event.set()
+        _PARSE_INFLIGHT.clear()
+
+
+def _heavy_parser_semaphore() -> threading.BoundedSemaphore:
+    from config import settings
+
+    limit = max(1, int(settings.heavy_parser_max_concurrency))
+    with _HEAVY_SEMAPHORE_LOCK:
+        return _HEAVY_SEMAPHORES.setdefault(limit, threading.BoundedSemaphore(limit))
+
+
+@contextmanager
+def _heavy_parser_slot(trace: dict):
+    semaphore = _heavy_parser_semaphore()
+    queued_at = time.perf_counter()
+    semaphore.acquire()
+    trace["queue_wait_seconds"] = round(time.perf_counter() - queued_at, 4)
+    try:
+        yield
+    finally:
+        semaphore.release()
 
 
 def _to_bottom_left_bbox(page_number: int, page_height: float, block_bbox: list[float]) -> BBox:
@@ -214,7 +296,7 @@ def _parse_via_mineru(
                 "return_md": "true",
                 "return_content_list": "true",
             },
-            timeout=300,
+            timeout=max(1.0, float(settings.mineru_timeout_seconds)),
         )
     resp.raise_for_status()
 
@@ -415,19 +497,293 @@ def _parse_via_docling(pdf_path: Path) -> ParsedDocument:
     )
 
 
+def _opendataloader_bbox(node: dict, fallback_page: int = 1) -> BBox | None:
+    raw = node.get("bounding box") or node.get("bounding_box") or []
+    if not isinstance(raw, (list, tuple)) or len(raw) != 4:
+        return None
+    try:
+        x0, y0, x1, y1 = (float(value) for value in raw)
+        page = max(1, int(node.get("page number") or node.get("page_number") or fallback_page))
+        return BBox(
+            page=page,
+            x0=min(x0, x1),
+            y0=min(y0, y1),
+            x1=max(x0, x1),
+            y1=max(y0, y1),
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _opendataloader_text(node: dict) -> str:
+    parts: list[str] = []
+    content = node.get("content")
+    if isinstance(content, str) and content.strip():
+        parts.append(content.strip())
+    for key in ("kids", "list items"):
+        children = node.get(key) or []
+        if isinstance(children, list):
+            for child in children:
+                if isinstance(child, dict):
+                    child_text = _opendataloader_text(child)
+                    if child_text:
+                        parts.append(child_text)
+    return " ".join(dict.fromkeys(parts))
+
+
+def _union_bboxes(boxes: list[BBox]) -> BBox | None:
+    if not boxes:
+        return None
+    page = boxes[0].page
+    same_page = [box for box in boxes if box.page == page]
+    return BBox(
+        page=page,
+        x0=min(box.x0 for box in same_page),
+        y0=min(box.y0 for box in same_page),
+        x1=max(box.x1 for box in same_page),
+        y1=max(box.y1 for box in same_page),
+    )
+
+
+def _opendataloader_cell_bbox(cell: dict, fallback_page: int) -> BBox | None:
+    direct = _opendataloader_bbox(cell, fallback_page)
+    if direct:
+        return direct
+    boxes: list[BBox] = []
+
+    def collect(node: dict, page: int) -> None:
+        bbox = _opendataloader_bbox(node, page)
+        if bbox:
+            boxes.append(bbox)
+            page = bbox.page
+        for child in node.get("kids") or []:
+            if isinstance(child, dict):
+                collect(child, page)
+
+    collect(cell, fallback_page)
+    return _union_bboxes(boxes)
+
+
+def _parsedocument_from_opendataloader_json(payload: dict) -> ParsedDocument:
+    """Map OpenDataLoader's hierarchical JSON into the existing parser contract."""
+    paragraphs: list[ParsedParagraph] = []
+    tables: list[ParsedTable] = []
+    text_types = {"paragraph", "heading", "caption", "list item"}
+
+    def parse_table(node: dict, page: int) -> None:
+        table_bbox = _opendataloader_bbox(node, page)
+        rows = node.get("rows") or []
+        row_count = max(int(node.get("number of rows") or 0), len(rows))
+        col_count = int(node.get("number of columns") or 0)
+        for row in rows:
+            for cell in row.get("cells") or []:
+                try:
+                    col_count = max(col_count, int(cell.get("column number") or 0))
+                    row_count = max(row_count, int(cell.get("row number") or 0))
+                except (TypeError, ValueError):
+                    continue
+        if row_count <= 0 or col_count <= 0:
+            return
+
+        grid = [["" for _ in range(col_count)] for _ in range(row_count)]
+        cell_bboxes: dict[tuple[int, int], BBox] = {}
+        for row in rows:
+            for cell in row.get("cells") or []:
+                try:
+                    row_idx = max(0, int(cell.get("row number") or 1) - 1)
+                    col_idx = max(0, int(cell.get("column number") or 1) - 1)
+                except (TypeError, ValueError):
+                    continue
+                if row_idx >= row_count or col_idx >= col_count:
+                    continue
+                grid[row_idx][col_idx] = _opendataloader_text(cell)
+                cell_bbox = _opendataloader_cell_bbox(cell, page)
+                if cell_bbox:
+                    cell_bboxes[(row_idx, col_idx)] = cell_bbox
+
+        if table_bbox is None:
+            table_bbox = _union_bboxes(list(cell_bboxes.values()))
+        if table_bbox is None:
+            return
+
+        header = grid[0]
+        dataframe = pd.DataFrame(grid[1:], columns=header) if len(grid) > 1 else pd.DataFrame(columns=header)
+        tables.append(
+            ParsedTable(
+                dataframe=dataframe.fillna("").astype(str),
+                bbox=table_bbox,
+                header_rows=1,
+                cell_bboxes=cell_bboxes,
+            )
+        )
+
+    def visit(node: dict, inherited_page: int = 1, inside_table: bool = False) -> None:
+        node_type = str(node.get("type") or "").strip().lower()
+        bbox = _opendataloader_bbox(node, inherited_page)
+        page = bbox.page if bbox else max(
+            1,
+            int(node.get("page number") or node.get("page_number") or inherited_page),
+        )
+        if node_type == "table":
+            parse_table(node, page)
+            inside_table = True
+        elif not inside_table and node_type in text_types:
+            text = str(node.get("content") or "").strip()
+            if text and bbox:
+                paragraphs.append(ParsedParagraph(text=text, bbox=bbox, style=node_type))
+
+        child_keys = ("kids", "list items")
+        if node_type != "table":
+            child_keys += ("rows", "cells")
+        for key in child_keys:
+            children = node.get(key) or []
+            if isinstance(children, list):
+                for child in children:
+                    if isinstance(child, dict):
+                        visit(child, page, inside_table)
+
+    for child in payload.get("kids") or []:
+        if isinstance(child, dict):
+            visit(child)
+
+    markdown = "\n\n".join(paragraph.text for paragraph in paragraphs)
+    return ParsedDocument(
+        pages=max(1, int(payload.get("number of pages") or 1)),
+        paragraphs=paragraphs,
+        tables=tables,
+        raw_json={
+            "engine": "opendataloader",
+            "paragraph_count": len(paragraphs),
+            "table_count": len(tables),
+        },
+        markdown_text=markdown or None,
+    )
+
+
+def _parse_via_opendataloader(pdf_path: Path) -> ParsedDocument:
+    """Optional OpenDataLoader local adapter; requires its package and Java 11+."""
+    try:
+        import opendataloader_pdf
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("OpenDataLoader Python package is not installed") from exc
+
+    with tempfile.TemporaryDirectory(prefix="opendataloader_") as temp_dir:
+        opendataloader_pdf.convert(
+            input_path=str(pdf_path),
+            output_dir=temp_dir,
+            format="json",
+        )
+        candidates = sorted(Path(temp_dir).rglob("*.json"))
+        for candidate in candidates:
+            try:
+                payload = json.loads(candidate.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(payload, dict) and "kids" in payload:
+                return _parsedocument_from_opendataloader_json(payload)
+    raise RuntimeError("OpenDataLoader did not produce a valid JSON document")
+
+
+_NUMERIC_WORD_RE = re.compile(r"\d")
+
+
+def _page_has_numeric_grid(page) -> bool:
+    """Cheap signal for borderless rate tables: repeated numeric rows/columns."""
+    rows: dict[int, list[tuple[float, str]]] = {}
+    for word in page.get_text("words") or []:
+        if len(word) < 5:
+            continue
+        text = str(word[4] or "").strip()
+        if not text or not _NUMERIC_WORD_RE.search(text):
+            continue
+        y_bucket = round(float(word[1]) / 4.0)
+        rows.setdefault(y_bucket, []).append((float(word[0]), text))
+    numeric_rows = [values for values in rows.values() if len(values) >= 2]
+    if len(numeric_rows) < 3:
+        return False
+    # Repeated X bands distinguish a grid from ordinary prose containing dates.
+    bands: dict[int, int] = {}
+    for values in numeric_rows:
+        for x0, _ in values:
+            band = round(x0 / 18.0)
+            bands[band] = bands.get(band, 0) + 1
+    return sum(1 for count in bands.values() if count >= 3) >= 2
+
+
+def _probe_page_table_candidates(page) -> int:
+    """Detect ruled tables without loading ML models; numeric grids cover borderless rate tables."""
+    candidates = 1 if _page_has_numeric_grid(page) else 0
+
+    horizontal: list[tuple[float, float, float]] = []
+    vertical: list[tuple[float, float, float]] = []
+
+    def add_line(x0: float, y0: float, x1: float, y1: float) -> None:
+        if abs(y1 - y0) <= 1.5 and abs(x1 - x0) >= 20:
+            horizontal.append((min(x0, x1), max(x0, x1), (y0 + y1) / 2))
+        elif abs(x1 - x0) <= 1.5 and abs(y1 - y0) >= 20:
+            vertical.append(((x0 + x1) / 2, min(y0, y1), max(y0, y1)))
+
+    for drawing in page.get_drawings() or []:
+        for item in drawing.get("items") or []:
+            if item[0] == "l":
+                p0, p1 = item[1], item[2]
+                add_line(float(p0.x), float(p0.y), float(p1.x), float(p1.y))
+            elif item[0] == "re":
+                rect = item[1]
+                add_line(rect.x0, rect.y0, rect.x1, rect.y0)
+                add_line(rect.x0, rect.y1, rect.x1, rect.y1)
+                add_line(rect.x0, rect.y0, rect.x0, rect.y1)
+                add_line(rect.x1, rect.y0, rect.x1, rect.y1)
+
+    def dedupe(lines: list[tuple[float, float, float]]) -> list[tuple[float, float, float]]:
+        unique: dict[tuple[int, int, int], tuple[float, float, float]] = {}
+        for values in lines:
+            key = tuple(round(value / 2.0) for value in values)
+            unique.setdefault(key, values)
+        return list(unique.values())
+
+    horizontal = dedupe(horizontal)
+    vertical = dedupe(vertical)
+
+    # Find a connected grid instead of counting unrelated page/card borders.
+    # Three vertical boundaries and four spanning horizontal boundaries represent
+    # at least a 2-column x 3-row business table; smaller decorative boxes stay fast.
+    for x0, x1, y in horizontal:
+        crossing = [
+            (x, vy0, vy1)
+            for x, vy0, vy1 in vertical
+            if x0 - 2 <= x <= x1 + 2 and vy0 - 2 <= y <= vy1 + 2
+        ]
+        if len(crossing) < 3:
+            continue
+        min_x = min(item[0] for item in crossing)
+        max_x = max(item[0] for item in crossing)
+        spanning_y = {
+            round(hy / 2.0)
+            for hx0, hx1, hy in horizontal
+            if hx0 <= min_x + 2
+            and hx1 >= max_x - 2
+            and sum(1 for x, vy0, vy1 in crossing if vy0 - 2 <= hy <= vy1 + 2) >= 3
+        }
+        if len(spanning_y) >= 4:
+            candidates += 1
+            break
+    return candidates
+
+
 def _parse_via_fitz(pdf_path: Path) -> ParsedDocument:
     import fitz
 
     paragraphs: list[ParsedParagraph] = []
-    raw_pages: list[dict] = []
     image_pages = 0
     total_pages = 0
+    table_candidates = 0
+    table_probe_errors = 0
 
     with fitz.open(pdf_path) as doc:
         total_pages = len(doc)
         for page_index, page in enumerate(doc, start=1):
             page_dict = page.get_text("rawdict")
-            raw_pages.append(page_dict)
             page_height = float(page.rect.height)
             page_image_count = len(page.get_images())
             page_char_count = 0
@@ -475,6 +831,13 @@ def _parse_via_fitz(pdf_path: Path) -> ParsedDocument:
 
             if page_char_count < 10 and page_image_count > 0:
                 image_pages += 1
+            elif page_char_count >= 10:
+                try:
+                    table_candidates += _probe_page_table_candidates(page)
+                except Exception:
+                    # Uncertain means the heavy parser must still run; never turn a
+                    # probe failure into a silent table false negative.
+                    table_probe_errors += 1
 
         # Per-page judgement: only flag as image PDF when ≥70% of pages are essentially
         # rasterized (no meaningful text + has images). Prevents "one scan page + lots of
@@ -489,7 +852,15 @@ def _parse_via_fitz(pdf_path: Path) -> ParsedDocument:
             pages=len(doc),
             paragraphs=paragraphs,
             tables=[],
-            raw_json={"engine": "pymupdf", "pages": raw_pages, "is_image_pdf": is_image_pdf},
+            # Parsed paragraphs already retain every text/bbox needed downstream.
+            # Keeping every rawdict page here doubled peak memory for no consumer.
+            raw_json={
+                "engine": "pymupdf",
+                "page_count": total_pages,
+                "is_image_pdf": is_image_pdf,
+                "table_candidate_count": table_candidates,
+                "table_probe_errors": table_probe_errors,
+            },
             markdown_text=markdown or None,
             is_image_pdf=is_image_pdf,
         )
@@ -568,106 +939,180 @@ def _parse_via_ocr(pdf_path: Path, dpi: int = 200) -> ParsedDocument:
         )
 
 
-def parse_pdf(file_path: str) -> ParsedDocument:
-    pdf_path = Path(file_path)
-    if not pdf_path.exists():
-        raise FileNotFoundError(f"PDF not found: {file_path}")
+def _parse_table_via_mineru(
+    pdf_path: Path,
+    page_sizes: dict[int, tuple[float, float]],
+) -> ParsedDocument:
+    return _parse_via_mineru(pdf_path, page_sizes)
 
+
+def _parse_table_via_docling(
+    pdf_path: Path,
+    _page_sizes: dict[int, tuple[float, float]],
+) -> ParsedDocument:
+    return _parse_via_docling(pdf_path)
+
+
+def _parse_table_via_opendataloader(
+    pdf_path: Path,
+    _page_sizes: dict[int, tuple[float, float]],
+) -> ParsedDocument:
+    return _parse_via_opendataloader(pdf_path)
+
+
+_TABLE_ENGINE_PARSERS = {
+    "mineru": _parse_table_via_mineru,
+    "docling": _parse_table_via_docling,
+    "opendataloader": _parse_table_via_opendataloader,
+}
+
+
+def _attempt_table_engine(
+    engine: str,
+    pdf_path: Path,
+    page_sizes: dict[int, tuple[float, float]],
+    attempts: list[dict],
+) -> ParsedDocument | None:
+    trace: dict = {"engine": engine, "status": "running"}
+    attempts.append(trace)
+    started_at = time.perf_counter()
+    try:
+        parser = _TABLE_ENGINE_PARSERS.get(engine)
+        if parser is None:  # pragma: no cover - internal guard
+            raise ValueError(f"Unknown table parser engine: {engine}")
+        with _heavy_parser_slot(trace):
+            parsed = parser(pdf_path, page_sizes)
+        trace["elapsed_seconds"] = round(time.perf_counter() - started_at, 4)
+        trace["table_count"] = len(parsed.tables)
+        trace["status"] = "candidate" if parsed.tables else "no_tables"
+        return parsed if parsed.tables else None
+    except Exception as exc:
+        trace["elapsed_seconds"] = round(time.perf_counter() - started_at, 4)
+        trace["status"] = "error"
+        trace["error"] = f"{type(exc).__name__}: {exc}"[:500]
+        return None
+
+
+def _select_table_document(
+    pdf_path: Path,
+    page_sizes: dict[int, tuple[float, float]],
+) -> tuple[ParsedDocument | None, dict]:
+    from config import settings
+
+    mineru_url = settings.mineru_api_url or os.getenv("MINERU_API_URL", "")
+    strategy = settings.table_parser_strategy
+    attempts: list[dict] = []
+    routing = {
+        "table_strategy": strategy,
+        "table_engine": None,
+        "attempts": attempts,
+    }
+
+    if strategy == "docling_first":
+        order = ["docling"] + (["mineru"] if mineru_url else [])
+    elif strategy == "mineru_first":
+        order = (["mineru"] if mineru_url else []) + ["docling"]
+    elif strategy == "opendataloader_first":
+        order = ["opendataloader", "docling"] + (["mineru"] if mineru_url else [])
+    else:
+        # Legacy A/B mode only. The deterministic strategies above are the
+        # optimized defaults because Python cannot cancel an already-running
+        # Docling/MinerU thread safely after the other result wins.
+        from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+
+        engines = ["docling"] + (["mineru"] if mineru_url else [])
+        pool = ThreadPoolExecutor(max_workers=len(engines), thread_name_prefix="table-parser")
+        futures = {
+            pool.submit(_attempt_table_engine, engine, pdf_path, page_sizes, attempts): engine
+            for engine in engines
+        }
+        selected = None
+        pending = set(futures)
+        try:
+            while pending and selected is None:
+                done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                for future in done:
+                    candidate = future.result()
+                    if candidate and candidate.tables:
+                        selected = candidate
+                        routing["table_engine"] = futures[future]
+                        break
+            for future in pending:
+                future.cancel()
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+        if selected:
+            for attempt in attempts:
+                if attempt["engine"] == routing["table_engine"] and attempt["status"] == "candidate":
+                    attempt["status"] = "selected"
+                    break
+        return selected, routing
+
+    for engine in order:
+        candidate = _attempt_table_engine(engine, pdf_path, page_sizes, attempts)
+        if candidate:
+            routing["table_engine"] = engine
+            attempts[-1]["status"] = "selected"
+            return candidate, routing
+    return None, routing
+
+
+def _attach_routing(document: ParsedDocument, routing: dict) -> ParsedDocument:
+    raw_json = dict(document.raw_json or {})
+    raw_json["text_engine"] = raw_json.get("engine", "unknown")
+    raw_json["table_engine"] = routing.get("table_engine")
+    raw_json["routing"] = routing
+    return ParsedDocument(
+        pages=document.pages,
+        paragraphs=document.paragraphs,
+        tables=document.tables,
+        raw_json=raw_json,
+        markdown_text=document.markdown_text,
+        is_image_pdf=document.is_image_pdf,
+    )
+
+
+def _parse_pdf_uncached(pdf_path: Path) -> ParsedDocument:
     errors: list[str] = []
 
-    # PyMuPDF (fitz) reads the embedded text layer directly — no OCR, no misreads.
-    # For image-only PDFs (no text layer) it returns is_image_pdf=True so the diff
-    # engine can switch to pixel-level comparison instead of noisy OCR text diff.
+    # PyMuPDF reads the embedded text layer directly. Image PDFs return early so
+    # the established pixel-first guardrails remain unchanged.
     try:
         doc = _parse_via_fitz(pdf_path)
         if doc.is_image_pdf:
-            # Pure image PDF: return immediately, pixel diff handles it.
-            # Do NOT fall through to docling OCR — OCR noise causes false positives.
-            return doc
+            return _attach_routing(
+                doc,
+                {
+                    "document_type": "image",
+                    "table_strategy": "skipped_image_pdf",
+                    "table_engine": None,
+                    "attempts": [],
+                },
+            )
         if doc.paragraphs:
-            # Text-layer PDF: augment with table detection.
-            # Prefer MinerU (higher table precision, cell-level HTML) when configured;
-            # fall back to Docling when MinerU is unavailable.
-            page_sizes = _get_page_sizes_fitz(pdf_path)
-            table_doc = None
-
             from config import settings
-            from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait as _wait
-            mineru_url = settings.mineru_api_url or os.getenv("MINERU_API_URL", "")
 
-            if mineru_url and settings.enable_docling_parallel:
-                pool = ThreadPoolExecutor(max_workers=2)
-                futures = {
-                    pool.submit(_parse_via_mineru, pdf_path, page_sizes): "mineru",
-                    pool.submit(_parse_via_docling, pdf_path): "docling",
-                }
-                mineru_future = next(fut for fut, engine in futures.items() if engine == "mineru")
-                docling_candidate = None
-
-                def _future_result(fut):
-                    try:
-                        parsed = fut.result()
-                    except Exception:
-                        return None
-                    return parsed if parsed and parsed.tables else None
-
-                try:
-                    done, _ = _wait(
-                        {mineru_future},
-                        timeout=max(0.0, settings.mineru_preferred_wait_seconds),
-                        return_when=FIRST_COMPLETED,
-                    )
-                    if done:
-                        table_doc = _future_result(mineru_future)
-
-                    remaining = {fut for fut in futures if not fut.done()}
-                    while table_doc is None:
-                        for fut in [f for f in futures if f.done()]:
-                            parsed = _future_result(fut)
-                            if parsed is None:
-                                continue
-                            if futures[fut] == "mineru":
-                                table_doc = parsed
-                                break
-                            docling_candidate = parsed
-                            if mineru_future.done():
-                                table_doc = parsed
-                                break
-
-                        if table_doc is not None:
-                            break
-                        if docling_candidate is not None:
-                            table_doc = docling_candidate
-                            break
-                        if not remaining:
-                            break
-
-                        done, remaining = _wait(remaining, return_when=FIRST_COMPLETED)
-                        for fut in done:
-                            parsed = _future_result(fut)
-                            if parsed is None:
-                                continue
-                            if futures[fut] == "mineru":
-                                table_doc = parsed
-                            else:
-                                docling_candidate = parsed
-                        if docling_candidate is not None and table_doc is None and not mineru_future.done():
-                            table_doc = docling_candidate
-                finally:
-                    pool.shutdown(wait=False, cancel_futures=True)
-            else:
-                if mineru_url:
-                    try:
-                        table_doc = _parse_via_mineru(pdf_path, page_sizes)
-                    except Exception:
-                        table_doc = None
-
-                try:
-                    if table_doc is None:
-                        table_doc = _parse_via_docling(pdf_path)
-                except Exception:
-                    table_doc = None
-
+            table_candidate_count = int(doc.raw_json.get("table_candidate_count") or 0)
+            table_probe_errors = int(doc.raw_json.get("table_probe_errors") or 0)
+            if (
+                settings.enable_lightweight_table_probe
+                and table_candidate_count == 0
+                and table_probe_errors == 0
+            ):
+                return _attach_routing(
+                    doc,
+                    {
+                        "document_type": "digital",
+                        "table_strategy": "skipped_no_table_candidate",
+                        "table_engine": None,
+                        "table_candidate_count": 0,
+                        "attempts": [],
+                    },
+                )
+            page_sizes = _get_page_sizes_fitz(pdf_path)
+            table_doc, routing = _select_table_document(pdf_path, page_sizes)
+            routing["document_type"] = "digital"
+            routing["table_candidate_count"] = table_candidate_count
             if table_doc and table_doc.tables:
                 doc = ParsedDocument(
                     pages=doc.pages,
@@ -677,38 +1122,86 @@ def parse_pdf(file_path: str) -> ParsedDocument:
                     markdown_text=doc.markdown_text,
                     is_image_pdf=False,
                 )
-            return doc
+            return _attach_routing(doc, routing)
     except ModuleNotFoundError as exc:
         errors.append(f"pymupdf unavailable: {exc}")
     except Exception as exc:  # pragma: no cover
         errors.append(f"pymupdf failed: {exc}")
 
-    try:
-        return _parse_via_docling(pdf_path)
-    except ModuleNotFoundError as exc:
-        errors.append(f"docling unavailable: {exc}")
-    except Exception as exc:  # pragma: no cover
-        errors.append(f"docling failed: {exc}")
-
-    try:
-        doc = _parse_via_pdftotext(pdf_path)
-        if doc.paragraphs:
-            return doc
-        errors.append("pdftotext extracted no text")
-    except FileNotFoundError as exc:
-        errors.append(f"pdftotext binary missing: {exc}")
-    except Exception as exc:  # pragma: no cover
-        errors.append(f"pdftotext failed: {exc}")
-
-    try:
-        return _parse_via_ocr(pdf_path)
-    except FileNotFoundError as exc:
-        errors.append(f"ocr dependencies missing: {exc}")
-    except Exception as exc:  # pragma: no cover
-        errors.append(f"ocr failed: {exc}")
+    for engine, parser in (
+        ("docling", _parse_via_docling),
+        ("pdftotext", _parse_via_pdftotext),
+        ("ocr_tesseract", _parse_via_ocr),
+    ):
+        try:
+            parsed = parser(pdf_path)
+            if engine != "pdftotext" or parsed.paragraphs:
+                return _attach_routing(
+                    parsed,
+                    {
+                        "document_type": "fallback",
+                        "table_strategy": "fallback_chain",
+                        "table_engine": engine if parsed.tables else None,
+                        "attempts": [{"engine": engine, "status": "selected"}],
+                    },
+                )
+            errors.append("pdftotext extracted no text")
+        except FileNotFoundError as exc:
+            errors.append(f"{engine} dependency missing: {exc}")
+        except Exception as exc:  # pragma: no cover
+            errors.append(f"{engine} failed: {exc}")
 
     detail = " | ".join(errors) if errors else "unknown parser error"
-    raise RuntimeError(f"Failed to parse PDF '{file_path}': {detail}")
+    raise RuntimeError(f"Failed to parse PDF '{pdf_path}': {detail}")
+
+
+def parse_pdf(file_path: str) -> ParsedDocument:
+    pdf_path = Path(file_path)
+    if not pdf_path.exists():
+        raise FileNotFoundError(f"PDF not found: {file_path}")
+
+    from config import settings
+
+    if not settings.enable_parser_cache:
+        return _with_cache_status(_parse_pdf_uncached(pdf_path), hit=False)
+
+    cache_key = _parser_cache_key(pdf_path)
+    with _PARSE_CACHE_LOCK:
+        cached = _PARSE_CACHE.get(cache_key)
+        if cached is not None:
+            _PARSE_CACHE.move_to_end(cache_key)
+            return _with_cache_status(cached, hit=True)
+        inflight = _PARSE_INFLIGHT.get(cache_key)
+        if inflight is None:
+            inflight = threading.Event()
+            _PARSE_INFLIGHT[cache_key] = inflight
+            is_owner = True
+        else:
+            is_owner = False
+
+    if not is_owner:
+        inflight.wait()
+        with _PARSE_CACHE_LOCK:
+            cached = _PARSE_CACHE.get(cache_key)
+            if cached is not None:
+                _PARSE_CACHE.move_to_end(cache_key)
+                return _with_cache_status(cached, hit=True)
+        # The owner failed before caching; retry normally and surface the real error.
+        return _with_cache_status(_parse_pdf_uncached(pdf_path), hit=False)
+
+    try:
+        parsed = _with_cache_status(_parse_pdf_uncached(pdf_path), hit=False)
+        with _PARSE_CACHE_LOCK:
+            _PARSE_CACHE[cache_key] = parsed
+            _PARSE_CACHE.move_to_end(cache_key)
+            while len(_PARSE_CACHE) > max(1, int(settings.parser_cache_max_entries)):
+                _PARSE_CACHE.popitem(last=False)
+        return parsed
+    finally:
+        with _PARSE_CACHE_LOCK:
+            event = _PARSE_INFLIGHT.pop(cache_key, None)
+            if event:
+                event.set()
 
 
 def parse_pdf_fallback(file_path: str) -> ParsedDocument:
@@ -726,7 +1219,21 @@ def parse_image_pdf_via_mineru_ocr(file_path: str) -> ParsedDocument:
     """
     pdf_path = Path(file_path)
     page_sizes = _get_page_sizes_fitz(pdf_path)
-    return _parse_via_mineru(pdf_path, page_sizes, parse_method="ocr")
+    trace = {"engine": "mineru_ocr", "status": "running"}
+    started_at = time.perf_counter()
+    with _heavy_parser_slot(trace):
+        parsed = _parse_via_mineru(pdf_path, page_sizes, parse_method="ocr")
+    trace["elapsed_seconds"] = round(time.perf_counter() - started_at, 4)
+    trace["status"] = "selected"
+    return _attach_routing(
+        parsed,
+        {
+            "document_type": "image_ocr",
+            "table_strategy": "forced_mineru_ocr",
+            "table_engine": "mineru",
+            "attempts": [trace],
+        },
+    )
 
 
 def render_markdown(document: ParsedDocument, source_name: str | None = None) -> str:

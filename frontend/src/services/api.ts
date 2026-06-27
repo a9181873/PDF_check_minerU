@@ -1,4 +1,3 @@
-import axios from 'axios';
 import {
   UploadResponse,
   CompareStatusResponse,
@@ -11,27 +10,11 @@ import {
   ReviewActionRequest,
   ReviewActionResponse,
 } from './types';
+import { API_BASE, httpClient as api, normalizeBase } from './httpClient';
 
-const normalizeBase = (value?: string) => (value ? value.replace(/\/+$/, '') : '');
 const joinUrl = (base: string, path: string) => `${base}${path.startsWith('/') ? path : `/${path}`}`;
 
-const API_BASE = normalizeBase(import.meta.env.VITE_API_BASE);
 const WS_BASE = normalizeBase(import.meta.env.VITE_WS_BASE);
-
-const api = axios.create({
-  baseURL: API_BASE || undefined,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('auth_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
 export const buildApiUrl = (path: string) => (API_BASE ? joinUrl(API_BASE, path) : path);
 
@@ -132,14 +115,14 @@ export const compareApi = {
   },
 
   // Get comparison status
-  async getStatus(taskId: string): Promise<CompareStatusResponse> {
-    const response = await api.get<CompareStatusResponse>(`/api/compare/${taskId}/status`);
+  async getStatus(taskId: string, signal?: AbortSignal): Promise<CompareStatusResponse> {
+    const response = await api.get<CompareStatusResponse>(`/api/compare/${taskId}/status`, { signal });
     return response.data;
   },
 
   // Get comparison result (diff report)
-  async getResult(taskId: string): Promise<DiffReport> {
-    const response = await api.get<DiffReport>(`/api/compare/${taskId}/result`);
+  async getResult(taskId: string, signal?: AbortSignal): Promise<DiffReport> {
+    const response = await api.get<DiffReport>(`/api/compare/${taskId}/result`, { signal });
     return response.data;
   },
 

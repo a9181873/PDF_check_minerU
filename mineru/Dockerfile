@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --upgrade pip && pip install "mineru[pipeline]" lxml
+RUN pip install --upgrade pip && pip install "mineru[pipeline]" lxml six
 
 # Pre-download pipeline models from ModelScope at build time.
 # Mount a named volume over /root/.cache/modelscope to reuse across rebuilds.

@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle, Copy, ExternalLink, Eye, EyeOff, Flag, Maximize2, Minus, Plus, RotateCcw, X } from 'lucide-react';
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
 
 import { createDownloadUrl } from '../services/api';
 import { DiffItem, DiffType } from '../services/types';
 import { useAuthStore } from '../stores/authStore';
+import { getTrimmedDiffText } from '../utils/diffHelpers';
+import { useDialogFocusTrap } from '../hooks/useDialogFocusTrap';
 
 interface DiffPopupProps {
   diff: DiffItem | null;
@@ -52,33 +54,6 @@ const getDiffColor = (type: DiffType) => {
   }
 };
 
-const getCommonPrefixLength = (a: string, b: string) => {
-  let i = 0;
-  while (i < a.length && i < b.length && a[i] === b[i]) i++;
-  return i;
-};
-
-const getCommonSuffixLength = (a: string, b: string, prefixLen: number) => {
-  let i = 0;
-  while (i + prefixLen < a.length && i + prefixLen < b.length && a[a.length - 1 - i] === b[b.length - 1 - i]) i++;
-  return i;
-};
-
-const getTrimmedDiffText = (oldValue: string, newValue: string) => {
-  const prefixLen = getCommonPrefixLength(oldValue, newValue);
-  const suffixLen = getCommonSuffixLength(oldValue, newValue, prefixLen);
-  const trimText = (value: string) => {
-    if (prefixLen + suffixLen >= value.length) return value.trim();
-    return value.slice(prefixLen, value.length - suffixLen).trim();
-  };
-  const oldSnippet = trimText(oldValue);
-  const newSnippet = trimText(newValue);
-  if (!oldSnippet && !newSnippet) {
-    return `${oldValue} → ${newValue}`;
-  }
-  return `${oldSnippet || '[刪除]'} → ${newSnippet || '[新增]'}`;
-};
-
 const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
   diff,
   onClose,
@@ -113,13 +88,17 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
   const newCropLoading = showCropPreview && newRemoteCropTarget && !remoteCropUrls.new && !newCropFailed;
 
   useEffect(() => {
-    if (!lightbox) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setLightbox(null);
+      if (event.key !== 'Escape') return;
+      if (lightbox) {
+        setLightbox(null);
+      } else {
+        onClose();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [lightbox]);
+  }, [lightbox, onClose]);
 
   useEffect(() => {
     setNote('');
@@ -254,6 +233,7 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
         <button
           type="button"
           onClick={onClose}
+          aria-label="關閉差異明細"
           className="p-2 rounded-full hover:bg-gray-100 transition-colors flex-shrink-0"
         >
           <X size={20} />
@@ -555,13 +535,22 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
 
 const DiffPopup: React.FC<DiffPopupProps> = (props) => {
   const { diff, isOpen, onClose } = props;
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocusTrap(isOpen && Boolean(diff), onClose, dialogRef, false);
 
   if (!isOpen || !diff) {
     return null;
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="差異明細"
+      tabIndex={-1}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    >
       <div
         className="absolute inset-0 bg-black/45"
         onClick={onClose}

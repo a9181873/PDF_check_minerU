@@ -1,11 +1,19 @@
+import copy
+import hashlib
 import re
+import threading
 import unicodedata
+from collections import OrderedDict
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from itertools import zip_longest
 
 from models.diff_models import DiffItem, DiffType, BBox
 from services.parser_service import ParsedDocument, ParsedParagraph, ParsedTable
+
+_PIXEL_CACHE_LOCK = threading.RLock()
+_PIXEL_CACHE: OrderedDict[str, tuple[list[DiffItem], dict, list[str]]] = OrderedDict()
+_PIXEL_INFLIGHT: dict[str, threading.Event] = {}
 
 NUMBER_PATTERN = re.compile(r"\d+(?:\.\d+)?%?")
 _ELLIPSIS = "..."
@@ -1204,7 +1212,154 @@ def _clip_to_common_shape(a, b):
     return a[:h, :w], b[:h, :w]
 
 
+def _pixel_cache_file_hash(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _pixel_cache_key(
+    old_pdf_path: str,
+    new_pdf_path: str,
+    threshold: int,
+    min_area: int,
+    dpi: int,
+) -> str:
+    return ":".join(
+        [
+            "pixel-v2",
+            _pixel_cache_file_hash(old_pdf_path),
+            _pixel_cache_file_hash(new_pdf_path),
+            str(threshold),
+            str(min_area),
+            str(dpi),
+        ]
+    )
+
+
+def _clone_diff_items(items: list[DiffItem]) -> list[DiffItem]:
+    return [item.model_copy(deep=True) for item in items]
+
+
+def clear_pixel_diff_cache() -> None:
+    with _PIXEL_CACHE_LOCK:
+        _PIXEL_CACHE.clear()
+        for event in _PIXEL_INFLIGHT.values():
+            event.set()
+        _PIXEL_INFLIGHT.clear()
+
+
+def _restore_pixel_metadata(
+    cached_stats: dict,
+    cached_warnings: list[str],
+    engine_stats: dict | None,
+    engine_warnings: list[str] | None,
+    *,
+    hit: bool,
+) -> None:
+    if engine_stats is not None:
+        engine_stats.update(copy.deepcopy(cached_stats))
+        engine_stats["pixel_cache_hit"] = hit
+    if engine_warnings is not None:
+        for warning in cached_warnings:
+            if warning not in engine_warnings:
+                engine_warnings.append(warning)
+
+
 def diff_pixels(
+    old_pdf_path: str,
+    new_pdf_path: str,
+    threshold: int = 30,
+    min_area: int = 100,
+    dpi: int = 200,
+    engine_stats: dict | None = None,
+    engine_warnings: list[str] | None = None,
+) -> list[DiffItem]:
+    """Cached facade for the expensive render/NCC/OCR pixel pipeline."""
+    from config import settings
+
+    if not settings.enable_pixel_diff_cache:
+        if engine_stats is not None:
+            engine_stats["pixel_cache_hit"] = False
+        return _diff_pixels_uncached(
+            old_pdf_path,
+            new_pdf_path,
+            threshold=threshold,
+            min_area=min_area,
+            dpi=dpi,
+            engine_stats=engine_stats,
+            engine_warnings=engine_warnings,
+        )
+
+    try:
+        cache_key = _pixel_cache_key(old_pdf_path, new_pdf_path, threshold, min_area, dpi)
+    except OSError:
+        return _diff_pixels_uncached(
+            old_pdf_path,
+            new_pdf_path,
+            threshold=threshold,
+            min_area=min_area,
+            dpi=dpi,
+            engine_stats=engine_stats,
+            engine_warnings=engine_warnings,
+        )
+
+    with _PIXEL_CACHE_LOCK:
+        cached = _PIXEL_CACHE.get(cache_key)
+        if cached is not None:
+            _PIXEL_CACHE.move_to_end(cache_key)
+            items, stats, warnings = cached
+            _restore_pixel_metadata(stats, warnings, engine_stats, engine_warnings, hit=True)
+            return _clone_diff_items(items)
+        inflight = _PIXEL_INFLIGHT.get(cache_key)
+        if inflight is None:
+            inflight = threading.Event()
+            _PIXEL_INFLIGHT[cache_key] = inflight
+            is_owner = True
+        else:
+            is_owner = False
+
+    if not is_owner:
+        inflight.wait()
+        with _PIXEL_CACHE_LOCK:
+            cached = _PIXEL_CACHE.get(cache_key)
+            if cached is not None:
+                _PIXEL_CACHE.move_to_end(cache_key)
+                items, stats, warnings = cached
+                _restore_pixel_metadata(stats, warnings, engine_stats, engine_warnings, hit=True)
+                return _clone_diff_items(items)
+
+    local_stats: dict = {}
+    local_warnings: list[str] = []
+    try:
+        items = _diff_pixels_uncached(
+            old_pdf_path,
+            new_pdf_path,
+            threshold=threshold,
+            min_area=min_area,
+            dpi=dpi,
+            engine_stats=local_stats,
+            engine_warnings=local_warnings,
+        )
+        cached_items = _clone_diff_items(items)
+        with _PIXEL_CACHE_LOCK:
+            _PIXEL_CACHE[cache_key] = (cached_items, copy.deepcopy(local_stats), list(local_warnings))
+            _PIXEL_CACHE.move_to_end(cache_key)
+            while len(_PIXEL_CACHE) > max(1, int(settings.pixel_diff_cache_max_entries)):
+                _PIXEL_CACHE.popitem(last=False)
+        _restore_pixel_metadata(local_stats, local_warnings, engine_stats, engine_warnings, hit=False)
+        return items
+    finally:
+        if is_owner:
+            with _PIXEL_CACHE_LOCK:
+                event = _PIXEL_INFLIGHT.pop(cache_key, None)
+                if event:
+                    event.set()
+
+
+def _diff_pixels_uncached(
     old_pdf_path: str,
     new_pdf_path: str,
     threshold: int = 30,

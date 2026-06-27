@@ -13,19 +13,19 @@ router = APIRouter(prefix="/api/projects", tags=["project"], dependencies=[Depen
 
 
 @router.post("", response_model=ProjectResponse)
-async def create_project_api(payload: ProjectCreateRequest):
+def create_project_api(payload: ProjectCreateRequest):
     row = create_project_row(payload.name)
     return ProjectResponse(**row)
 
 
 @router.get("", response_model=list[ProjectResponse])
-async def list_projects_api():
+def list_projects_api():
     rows = list_projects()
     return [ProjectResponse(**row) for row in rows]
 
 
 @router.get("/all/comparisons/export")
-async def export_all_comparisons_csv():
+def export_all_comparisons_csv():
     from models.database import list_all_comparisons_unlimited
     rows = list_all_comparisons_unlimited()
 
@@ -56,13 +56,13 @@ async def export_all_comparisons_csv():
 
 
 @router.get("/all/comparisons")
-async def list_all_projects_comparisons_api(limit: int = 10):
+def list_all_projects_comparisons_api(limit: int = 10):
     from models.database import list_all_comparisons
     return list_all_comparisons(limit)
 
 
 @router.delete("/all/comparisons/{comparison_id}")
-async def delete_comparison_api(comparison_id: str):
+def delete_comparison_api(comparison_id: str):
     from models.database import delete_comparison
     deleted = delete_comparison(comparison_id)
     if not deleted:
@@ -71,7 +71,7 @@ async def delete_comparison_api(comparison_id: str):
 
 
 @router.get("/{project_id}/comparisons")
-async def list_project_comparisons_api(project_id: str):
+def list_project_comparisons_api(project_id: str):
     if not project_exists(project_id):
         raise HTTPException(status_code=404, detail="Project not found")
     return list_project_comparisons(project_id)

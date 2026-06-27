@@ -1,4 +1,6 @@
 from models.diff_models import BBox, DiffItem, DiffType
+from config import settings
+from services import diff_service
 from services.diff_service import (
     _compact_numeric_ocr_pair,
     _coalesce_reviewable_visual_items,
@@ -8,7 +10,9 @@ from services.diff_service import (
     _is_reliable_ocr_text,
     _numeric_ocr_confusion_count,
     _same_native_text_is_rendering_noise,
+    clear_pixel_diff_cache,
     diff_aligned_paragraphs,
+    diff_pixels,
     generate_diff_report,
     merge_diff_results,
 )
@@ -20,6 +24,46 @@ def _paragraph(text: str, page: int = 1, y0: float = 100.0, y1: float = 120.0) -
         text=text,
         bbox=BBox(page=page, x0=10.0, y0=y0, x1=200.0, y1=y1),
     )
+
+
+def test_pixel_diff_cache_reuses_result_and_restores_metadata(monkeypatch):
+    clear_pixel_diff_cache()
+    calls = 0
+
+    def fake_uncached(*_args, engine_stats=None, engine_warnings=None, **_kwargs):
+        nonlocal calls
+        calls += 1
+        engine_stats["pixel_ocr_calls_total"] = 4
+        engine_warnings.append("pixel: test warning")
+        return [
+            DiffItem(
+                id="",
+                diff_type=DiffType.IMAGE_DIFF,
+                old_bbox=BBox(page=1, x0=1, y0=1, x1=2, y1=2),
+                new_bbox=BBox(page=1, x0=1, y0=1, x1=2, y1=2),
+                context="Page 1 表格/版面變更",
+                confidence=0.95,
+            )
+        ]
+
+    monkeypatch.setattr(settings, "enable_pixel_diff_cache", True)
+    monkeypatch.setattr(settings, "pixel_diff_cache_max_entries", 2)
+    monkeypatch.setattr(diff_service, "_pixel_cache_key", lambda *_args: "same-pair")
+    monkeypatch.setattr(diff_service, "_diff_pixels_uncached", fake_uncached)
+
+    first_stats, first_warnings = {}, []
+    first = diff_pixels("old.pdf", "new.pdf", engine_stats=first_stats, engine_warnings=first_warnings)
+    first[0].id = "mutated"
+    second_stats, second_warnings = {}, []
+    second = diff_pixels("old.pdf", "new.pdf", engine_stats=second_stats, engine_warnings=second_warnings)
+
+    assert calls == 1
+    assert first_stats["pixel_cache_hit"] is False
+    assert second_stats["pixel_cache_hit"] is True
+    assert second_stats["pixel_ocr_calls_total"] == 4
+    assert second_warnings == ["pixel: test warning"]
+    assert second[0].id == ""
+    clear_pixel_diff_cache()
 
 
 def test_generate_diff_report_detects_number_change():

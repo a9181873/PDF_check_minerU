@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { isAxiosError } from 'axios';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, BarChart3, ChevronDown, ClipboardList, Contrast, Download, Eye, EyeOff, LogOut, Save, Settings, ZoomIn, ZoomOut } from 'lucide-react';
@@ -11,7 +11,7 @@ import VerificationHistoryModal from '../components/VerificationHistoryModal';
 import { checklistApi, compareApi, reviewApi, archiveApi, createDownloadUrl, createPdfViewerSource, createWebSocketUrl } from '../services/api';
 import type { PdfViewerSource } from '../services/api';
 import { ChecklistItem, DiffItem, DiffReport } from '../services/types';
-import { useCompareStore } from '../stores/compareStore';
+import { calculateDiffStats, useCompareStore } from '../stores/compareStore';
 import { useCrossWindowSync } from '../hooks/useCrossWindowSync';
 import { useAuthStore } from '../stores/authStore';
 
@@ -55,7 +55,14 @@ const ComparePage: React.FC = () => {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
   const wsConnectionRef = useRef<WebSocket | null>(null);
+  const pollingControllersRef = useRef<Set<AbortController>>(new Set());
+  const terminalStatusRef = useRef(false);
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const abortPollingRequests = useCallback(() => {
+    pollingControllersRef.current.forEach((controller) => controller.abort());
+    pollingControllersRef.current.clear();
+  }, []);
 
   const {
     status,
@@ -89,7 +96,6 @@ const ComparePage: React.FC = () => {
     closeDiffPopup,
     confirmDiff: storeConfirmDiff,
     flagDiff: storeFlagDiff,
-    getStats,
   } = useCompareStore();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -156,6 +162,12 @@ const ComparePage: React.FC = () => {
   }, [taskId, setTaskId]);
 
   useEffect(() => {
+    terminalStatusRef.current = false;
+    abortPollingRequests();
+    return abortPollingRequests;
+  }, [abortPollingRequests, taskId]);
+
+  useEffect(() => {
     if (!taskId) {
       return undefined;
     }
@@ -165,7 +177,7 @@ const ComparePage: React.FC = () => {
     let reconnectTimer: number | undefined;
 
     const connectWS = async () => {
-      if (!isActive) {
+      if (!isActive || terminalStatusRef.current) {
         return;
       }
 
@@ -175,7 +187,7 @@ const ComparePage: React.FC = () => {
       } catch {
         return;
       }
-      if (!isActive) {
+      if (!isActive || terminalStatusRef.current) {
         return;
       }
 
@@ -199,6 +211,7 @@ const ComparePage: React.FC = () => {
 
           if (message.event === 'progress') {
             const progress = message.data ?? {};
+            setError(null);
             setStatus({
               task_id: taskId,
               status: progress.status ?? 'parsing',
@@ -216,6 +229,8 @@ const ComparePage: React.FC = () => {
                 : message.data;
 
             if (payload) {
+              terminalStatusRef.current = true;
+              abortPollingRequests();
               setStatus({
                 task_id: taskId,
                 status: 'done',
@@ -232,10 +247,34 @@ const ComparePage: React.FC = () => {
           }
 
           if (message.event === 'error') {
-            setError(message.data?.message ?? 'WebSocket 連線失敗');
+            const messageText = message.data?.message ?? 'WebSocket 連線失敗';
+            terminalStatusRef.current = true;
+            abortPollingRequests();
+            setStatus({
+              task_id: taskId,
+              status: 'error',
+              progress_percent: 0,
+              current_step: 'failed',
+              error_message: messageText,
+            });
+            setError(messageText);
+            setIsLoading(false);
+            socket.close();
           }
         } catch {
-          setError('即時更新資料格式異常');
+          const messageText = '即時更新資料格式異常';
+          terminalStatusRef.current = true;
+          abortPollingRequests();
+          setStatus({
+            task_id: taskId,
+            status: 'error',
+            progress_percent: 0,
+            current_step: 'failed',
+            error_message: messageText,
+          });
+          setError(messageText);
+          setIsLoading(false);
+          socket.close();
         }
       };
 
@@ -243,7 +282,7 @@ const ComparePage: React.FC = () => {
         if (wsConnectionRef.current === socket) {
           wsConnectionRef.current = null;
         }
-        if (isActive && retryCount < 5) {
+        if (isActive && !terminalStatusRef.current && retryCount < 5) {
           retryCount += 1;
           reconnectTimer = window.setTimeout(() => void connectWS(), 1000 * retryCount);
         }
@@ -268,7 +307,7 @@ const ComparePage: React.FC = () => {
         }
       }
     };
-  }, [loadChecklist, setReport, setStatus, taskId]);
+  }, [abortPollingRequests, loadChecklist, setReport, setStatus, taskId]);
 
   useEffect(() => {
     if (!taskId || status?.status !== 'done') {
@@ -291,35 +330,54 @@ const ComparePage: React.FC = () => {
 
     let isActive = true;
 
+    const createPollingController = () => {
+      const controller = new AbortController();
+      pollingControllersRef.current.add(controller);
+      return controller;
+    };
+
+    const releasePollingController = (controller: AbortController) => {
+      pollingControllersRef.current.delete(controller);
+    };
+
     const loadComparison = async () => {
+      const controller = createPollingController();
       try {
         setIsLoading(true);
         setError(null);
 
-        const statusData = await compareApi.getStatus(taskId);
-        if (!isActive) {
+        const statusData = await compareApi.getStatus(taskId, controller.signal);
+        if (!isActive || terminalStatusRef.current) {
           return;
         }
+        setError(null);
         setStatus(statusData);
 
         if (statusData.status === 'done') {
-          const reportData = await compareApi.getResult(taskId);
-          if (!isActive) {
+          const reportData = await compareApi.getResult(taskId, controller.signal);
+          if (!isActive || terminalStatusRef.current) {
             return;
           }
+          terminalStatusRef.current = true;
           setReport(reportData);
-          await loadChecklist(taskId, () => isActive);
+          setIsLoading(false);
+          abortPollingRequests();
+          await loadChecklist(taskId, () => isActive && terminalStatusRef.current);
         } else if (statusData.status === 'error') {
+          terminalStatusRef.current = true;
+          setIsLoading(false);
+          abortPollingRequests();
           setError(statusData.error_message || '比較任務失敗');
         }
       } catch (err: unknown) {
-        if (!isActive) {
+        if (!isActive || controller.signal.aborted || terminalStatusRef.current) {
           return;
         }
         const detail = isAxiosError<{ detail?: string }>(err) ? err.response?.data?.detail : undefined;
         setError(detail || '載入比較結果失敗');
       } finally {
-        if (isActive) {
+        releasePollingController(controller);
+        if (isActive && !controller.signal.aborted) {
           setIsLoading(false);
         }
       }
@@ -328,39 +386,50 @@ const ComparePage: React.FC = () => {
     void loadComparison();
 
     const interval = window.setInterval(async () => {
-      if (wsConnectionRef.current?.readyState === WebSocket.OPEN) {
+      if (terminalStatusRef.current || wsConnectionRef.current?.readyState === WebSocket.OPEN) {
         return;
       }
 
+      const controller = createPollingController();
       try {
-        const statusData = await compareApi.getStatus(taskId);
-        if (!isActive) {
+        const statusData = await compareApi.getStatus(taskId, controller.signal);
+        if (!isActive || terminalStatusRef.current) {
           return;
         }
+        setError(null);
         setStatus(statusData);
 
         if (statusData.status === 'done') {
-          const reportData = await compareApi.getResult(taskId);
-          if (!isActive) {
+          const reportData = await compareApi.getResult(taskId, controller.signal);
+          if (!isActive || terminalStatusRef.current) {
             return;
           }
+          terminalStatusRef.current = true;
           setReport(reportData);
-          await loadChecklist(taskId, () => isActive);
+          setIsLoading(false);
+          abortPollingRequests();
+          await loadChecklist(taskId, () => isActive && terminalStatusRef.current);
           window.clearInterval(interval);
         } else if (statusData.status === 'error') {
+          terminalStatusRef.current = true;
+          setIsLoading(false);
+          abortPollingRequests();
           setError(statusData.error_message || '比較任務失敗');
           window.clearInterval(interval);
         }
       } catch {
         // Ignore transient polling errors; the next poll or websocket retry will recover.
+      } finally {
+        releasePollingController(controller);
       }
     }, 2000);
 
     return () => {
       isActive = false;
       window.clearInterval(interval);
+      abortPollingRequests();
     };
-  }, [loadChecklist, setReport, setStatus, taskId]);
+  }, [abortPollingRequests, loadChecklist, setReport, setStatus, taskId]);
 
   useEffect(() => {
     if (!showExportMenu) {
@@ -456,7 +525,8 @@ const ComparePage: React.FC = () => {
 
   // Any non-terminal status (including snapshotting) is still in-progress
   const isProcessing = status !== null && status.status !== 'done' && status.status !== 'error';
-  const isFetchingResult = status?.status === 'done' && !report;
+  const isFetchingResult = status?.status === 'done' && !report && !error;
+  const stats = useMemo(() => calculateDiffStats(report?.items || []), [report?.items]);
 
   if (isLoading || isProcessing || isFetchingResult) {
     return (
@@ -511,8 +581,6 @@ const ComparePage: React.FC = () => {
       </div>
     );
   }
-
-  const stats = getStats();
 
   return (
     <div className="h-screen overflow-hidden bg-[linear-gradient(180deg,_#f5f5f5_0%,_#edf3ee_100%)] flex flex-col">

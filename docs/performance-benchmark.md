@@ -39,6 +39,7 @@ python scripts/benchmark_parser.py \
   --pdf ../samples/台灣人壽臻鑽旺旺變額萬能壽險.pdf \
   --warmup 1 \
   --repeat 3 \
+  --cache-mode cold \
   --tag macbook
 ```
 
@@ -56,6 +57,7 @@ python scripts\benchmark_parser.py \
   --pdf ..\samples\台灣人壽臻鑽旺旺變額萬能壽險.pdf \
   --warmup 1 \
   --repeat 3 \
+  --cache-mode cold \
   --tag windows
 ```
 
@@ -67,7 +69,13 @@ python scripts\benchmark_parser.py \
   - `peak_rss_bytes`
   - `avg_cpu_percent` / `peak_cpu_percent`
   - `engine`
+  - `table_engine`
+  - `cache_hit`
 - `files[].summary`: 每份 PDF 的聚合結果（平均、最小、最大）
+
+`--cache-mode cold` 會在每次量測前清除程序內解析快取，適合比較引擎本身；`warm` 保留 SHA-256 快取，適合量測重複比對。同一程序產生的 Java／OCR 子程序會納入 RSS/CPU；獨立 MinerU 容器仍需搭配容器監控判讀。
+
+完整比對報告的 `engine_stats.pixel_cache_hit` 會標示像素/NCC/OCR 是否直接命中配對快取；`parser_routing.old/new.cache_hit` 則是兩側文件解析快取。
 
 ## 真實比對資源紀錄
 

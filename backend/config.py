@@ -36,13 +36,34 @@ class Settings(BaseSettings):
     allowed_origins: list[str] = ["http://localhost:8001"]
     max_upload_size_mb: int = 100
 
+    # Bound CPU-heavy comparison jobs so concurrent uploads cannot exhaust the
+    # API process. Pending work remains in-process; a durable queue can replace
+    # this runner later without changing the orchestrator.
+    compare_max_concurrency: int = 1
+    compare_max_pending_tasks: int = 4
+
     # MinerU REST API endpoint (empty = disabled, falls back to Docling)
     # Example: "http://mineru-api:18080" (docker-compose internal) or "http://localhost:18080"
     mineru_api_url: str = ""
-    # Match the original MinerU build behavior: run MinerU and Docling together
-    # for table parsing so a slow MinerU call does not block Docling's cell boxes.
+    # Legacy A/B controls retained for compatibility with older deployments.
+    # Production routing is controlled by table_parser_strategy below.
     enable_docling_parallel: bool = True
     mineru_preferred_wait_seconds: float = 0.0
+    # Deterministic table routing avoids starting MinerU and Docling together and
+    # then discarding the slower result. ``parallel_race`` preserves the legacy
+    # behavior for regression comparison; ``opendataloader_first`` is optional
+    # and falls back cleanly when its Python package / Java runtime is absent.
+    table_parser_strategy: str = "docling_first"
+    heavy_parser_max_concurrency: int = 1
+    mineru_timeout_seconds: float = 300.0
+    enable_lightweight_table_probe: bool = True
+
+    # In-process SHA-256 cache. Parsed documents are read-only downstream, so a
+    # small bounded cache removes duplicate work without persisting pickle data.
+    enable_parser_cache: bool = True
+    parser_cache_max_entries: int = 8
+    enable_pixel_diff_cache: bool = True
+    pixel_diff_cache_max_entries: int = 8
 
     # Image-only PDFs: also parse both sides via MinerU forced-OCR and diff text
     # by position, to recover large CJK block changes (e.g. an added clause) and
@@ -126,6 +147,41 @@ class Settings(BaseSettings):
         if strategy not in {"alignment", "heuristic", "hybrid"}:
             raise ValueError("image_text_recall_strategy must be 'alignment', 'heuristic', or 'hybrid'")
         return strategy
+
+    @field_validator("table_parser_strategy", mode="before")
+    @classmethod
+    def normalize_table_parser_strategy(cls, value):
+        strategy = str(value or "docling_first").strip().lower()
+        allowed = {
+            "docling_first",
+            "mineru_first",
+            "opendataloader_first",
+            "parallel_race",
+        }
+        if strategy not in allowed:
+            raise ValueError(f"table_parser_strategy must be one of {sorted(allowed)}")
+        return strategy
+
+    @field_validator(
+        "heavy_parser_max_concurrency",
+        "compare_max_concurrency",
+        "parser_cache_max_entries",
+        "pixel_diff_cache_max_entries",
+        mode="before",
+    )
+    @classmethod
+    def normalize_positive_integer(cls, value):
+        return max(1, int(value))
+
+    @field_validator("compare_max_pending_tasks", mode="before")
+    @classmethod
+    def normalize_non_negative_integer(cls, value):
+        return max(0, int(value))
+
+    @field_validator("mineru_timeout_seconds", mode="before")
+    @classmethod
+    def normalize_positive_timeout(cls, value):
+        return max(1.0, float(value))
 
 
 settings = Settings()

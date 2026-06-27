@@ -71,6 +71,37 @@ interface CompareState {
   setScale: (scale: number) => void;
 }
 
+function filterDiffItems(items: DiffItem[], searchQuery: string, reviewedOnly: boolean): DiffItem[] {
+  const query = searchQuery.trim().toLowerCase();
+  return items.filter((item) => {
+    const matchesSearch = query === '' ||
+      item.old_value?.toLowerCase().includes(query) ||
+      item.new_value?.toLowerCase().includes(query) ||
+      item.context?.toLowerCase().includes(query) ||
+      item.id.toLowerCase().includes(query) ||
+      (item.reviewed_by || '').toLowerCase().includes(query);
+    const matchesReviewed = !reviewedOnly || !item.reviewed;
+    return Boolean(matchesSearch && matchesReviewed);
+  });
+}
+
+export function calculateDiffStats(items: DiffItem[]) {
+  const stats = items.reduce(
+    (result, item) => {
+      result.total += 1;
+      if (item.reviewed) result.reviewed += 1;
+      if (item.diff_type === 'added') result.added += 1;
+      if (item.diff_type === 'deleted') result.deleted += 1;
+      if (item.diff_type === 'text_modified' || item.diff_type === 'number_modified') result.modified += 1;
+      if (item.flagged) result.flagged += 1;
+      if (item.diff_type === 'image_diff') result.visual += 1;
+      return result;
+    },
+    { total: 0, reviewed: 0, added: 0, deleted: 0, modified: 0, flagged: 0, visual: 0 }
+  );
+  return { ...stats, pending: stats.total - stats.reviewed };
+}
+
 export const useCompareStore = create<CompareState>()(
   devtools(
     (set, get) => ({
@@ -118,12 +149,12 @@ export const useCompareStore = create<CompareState>()(
 
       setReport: (report) => {
         const items = report.items || [];
-        const { selectedDiffId } = get();
+        const { reviewedOnly, searchQuery, selectedDiffId } = get();
         // Preserve existing selection if it's still valid in the new report
         const selectionStillValid = selectedDiffId && items.some((i) => i.id === selectedDiffId);
         set({
           report,
-          filteredItems: items,
+          filteredItems: filterDiffItems(items, searchQuery, reviewedOnly),
           selectedDiffId: selectionStillValid ? selectedDiffId : (items.length > 0 ? items[0].id : null),
         });
       },
@@ -131,21 +162,10 @@ export const useCompareStore = create<CompareState>()(
       setSearchQuery: (query) => {
         const { report, reviewedOnly } = get();
         if (!report) return;
-        
-        const items = report.items.filter(item => {
-          const matchesSearch = query === '' || 
-            item.old_value?.toLowerCase().includes(query.toLowerCase()) ||
-            item.new_value?.toLowerCase().includes(query.toLowerCase()) ||
-            item.context?.toLowerCase().includes(query.toLowerCase()) ||
-            item.id.toLowerCase().includes(query.toLowerCase()) ||
-            (item.reviewed_by || '').toLowerCase().includes(query.toLowerCase());
-          
-          const matchesReviewed = !reviewedOnly || !item.reviewed;
-          
-          return matchesSearch && matchesReviewed;
+        set({
+          searchQuery: query,
+          filteredItems: filterDiffItems(report.items, query, reviewedOnly),
         });
-        
-        set({ searchQuery: query, filteredItems: items });
       },
 
       setSelectedDiffId: (id) => set({ selectedDiffId: id }),
@@ -153,23 +173,11 @@ export const useCompareStore = create<CompareState>()(
       toggleReviewedOnly: () => {
         const { reviewedOnly, report, searchQuery } = get();
         const newReviewedOnly = !reviewedOnly;
-        
         if (!report) return;
-        
-        const items = report.items.filter(item => {
-          const matchesSearch = searchQuery === '' || 
-            item.old_value?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.new_value?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.context?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (item.reviewed_by || '').toLowerCase().includes(searchQuery.toLowerCase());
-          
-          const matchesReviewed = !newReviewedOnly || !item.reviewed;
-          
-          return matchesSearch && matchesReviewed;
+        set({
+          reviewedOnly: newReviewedOnly,
+          filteredItems: filterDiffItems(report.items, searchQuery, newReviewedOnly),
         });
-        
-        set({ reviewedOnly: newReviewedOnly, filteredItems: items });
       },
 
       setChecklist: (checklist) => set({ checklist }),
@@ -224,17 +232,10 @@ export const useCompareStore = create<CompareState>()(
             : item
         );
         const updatedReport = { ...report, items: updatedItems };
-        const filtered = updatedItems.filter(item => {
-          const matchesSearch = searchQuery === '' ||
-            item.old_value?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.new_value?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.context?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (item.reviewed_by || '').toLowerCase().includes(searchQuery.toLowerCase());
-          const matchesReviewed = !reviewedOnly || !item.reviewed;
-          return matchesSearch && matchesReviewed;
+        set({
+          report: updatedReport,
+          filteredItems: filterDiffItems(updatedItems, searchQuery, reviewedOnly),
         });
-        set({ report: updatedReport, filteredItems: filtered });
       },
 
       flagDiff: async (diffId, reviewer, reviewedAt) => {
@@ -247,17 +248,10 @@ export const useCompareStore = create<CompareState>()(
             : item
         );
         const updatedReport = { ...report, items: updatedItems };
-        const filtered = updatedItems.filter(item => {
-          const matchesSearch = searchQuery === '' ||
-            item.old_value?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.new_value?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.context?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (item.reviewed_by || '').toLowerCase().includes(searchQuery.toLowerCase());
-          const matchesReviewed = !reviewedOnly || !item.reviewed;
-          return matchesSearch && matchesReviewed;
+        set({
+          report: updatedReport,
+          filteredItems: filterDiffItems(updatedItems, searchQuery, reviewedOnly),
         });
-        set({ report: updatedReport, filteredItems: filtered });
       },
 
       getFilteredChecklist: () => {
@@ -273,23 +267,7 @@ export const useCompareStore = create<CompareState>()(
 
       getStats: () => {
         const { report } = get();
-        if (!report) {
-          return { total: 0, reviewed: 0, pending: 0, added: 0, deleted: 0, modified: 0, flagged: 0, visual: 0 };
-        }
-
-        const items = report.items;
-        const total = items.length;
-        const reviewed = items.filter(item => item.reviewed).length;
-        const pending = total - reviewed;
-        const added = items.filter(item => item.diff_type === 'added').length;
-        const deleted = items.filter(item => item.diff_type === 'deleted').length;
-        const modified = items.filter(item =>
-          item.diff_type === 'text_modified' || item.diff_type === 'number_modified'
-        ).length;
-        const flagged = items.filter(item => item.flagged).length;
-        const visual = items.filter(item => item.diff_type === 'image_diff').length;
-
-        return { total, reviewed, pending, added, deleted, modified, flagged, visual };
+        return calculateDiffStats(report?.items || []);
       },
     }),
     { name: 'compare-store' }

@@ -24,7 +24,7 @@ def _load_report(comparison_id: str):
 
 
 @router.post("/{comparison_id}/confirm", response_model=ReviewActionResponse)
-async def confirm_diff(
+def confirm_diff(
     comparison_id: str,
     payload: ReviewActionRequest,
     current_user: dict = Depends(get_current_user),
@@ -71,7 +71,7 @@ async def confirm_diff(
 
 
 @router.get("/{comparison_id}/summary", response_model=ReviewSummaryResponse)
-async def review_summary(comparison_id: str):
+def review_summary(comparison_id: str):
     report = _load_report(comparison_id)
     if not report:
         raise HTTPException(status_code=404, detail="Comparison not found")

@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from services.parser_service import parse_pdf  # noqa: E402
+from services.parser_service import clear_parse_cache, parse_pdf  # noqa: E402
 
 
 @dataclass
@@ -50,6 +50,8 @@ class RunRecord:
     success: bool
     error: str | None
     engine: str | None
+    table_engine: str | None
+    cache_hit: bool | None
     pages: int | None
     paragraphs: int | None
     tables: int | None
@@ -67,6 +69,7 @@ class ResourceMonitor:
         self._stop = threading.Event()
         self.samples: list[SamplePoint] = []
         self._thread = threading.Thread(target=self._run, daemon=True)
+        self._tracked: dict[int, psutil.Process] = {}
 
     def start(self) -> None:
         self._thread.start()
@@ -76,15 +79,37 @@ class ResourceMonitor:
         self._thread.join(timeout=2.0)
 
     def _run(self) -> None:
-        # First call initializes psutil CPU counters.
-        self._proc.cpu_percent(interval=None)
+        def process_tree() -> list[psutil.Process]:
+            processes = [self._proc]
+            try:
+                processes.extend(self._proc.children(recursive=True))
+            except psutil.Error:
+                pass
+            live = {proc.pid: proc for proc in processes if proc.is_running()}
+            for pid, proc in live.items():
+                if pid not in self._tracked:
+                    try:
+                        proc.cpu_percent(interval=None)
+                    except psutil.Error:
+                        continue
+                    self._tracked[pid] = proc
+            self._tracked = {pid: proc for pid, proc in self._tracked.items() if pid in live}
+            return list(self._tracked.values())
+
+        process_tree()
         while not self._stop.is_set():
             try:
-                mem = self._proc.memory_info()
-                cpu = self._proc.cpu_percent(interval=None)
+                rss = 0
+                cpu = 0.0
+                for proc in process_tree():
+                    try:
+                        rss += proc.memory_info().rss
+                        cpu += proc.cpu_percent(interval=None)
+                    except psutil.Error:
+                        continue
             except psutil.Error:
                 break
-            self.samples.append(SamplePoint(ts=time.time(), rss_bytes=int(mem.rss), cpu_percent=float(cpu)))
+            self.samples.append(SamplePoint(ts=time.time(), rss_bytes=int(rss), cpu_percent=float(cpu)))
             time.sleep(self._interval_sec)
 
 
@@ -150,6 +175,8 @@ def run_single_parse(pdf_path: Path, run_index: int, sample_interval_sec: float)
     success = True
     error = None
     engine = None
+    table_engine = None
+    cache_hit = None
     pages = None
     paragraphs = None
     tables = None
@@ -157,6 +184,8 @@ def run_single_parse(pdf_path: Path, run_index: int, sample_interval_sec: float)
     try:
         parsed = parse_pdf(str(pdf_path))
         engine = str(parsed.raw_json.get("engine")) if parsed.raw_json else None
+        table_engine = str(parsed.raw_json.get("table_engine")) if parsed.raw_json.get("table_engine") else None
+        cache_hit = bool((parsed.raw_json.get("routing") or {}).get("cache_hit", False))
         pages = parsed.pages
         paragraphs = len(parsed.paragraphs)
         tables = len(parsed.tables)
@@ -178,6 +207,8 @@ def run_single_parse(pdf_path: Path, run_index: int, sample_interval_sec: float)
         success=success,
         error=error,
         engine=engine,
+        table_engine=table_engine,
+        cache_hit=cache_hit,
         pages=pages,
         paragraphs=paragraphs,
         tables=tables,
@@ -232,6 +263,12 @@ def parse_args() -> argparse.Namespace:
         help="Output directory for benchmark reports",
     )
     parser.add_argument("--tag", type=str, default="", help="Optional tag for output file names")
+    parser.add_argument(
+        "--cache-mode",
+        choices=("cold", "warm"),
+        default="cold",
+        help="Clear parser cache before each run, or measure warm-cache behavior",
+    )
     return parser.parse_args()
 
 
@@ -282,6 +319,7 @@ def main() -> int:
             "warmup": args.warmup,
             "sample_interval_sec": args.sample_interval,
             "tag": args.tag,
+            "cache_mode": args.cache_mode,
         },
         "hardware": collect_hardware_snapshot(),
         "files": [],
@@ -291,11 +329,15 @@ def main() -> int:
         print(f"\n=== Benchmarking: {pdf_path.name} ===")
         for i in range(args.warmup):
             print(f"Warmup {i + 1}/{args.warmup} ...")
+            if args.cache_mode == "cold":
+                clear_parse_cache()
             _ = run_single_parse(pdf_path, run_index=-(i + 1), sample_interval_sec=args.sample_interval)
 
         runs: list[RunRecord] = []
         for i in range(args.repeat):
             print(f"Run {i + 1}/{args.repeat} ...")
+            if args.cache_mode == "cold":
+                clear_parse_cache()
             rec = run_single_parse(pdf_path, run_index=i + 1, sample_interval_sec=args.sample_interval)
             runs.append(rec)
             print(

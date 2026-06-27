@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from pathlib import Path
+from threading import RLock
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
@@ -15,20 +16,23 @@ router = APIRouter(prefix="/api/checklist", tags=["checklist"], dependencies=[De
 # Bounded LRU cache — falls back to DB on miss. Capped to prevent memory growth.
 _CACHE_MAX = 50
 CHECKLIST_STORE: "OrderedDict[str, list[ChecklistItem]]" = OrderedDict()
+_CACHE_LOCK = RLock()
 
 
 def _cache_set(comparison_id: str, items: list[ChecklistItem]) -> None:
-    CHECKLIST_STORE[comparison_id] = items
-    CHECKLIST_STORE.move_to_end(comparison_id)
-    while len(CHECKLIST_STORE) > _CACHE_MAX:
-        CHECKLIST_STORE.popitem(last=False)
+    with _CACHE_LOCK:
+        CHECKLIST_STORE[comparison_id] = items
+        CHECKLIST_STORE.move_to_end(comparison_id)
+        while len(CHECKLIST_STORE) > _CACHE_MAX:
+            CHECKLIST_STORE.popitem(last=False)
 
 
 def _cache_get(comparison_id: str) -> list[ChecklistItem] | None:
-    items = CHECKLIST_STORE.get(comparison_id)
-    if items is not None:
-        CHECKLIST_STORE.move_to_end(comparison_id)
-    return items
+    with _CACHE_LOCK:
+        items = CHECKLIST_STORE.get(comparison_id)
+        if items is not None:
+            CHECKLIST_STORE.move_to_end(comparison_id)
+        return items
 
 
 def _load_report(comparison_id: str):
@@ -39,7 +43,7 @@ def _load_report(comparison_id: str):
 
 
 @router.post("/{comparison_id}/import")
-async def import_checklist_api(comparison_id: str, checklist_csv: UploadFile = File(...)):
+def import_checklist_api(comparison_id: str, checklist_csv: UploadFile = File(...)):
     report = _load_report(comparison_id)
     if not report:
         raise HTTPException(status_code=404, detail="Comparison not found")
@@ -48,7 +52,7 @@ async def import_checklist_api(comparison_id: str, checklist_csv: UploadFile = F
     temp_file = settings.uploads_dir / f"{comparison_id}_checklist{suffix}"
     try:
         with temp_file.open("wb") as fh:
-            fh.write(await checklist_csv.read())
+            fh.write(checklist_csv.file.read())
         checklist = import_checklist(str(temp_file))
     finally:
         try:
@@ -65,7 +69,7 @@ async def import_checklist_api(comparison_id: str, checklist_csv: UploadFile = F
 
 
 @router.get("/{comparison_id}")
-async def list_checklist_api(comparison_id: str):
+def list_checklist_api(comparison_id: str):
     cached = _cache_get(comparison_id)
     if cached is not None:
         return cached
@@ -77,7 +81,7 @@ async def list_checklist_api(comparison_id: str):
 
 
 @router.patch("/{comparison_id}/{item_id}")
-async def patch_checklist_item(comparison_id: str, item_id: str, payload: dict):
+def patch_checklist_item(comparison_id: str, item_id: str, payload: dict):
     items = _cache_get(comparison_id)
     if not items:
         items = get_checklist(comparison_id)

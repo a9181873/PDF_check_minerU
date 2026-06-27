@@ -74,7 +74,7 @@ def _assert_archive_ready(comparison_id: str, report: DiffReport) -> None:
 
 
 @router.post("/{comparison_id}/verify")
-async def verify_and_archive(
+def verify_and_archive(
     comparison_id: str,
     payload: VerifyRequest,
     current_user: dict = Depends(get_current_user),
@@ -129,7 +129,7 @@ async def verify_and_archive(
 
 
 @router.get("/{comparison_id}/history")
-async def get_history(comparison_id: str):
+def get_history(comparison_id: str):
     archive = get_archive_by_comparison(comparison_id)
     if not archive:
         return {"archive": None, "sessions": [], "review_logs": []}
@@ -148,13 +148,13 @@ async def get_history(comparison_id: str):
 
 
 @router.get("/by-archive/{archive_id}/sessions")
-async def get_sessions_by_archive(archive_id: str):
+def get_sessions_by_archive(archive_id: str):
     sessions = get_verification_sessions_by_archive(archive_id)
     return {"sessions": sessions}
 
 
 @router.get("/files/{archive_id}/{file_type}")
-async def download_archive_file(archive_id: str, file_type: str):
+def download_archive_file(archive_id: str, file_type: str):
     from models.database import get_connection
     with get_connection() as conn:
         row = conn.execute(

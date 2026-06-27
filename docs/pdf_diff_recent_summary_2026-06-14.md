@@ -26,7 +26,7 @@
 正式差異清單採分層策略，不是全頁 OCR：
 
 1. 有文字層 PDF：優先用 PyMuPDF / fitz 文字層與表格層。
-2. 表格：MinerU + Docling 維持並行與互補，不要退回單一 fallback。
+2. 表格（2026-06-27 更新）：先做 PyMuPDF 輕量快篩；疑似表格才依 Docling → MinerU 循序 fallback。舊雙引擎競速僅供 A/B。
 3. image-only PDF：先 pixel diff 找差異頁與差異框。
 4. 局部 OCR：只在 header/footer priority field、小型差異框、可靠文字/數字訊號上使用。
 5. PaddleOCR：目前只做 A/B metadata，預設不進正式差異。
@@ -86,4 +86,3 @@ git diff --check
 | 臻美利 | `total=4`, 大段註解內容差異與 footer。 |
 
 單元測試：`backend/tests` 共 107 passed。
-

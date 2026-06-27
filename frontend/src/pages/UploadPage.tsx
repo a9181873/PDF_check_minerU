@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { isAxiosError } from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { Upload, File, Folder, AlertCircle, CheckCircle, XCircle, Clock, ChevronRight, Search, Download, LogOut, Settings, User, Trash2, Hash } from 'lucide-react';
+import { Folder, AlertCircle, CheckCircle, XCircle, Clock, ChevronRight, Search, Download, LogOut, Settings, User, Trash2, Hash } from 'lucide-react';
+import FileUploadArea from '../components/FileUploadArea';
 import { compareApi, projectApi, createDownloadUrl } from '../services/api';
 import { ComparisonInfo } from '../services/types';
 import { useAuthStore } from '../stores/authStore';
@@ -134,7 +135,7 @@ const UploadPage: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [oldFile, newFile]);
 
-  const validateFile = (file: File): boolean => {
+  const validateFile = useCallback((file: File): boolean => {
     if (!file.name.toLowerCase().endsWith('.pdf')) {
       setError('僅支援 PDF 檔案格式');
       return false;
@@ -144,9 +145,9 @@ const UploadPage: React.FC = () => {
       return false;
     }
     return true;
-  };
+  }, []);
 
-  const handleFileSelect = (side: 'old' | 'new', files: FileList | null) => {
+  const handleFileSelect = useCallback((side: 'old' | 'new', files: FileList | null) => {
     if (!files || files.length === 0) return;
     
     const file = files[0];
@@ -158,7 +159,7 @@ const UploadPage: React.FC = () => {
     } else {
       setNewFile(file);
     }
-  };
+  }, [validateFile]);
 
   const handleDrop = useCallback((e: React.DragEvent, side: 'old' | 'new') => {
     e.preventDefault();
@@ -176,7 +177,7 @@ const UploadPage: React.FC = () => {
         }
       }
     }
-  }, []);
+  }, [validateFile]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -221,76 +222,6 @@ const UploadPage: React.FC = () => {
       setIsUploading(false);
     }
   };
-
-  const FileUploadArea = ({ side, label, file }: { side: 'old' | 'new'; label: string; file: File | null }) => (
-    <div
-      onDrop={(e) => handleDrop(e, side)}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all ${
-        isDragging ? 'border-primary-500 bg-primary-50' : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
-      }`}
-    >
-      <input
-        type="file"
-        id={`${side}-upload`}
-        className="hidden"
-        accept=".pdf"
-        onChange={(e) => handleFileSelect(side, e.target.files)}
-        disabled={isUploading}
-      />
-      
-      {file ? (
-        <div className="space-y-4">
-          <div className="flex items-center justify-center">
-            <div className="p-3 bg-green-100 rounded-full">
-              <CheckCircle className="text-green-600" size={32} />
-            </div>
-          </div>
-          <div>
-            <h3 className="font-medium text-gray-900 mb-1">{label} 已選擇</h3>
-            <div className="flex items-center justify-center space-x-2 text-gray-600">
-              <File size={16} />
-              <span className="text-sm truncate max-w-xs">{file.name}</span>
-            </div>
-            <p className="text-sm text-gray-500 mt-1">
-              {(file.size / 1024 / 1024).toFixed(2)} MB
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => side === 'old' ? setOldFile(null) : setNewFile(null)}
-            className="px-4 py-2 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
-            disabled={isUploading}
-          >
-            移除檔案
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div className="flex items-center justify-center">
-            <div className="p-3 bg-gray-100 rounded-full">
-              <Upload className="text-gray-400" size={32} />
-            </div>
-          </div>
-          <div>
-            <h3 className="font-medium text-gray-900 mb-1">{label}</h3>
-            <p className="text-gray-600">拖放 PDF 檔案到此處，或點擊選擇檔案</p>
-          </div>
-          <label
-            htmlFor={`${side}-upload`}
-            className={`inline-block px-6 py-3 rounded-lg font-medium transition-colors cursor-pointer ${
-              isUploading
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-primary-600 text-white hover:bg-primary-700'
-            }`}
-          >
-            選擇檔案
-          </label>
-        </div>
-      )}
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(0,153,68,0.10),_transparent_38%),linear-gradient(180deg,_#f5f5f5_0%,_#eef4ef_100%)] flex items-center justify-center p-4">
@@ -384,11 +315,25 @@ const UploadPage: React.FC = () => {
                 side="old"
                 label="舊版 PDF"
                 file={oldFile}
+                isDragging={isDragging}
+                isUploading={isUploading}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onFileSelect={handleFileSelect}
+                onRemove={(side) => side === 'old' ? setOldFile(null) : setNewFile(null)}
               />
               <FileUploadArea
                 side="new"
                 label="新版 PDF"
                 file={newFile}
+                isDragging={isDragging}
+                isUploading={isUploading}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onFileSelect={handleFileSelect}
+                onRemove={(side) => side === 'old' ? setOldFile(null) : setNewFile(null)}
               />
             </div>
 

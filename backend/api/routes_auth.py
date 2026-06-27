@@ -169,7 +169,7 @@ def _is_allowed_download_path(path: str) -> bool:
 
 
 @router.post("/login")
-async def login(req: LoginRequest):
+def login(req: LoginRequest):
     user = get_user_by_username(req.username)
     if not user or not verify_password(req.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="帳號或密碼錯誤")
@@ -188,7 +188,7 @@ async def login(req: LoginRequest):
 
 
 @router.get("/me")
-async def get_me(user: dict = Depends(get_current_user)):
+def get_me(user: dict = Depends(get_current_user)):
     return {
         "id": user["id"],
         "username": user["username"],
@@ -198,7 +198,7 @@ async def get_me(user: dict = Depends(get_current_user)):
 
 
 @router.post("/download-token", response_model=DownloadTokenResponse)
-async def issue_download_token(req: DownloadTokenRequest, user: dict = Depends(get_current_user)):
+def issue_download_token(req: DownloadTokenRequest, user: dict = Depends(get_current_user)):
     path = req.path.strip()
     if not _is_allowed_download_path(path):
         raise HTTPException(status_code=400, detail="不允許產生此路徑的下載票證")
@@ -226,12 +226,12 @@ class UpdateUserRequest(BaseModel):
 
 
 @router.get("/users")
-async def admin_list_users(_admin: dict = Depends(require_admin)):
+def admin_list_users(_admin: dict = Depends(require_admin)):
     return list_users()
 
 
 @router.post("/users")
-async def admin_create_user(req: CreateUserRequest, _admin: dict = Depends(require_admin)):
+def admin_create_user(req: CreateUserRequest, _admin: dict = Depends(require_admin)):
     existing = get_user_by_username(req.username)
     if existing:
         raise HTTPException(status_code=409, detail="帳號已存在")
@@ -239,7 +239,7 @@ async def admin_create_user(req: CreateUserRequest, _admin: dict = Depends(requi
 
 
 @router.put("/users/{user_id}")
-async def admin_update_user(user_id: str, req: UpdateUserRequest, _admin: dict = Depends(require_admin)):
+def admin_update_user(user_id: str, req: UpdateUserRequest, _admin: dict = Depends(require_admin)):
     if not get_user_by_id(user_id):
         raise HTTPException(status_code=404, detail="使用者不存在")
     update_user(user_id, display_name=req.display_name, password=req.password, role=req.role, is_active=req.is_active)
@@ -247,7 +247,7 @@ async def admin_update_user(user_id: str, req: UpdateUserRequest, _admin: dict =
 
 
 @router.delete("/users/{user_id}")
-async def admin_delete_user(user_id: str, admin: dict = Depends(require_admin)):
+def admin_delete_user(user_id: str, admin: dict = Depends(require_admin)):
     if user_id == admin["id"]:
         raise HTTPException(status_code=400, detail="不可刪除自己的帳號")
     if not delete_user(user_id):

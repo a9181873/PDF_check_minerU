@@ -1,14 +1,10 @@
 import io
-import logging
 import re
-import threading
-import time
 import uuid
 import zipfile
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 
 from api.routes_auth import get_current_user
@@ -22,22 +18,17 @@ from models.database import (
     get_comparison_report,
     get_snapshot_dir,
     project_exists,
-    save_comparison_error,
-    save_diff_report,
-    save_markdown_paths,
-    save_snapshot_dir,
     update_comparison_hashes,
     update_comparison_status,
 )
 from models.schemas import CompareStatusResponse, UploadResponse
 from services.archive_service import compute_pdf_hash
-from services.diff_service import generate_diff_report
-from services.parser_service import parse_pdf, save_markdown
+from services.compare_job_runner import COMPARE_JOB_RUNNER
+from services.compare_orchestrator import fail_compare_task
 
 router = APIRouter(prefix="/api/compare", tags=["compare"], dependencies=[Depends(get_current_user)])
 
 _PDF_CACHE_HEADERS = {"Cache-Control": "private, max-age=86400"}
-_logger = logging.getLogger(__name__)
 
 
 def _assert_pdf(file: UploadFile) -> None:
@@ -79,141 +70,6 @@ def _save_upload(file: UploadFile, dest_dir: Path, task_id: str) -> Path:
     return path
 
 
-def _set_task_progress(task_id: str, status: str, percent: int, step: str) -> None:
-    def updater(state):
-        state.status = status
-        state.progress_percent = percent
-        state.current_step = step
-
-    TASK_STORE.update(task_id, updater)
-
-
-def _set_task_error(task_id: str, message: str) -> None:
-    def updater(state):
-        state.status = "error"
-        state.current_step = "failed"
-        state.error_message = message
-
-    TASK_STORE.update(task_id, updater)
-
-
-def _markdown_output_paths(task_id: str) -> tuple[Path, Path]:
-    return (
-        settings.markdown_export_dir / f"{task_id}_old.md",
-        settings.markdown_export_dir / f"{task_id}_new.md",
-    )
-
-
-def _elapsed_since(started_at: float) -> float:
-    return round(time.perf_counter() - started_at, 3)
-
-
-def _parse_pdf_with_timing(file_path: str):
-    started_at = time.perf_counter()
-    doc = parse_pdf(file_path)
-    return doc, _elapsed_since(started_at)
-
-
-def _parse_pdf_pair(task_id: str, old_path: str, new_path: str):
-    started_at = time.perf_counter()
-    timings: dict[str, float] = {}
-
-    if not settings.parallel_pdf_parse:
-        _set_task_progress(task_id, "parsing", 10, "解析舊版 PDF")
-        old_doc, timings["parse_old_seconds"] = _parse_pdf_with_timing(old_path)
-        _set_task_progress(task_id, "parsing", 45, "解析新版 PDF")
-        new_doc, timings["parse_new_seconds"] = _parse_pdf_with_timing(new_path)
-        timings["parse_total_seconds"] = _elapsed_since(started_at)
-        return old_doc, new_doc, timings
-
-    _set_task_progress(task_id, "parsing", 10, "並行解析新舊 PDF")
-    results = {}
-    with ThreadPoolExecutor(max_workers=2, thread_name_prefix=f"parse-{task_id[:8]}") as pool:
-        futures = {
-            pool.submit(_parse_pdf_with_timing, old_path): "old",
-            pool.submit(_parse_pdf_with_timing, new_path): "new",
-        }
-        for future in as_completed(futures):
-            side = futures[future]
-            doc, elapsed = future.result()
-            results[side] = doc
-            timings[f"parse_{side}_seconds"] = elapsed
-            _set_task_progress(
-                task_id,
-                "parsing",
-                30 if len(results) == 1 else 55,
-                "舊版 PDF 解析完成" if side == "old" else "新版 PDF 解析完成",
-            )
-
-    timings["parse_total_seconds"] = _elapsed_since(started_at)
-    return results["old"], results["new"], timings
-
-
-def _generate_review_artifacts(
-    task_id: str,
-    old_path: str,
-    new_path: str,
-    report,
-) -> dict[str, float]:
-    timings: dict[str, float] = {}
-    started_at = time.perf_counter()
-
-    if settings.generate_snapshots:
-        snap_started = time.perf_counter()
-        try:
-            from services.snapshot_service import generate_comparison_snapshots
-
-            settings.snapshots_dir.mkdir(parents=True, exist_ok=True)
-            snap_dir = generate_comparison_snapshots(
-                task_id=task_id,
-                old_pdf_path=old_path,
-                new_pdf_path=new_path,
-                report=report,
-                snapshot_base_dir=settings.snapshots_dir,
-                diff_pages_only=settings.snapshot_diff_pages_only,
-            )
-            save_snapshot_dir(task_id, str(snap_dir))
-        except Exception as exc:
-            _logger.warning("Snapshot generation failed for task %s: %s", task_id, exc)
-        finally:
-            timings["snapshot_seconds"] = _elapsed_since(snap_started)
-
-    crop_started = time.perf_counter()
-    try:
-        from services.snapshot_service import generate_diff_crops
-
-        settings.crops_dir.mkdir(parents=True, exist_ok=True)
-        generate_diff_crops(
-            task_id=task_id,
-            old_pdf_path=old_path,
-            new_pdf_path=new_path,
-            report=report,
-            crops_base_dir=settings.crops_dir,
-        )
-    except Exception as exc:
-        _logger.warning("Crop generation failed for task %s: %s", task_id, exc)
-    finally:
-        timings["crop_seconds"] = _elapsed_since(crop_started)
-        timings["artifact_total_seconds"] = _elapsed_since(started_at)
-        _logger.info("Generated review artifacts for task %s: %s", task_id, timings)
-    return timings
-
-
-def _start_review_artifact_generation(
-    task_id: str,
-    old_path: str,
-    new_path: str,
-    report,
-) -> None:
-    worker = threading.Thread(
-        target=_generate_review_artifacts,
-        args=(task_id, old_path, new_path, report),
-        name=f"artifacts-{task_id[:8]}",
-        daemon=True,
-    )
-    worker.start()
-
-
 def _find_uploaded_pdf(task_id: str, row, version: str) -> Path | None:
     upload_dir = settings.old_upload_dir if version == "old" else settings.new_upload_dir
     original_filename = row["old_filename"] if version == "old" else row["new_filename"]
@@ -230,110 +86,8 @@ def _find_uploaded_pdf(task_id: str, row, version: str) -> Path | None:
     return stored_path if stored_path.exists() else None
 
 
-def _run_compare_task(
-    task_id: str,
-    project_id: str,
-    case_number: str | None,
-    old_path: str,
-    new_path: str,
-    old_name: str,
-    new_name: str,
-) -> None:
-    # Start resource monitoring
-    from services.resource_monitor import ResourceMonitor, save_resource_log
-    monitor = ResourceMonitor(task_id)
-    monitor.start()
-    task_started_at = time.perf_counter()
-    timings: dict[str, float] = {}
-
-    try:
-        update_comparison_status(task_id, "parsing")
-        old_doc, new_doc, parse_timings = _parse_pdf_pair(task_id, old_path, new_path)
-        timings.update(parse_timings)
-        old_doc_engine = old_doc.raw_json.get("engine", "unknown")
-
-        markdown_started_at = time.perf_counter()
-        old_md_path, new_md_path = _markdown_output_paths(task_id)
-        save_markdown(old_doc, old_md_path, source_name=old_name)
-        save_markdown(new_doc, new_md_path, source_name=new_name)
-        save_markdown_paths(
-            task_id,
-            old_markdown_path=str(old_md_path),
-            new_markdown_path=str(new_md_path),
-        )
-        timings["markdown_seconds"] = _elapsed_since(markdown_started_at)
-
-        update_comparison_status(task_id, "diffing")
-        _set_task_progress(task_id, "diffing", 80, "running diff engine")
-        diff_started_at = time.perf_counter()
-        report = generate_diff_report(
-            project_id=project_id,
-            old_filename=old_name,
-            new_filename=new_name,
-            old_doc=old_doc,
-            new_doc=new_doc,
-            old_pdf_path=old_path,
-            new_pdf_path=new_path,
-        )
-        timings["diff_seconds"] = _elapsed_since(diff_started_at)
-        report.case_number = case_number.strip() if case_number else None
-        if not report.summary:
-            report.summary = f"parser_old={old_doc_engine}, parser_new={new_doc.raw_json.get('engine', 'unknown')}"
-        report.engine_stats["pipeline_timings_seconds"] = {
-            **report.engine_stats.get("pipeline_timings_seconds", {}),
-            **timings,
-            "report_ready_seconds": _elapsed_since(task_started_at),
-        }
-        report.engine_stats["pipeline_options"] = {
-            **report.engine_stats.get("pipeline_options", {}),
-            "parallel_pdf_parse": bool(settings.parallel_pdf_parse),
-            "postprocess_artifacts_after_done": bool(settings.postprocess_artifacts_after_done),
-        }
-
-        if not settings.postprocess_artifacts_after_done:
-            _set_task_progress(task_id, "snapshotting", 90, "產生截圖與裁切")
-            report.engine_stats["artifact_timings_seconds"] = _generate_review_artifacts(
-                task_id,
-                old_path,
-                new_path,
-                report,
-            )
-
-        save_diff_report(task_id, report)
-        del old_doc, new_doc
-
-        def updater(state):
-            state.status = "done"
-            state.progress_percent = 100
-            state.current_step = "complete"
-            state.result = None
-            state.error_message = None
-
-        TASK_STORE.update(task_id, updater)
-
-        # Stop monitor and save resource log
-        res_log = monitor.stop(old_filename=old_name, new_filename=new_name, total_diffs=report.total_diffs)
-        try:
-            save_resource_log(res_log)
-        except Exception:
-            pass
-
-        if settings.postprocess_artifacts_after_done:
-            try:
-                _start_review_artifact_generation(task_id, old_path, new_path, report)
-            except Exception as exc:
-                _logger.warning("Failed to start review artifact generation for task %s: %s", task_id, exc)
-
-    except Exception as exc:  # pragma: no cover - defensive wrapper
-        monitor.stop(old_filename=old_name, new_filename=new_name)
-        message = str(exc)
-        save_comparison_error(task_id, message)
-        _set_task_error(task_id, message)
-
-
 @router.post("/upload", response_model=UploadResponse)
-async def upload_compare_files(
-    background_tasks: BackgroundTasks,
+def upload_compare_files(
     case_number: str | None = Form(None),
     project_id: str | None = Form(None),
     old_pdf: UploadFile = File(...),
@@ -376,8 +130,7 @@ async def upload_compare_files(
     except Exception:
         pass
 
-    background_tasks.add_task(
-        _run_compare_task,
+    accepted = COMPARE_JOB_RUNNER.submit(
         task_id,
         resolved_project_id,
         case_number,
@@ -386,12 +139,16 @@ async def upload_compare_files(
         old_pdf.filename or old_path.name,
         new_pdf.filename or new_path.name,
     )
+    if not accepted:
+        message = "比對佇列已滿，請稍後再試"
+        fail_compare_task(task_id, message)
+        raise HTTPException(status_code=429, detail=message, headers={"Retry-After": "30"})
 
     return UploadResponse(task_id=task_id, status="parsing")
 
 
 @router.post("/recompare/{task_id}", response_model=UploadResponse)
-async def recompare(task_id: str, background_tasks: BackgroundTasks):
+def recompare(task_id: str):
     """Re-run the diff engine on an existing comparison without re-uploading files."""
     comp = get_comparison(task_id)
     if not comp:
@@ -406,8 +163,7 @@ async def recompare(task_id: str, background_tasks: BackgroundTasks):
     TASK_STORE.create(task_id)
     update_comparison_status(task_id, "parsing")
 
-    background_tasks.add_task(
-        _run_compare_task,
+    accepted = COMPARE_JOB_RUNNER.submit(
         task_id,
         comp.get("project_id", ""),
         comp.get("case_number"),
@@ -416,12 +172,16 @@ async def recompare(task_id: str, background_tasks: BackgroundTasks):
         comp.get("old_filename", "old.pdf"),
         comp.get("new_filename", "new.pdf"),
     )
+    if not accepted:
+        message = "比對佇列已滿，請稍後再試"
+        fail_compare_task(task_id, message)
+        raise HTTPException(status_code=429, detail=message, headers={"Retry-After": "30"})
 
     return UploadResponse(task_id=task_id, status="parsing")
 
 
 @router.get("/{task_id}/status", response_model=CompareStatusResponse)
-async def get_compare_status(task_id: str):
+def get_compare_status(task_id: str):
     state = TASK_STORE.get(task_id)
     if state:
         return CompareStatusResponse(
@@ -450,7 +210,7 @@ async def get_compare_status(task_id: str):
 
 
 @router.get("/{task_id}/result")
-async def get_compare_result(task_id: str):
+def get_compare_result(task_id: str):
     state = TASK_STORE.get(task_id)
     if state and state.status == "done" and state.result:
         return state.result
@@ -466,7 +226,7 @@ async def get_compare_result(task_id: str):
 
 
 @router.get("/{task_id}/markdown")
-async def get_markdown_manifest(task_id: str):
+def get_markdown_manifest(task_id: str):
     row = get_comparison(task_id)
     if not row:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -487,7 +247,7 @@ async def get_markdown_manifest(task_id: str):
 
 
 @router.get("/{task_id}/markdown/{version}")
-async def download_markdown(task_id: str, version: str):
+def download_markdown(task_id: str, version: str):
     normalized = version.strip().lower()
     if normalized not in {"old", "new"}:
         raise HTTPException(status_code=400, detail="version must be 'old' or 'new'")
@@ -518,7 +278,7 @@ async def download_markdown(task_id: str, version: str):
 
 
 @router.get("/{task_id}/snapshots")
-async def list_snapshots(task_id: str):
+def list_snapshots(task_id: str):
     """List available snapshot files for a comparison."""
     row = get_comparison(task_id)
     if not row:
@@ -550,7 +310,7 @@ async def list_snapshots(task_id: str):
 
 
 @router.get("/{task_id}/snapshots/download.zip")
-async def download_snapshots_zip(task_id: str):
+def download_snapshots_zip(task_id: str):
     """Download all snapshot files as a ZIP archive."""
     row = get_comparison(task_id)
     if not row:
@@ -580,7 +340,7 @@ async def download_snapshots_zip(task_id: str):
 
 
 @router.get("/{task_id}/snapshots/{filename}")
-async def download_snapshot_file(task_id: str, filename: str):
+def download_snapshot_file(task_id: str, filename: str):
     """Download a single snapshot file (PNG or JSON)."""
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
@@ -602,7 +362,7 @@ async def download_snapshot_file(task_id: str, filename: str):
 
 
 @router.get("/{task_id}/pdf/{version}")
-async def download_pdf(task_id: str, version: str):
+def download_pdf(task_id: str, version: str):
     normalized = version.strip().lower()
     if normalized not in {"old", "new"}:
         raise HTTPException(status_code=400, detail="version must be 'old' or 'new'")
@@ -628,7 +388,7 @@ _DIFF_ID_RE = re.compile(r"^d\d{3,}$")
 
 
 @router.get("/{task_id}/crop/{diff_id}/{side}")
-async def get_diff_crop(task_id: str, diff_id: str, side: str):
+def get_diff_crop(task_id: str, diff_id: str, side: str):
     """Return a cropped PNG of a diff region from the old/new PDF.
 
     Generated post-compare by snapshot_service.generate_diff_crops.

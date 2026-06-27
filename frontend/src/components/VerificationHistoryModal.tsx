@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, FileText, Search, X } from 'lucide-react';
 import { ArchiveRecord, ReviewLogChange, VerificationSession, archiveApi } from '../services/api';
+import { useDialogFocusTrap } from '../hooks/useDialogFocusTrap';
 
 interface Props {
   comparisonId: string;
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function VerificationHistoryModal({ comparisonId, isOpen, onClose }: Props) {
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [archive, setArchive] = useState<ArchiveRecord | null>(null);
   const [sessions, setSessions] = useState<VerificationSession[]>([]);
   const [reviewLogs, setReviewLogs] = useState<ReviewLogChange[]>([]);
@@ -16,6 +18,7 @@ export default function VerificationHistoryModal({ comparisonId, isOpen, onClose
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
+  useDialogFocusTrap(isOpen, onClose, dialogRef);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -98,11 +101,18 @@ export default function VerificationHistoryModal({ comparisonId, isOpen, onClose
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="relative w-full max-w-5xl mx-4 bg-white rounded-2xl shadow-2xl flex flex-col max-h-[84vh]">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="verification-history-title"
+        tabIndex={-1}
+        className="relative w-full max-w-5xl mx-4 bg-white rounded-2xl shadow-2xl flex flex-col max-h-[84vh]"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">檢核歷史紀錄</h2>
+            <h2 id="verification-history-title" className="text-lg font-bold text-gray-900">檢核歷史紀錄</h2>
             {archive && (
               <p className="text-xs text-gray-500 mt-0.5">
                 {archive.case_number ? `${archive.case_number} · ` : ''}{archive.old_filename} ↔ {archive.new_filename}
@@ -112,6 +122,7 @@ export default function VerificationHistoryModal({ comparisonId, isOpen, onClose
           <button
             type="button"
             onClick={onClose}
+            aria-label="關閉檢核歷史紀錄"
             className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
           >
             <X size={18} />

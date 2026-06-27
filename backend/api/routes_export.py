@@ -65,7 +65,7 @@ def _generate_filename(prefix: str, report, extension: str) -> str:
 
 
 @router.get("/{comparison_id}/pdf")
-async def export_pdf(comparison_id: str):
+def export_pdf(comparison_id: str):
     report = _load_report(comparison_id)
     if not report:
         raise HTTPException(status_code=404, detail="Comparison not found")
@@ -89,7 +89,7 @@ async def export_pdf(comparison_id: str):
 
 
 @router.get("/{comparison_id}/excel")
-async def export_excel(comparison_id: str):
+def export_excel(comparison_id: str):
     report = _load_report(comparison_id)
     if not report:
         raise HTTPException(status_code=404, detail="Comparison not found")
@@ -114,7 +114,7 @@ async def export_excel(comparison_id: str):
 
 
 @router.get("/{comparison_id}/report")
-async def export_report(comparison_id: str):
+def export_report(comparison_id: str):
     report = _load_report(comparison_id)
     if not report:
         raise HTTPException(status_code=404, detail="Comparison not found")
@@ -142,7 +142,7 @@ async def export_report(comparison_id: str):
 
 
 @router.get("/{comparison_id}/log")
-async def export_log(comparison_id: str):
+def export_log(comparison_id: str):
     report = _load_report(comparison_id)
     if not report:
         raise HTTPException(status_code=404, detail="Comparison not found")
@@ -168,7 +168,7 @@ async def export_log(comparison_id: str):
 
 
 @router.get("/{comparison_id}/log-txt")
-async def export_log_txt(comparison_id: str):
+def export_log_txt(comparison_id: str):
     report = _load_report(comparison_id)
     if not report:
         raise HTTPException(status_code=404, detail="Comparison not found")
@@ -194,7 +194,7 @@ async def export_log_txt(comparison_id: str):
 
 
 @router.get("/{comparison_id}/log-csv")
-async def export_log_csv(comparison_id: str):
+def export_log_csv(comparison_id: str):
     report = _load_report(comparison_id)
     if not report:
         raise HTTPException(status_code=404, detail="Comparison not found")

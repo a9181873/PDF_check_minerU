@@ -1,6 +1,6 @@
 # PDF 差異比對系統 — 技術架構文件
 
-> 版本: 2026-06-13 | 更新摘要: 校正現行 MinerU + Docling 並行解析、image-only visual fallback、可選 OCR recall (`alignment` / `heuristic` / `hybrid`) 與部署資源建議
+> 版本: 2026-06-28 | 更新摘要: 加入有限比對佇列、流程協調器、同步 I/O 執行緒隔離、前端輪詢取消與無障礙對話框
 
 ---
 
@@ -23,6 +23,8 @@ graph TB
         REV[routes_review.py<br/>審核]
         EXP[routes_export.py<br/>匯出]
         WS[websocket.py<br/>即時進度]
+        JOB[compare_job_runner.py<br/>有限工作佇列]
+        ORCH[compare_orchestrator.py<br/>流程協調器]
         DIFF[diff_service.py<br/>差異引擎<br/>cell-level + 聚合]
         PARSE[parser_service.py<br/>PDF 解析 fallback 鏈]
         EXPSERV[export_service.py<br/>匯出服務]
@@ -45,13 +47,15 @@ graph TB
     CP --> WS
     AP --> AUTH
     AUTH --> DB
-    COMP --> PARSE
+    COMP --> JOB
+    JOB --> ORCH
+    ORCH --> PARSE
     PARSE -->|MINERU_API_URL| MINERU
     MINERU --- MCACHE
     PARSE -->|fallback| DIFF
-    COMP --> DIFF
-    COMP --> DB
-    COMP --> FS
+    ORCH --> DIFF
+    ORCH --> DB
+    ORCH --> FS
     EXP --> EXPSERV
     EXPSERV --> DB
     EXPSERV --> FS
@@ -104,15 +108,16 @@ Client                         Server
 ```mermaid
 graph LR
     A[PDF 上傳] --> P[Layer 1: PyMuPDF fitz<br/>內嵌文字層 + char_bboxes]
+    P -->|fitz 失敗| F[Layer 3: pdftotext<br/>poppler -layout]
     P -->|is_image_pdf=true| PIX[像素/視覺 fallback<br/>保留 reviewer 定位框]
     PIX -->|ENABLE_IMAGE_TEXT_RECALL=true| OCRR[MinerU forced-OCR recall<br/>alignment / heuristic / hybrid]
-    P -->|文字層存在| PAR{MinerU 優先}
-    PAR -->|有設 MINERU_API_URL| C[Layer 2a: MinerU REST API<br/>pipeline / chinese_cht]
-    PAR -->|未設定 MINERU_API_URL| E[Layer 2b: Docling<br/>佈局分析 + Tesseract]
-    C -->|成功| W((表格解析結果))
-    C -->|失敗/未設定| E[Layer 2b: Docling<br/>佈局分析 + Tesseract]
-    E -->|fallback| W
-    W -->|兩者皆失敗| F[Layer 3: pdftotext<br/>poppler -layout]
+    P -->|文字層存在| Q{輕量表格快篩}
+    Q -->|無表格跡象| H
+    Q -->|疑似表格| E[Layer 2a: Docling<br/>cell bbox]
+    E -->|有表格| W((表格解析結果))
+    E -->|無結果/失敗| C[Layer 2b: MinerU REST API<br/>pipeline / chinese_cht]
+    C -->|成功| W
+    C -->|失敗/無表格| H
     F -->|失敗| G[Layer 4: Tesseract OCR<br/>pdftoppm 200dpi → 全頁 OCR]
     OCRR --> H[ParsedDocument + recall candidates]
     W --> H[ParsedDocument]
@@ -120,7 +125,7 @@ graph LR
     G --> H
 ```
 
-> **解析策略（2026-05-20 修正）**：回到 MinerU 版原本的並行解析思路。文字層存在時，表格解析預設同時啟動 MinerU 與 Docling；`MINERU_PREFERRED_WAIT_SECONDS=0` 時誰先產生有效表格就先採用。MinerU 提供較完整的中文表格內容，Docling 提供 cell-level bbox，兩者互補；若其中一方失敗，另一方仍可補上。
+> **解析策略（2026-06-27 優化）**：文字型 PDF 先以幾何格線與重複數字欄位做無模型快篩。無表格跡象時直接使用 PyMuPDF；疑似表格才依 `TABLE_PARSER_STRATEGY` 呼叫重型引擎。Docker 預設 `docling_first`，Docling 無有效表格才 fallback MinerU，避免舊版「兩個都跑、只採一個」的 CPU 浪費。`parallel_race` 只保留給回歸 A/B。
 
 #### Layer 1 — PyMuPDF（fitz）
 
@@ -135,7 +140,20 @@ graph LR
 | 座標系統 | PyMuPDF 使用 top-left origin，轉換為 PDF 標準 bottom-left origin |
 | 輸出 | `ParsedParagraph`（含 `char_bboxes: list[BBox]`） |
 
-#### Layer 2a — MinerU REST API
+#### Layer 2a — Docling
+
+Docling 是預設第一個重型表格引擎，提供 cell-level bbox；只有輕量快篩判定疑似表格時才會啟動。
+
+| 項目 | 說明 |
+|------|------|
+| 用途 | 佈局分析 + Tesseract OCR，可取得**格子級 BBox** |
+| OCR 策略 | `force_full_page_ocr=False`，只對真正圖片頁做 OCR，避免對有文字層的頁面重複辨識 |
+| 語言支援 | `chi_tra + chi_sim + eng`（可透過 `OCR_LANGS` env var 調整） |
+| 優勢 | `table_item.data.table_cells` 提供每格座標，diff 可以精準框出哪個格子改了 |
+| 座標處理 | 讀取 `coord_origin` 屬性，同時支援 top/bottom origin |
+| 輸出 | `ParsedTable`（含 `cell_bboxes: dict[(row,col), BBox]`）、`ParsedParagraph` |
+
+#### Layer 2b — MinerU REST API
 
 呼叫同一個 docker-compose 中的 `mineru-api-minerU` 容器（port 18080）。
 
@@ -146,21 +164,12 @@ graph LR
 | 表格解析 | 回傳 HTML → `pd.read_html()` → DataFrame |
 | 限制 | HTML 不含格子座標，cell_bboxes 為空（整表 bbox 仍有） |
 | 文字正規化 | NFKC + strip，合併繁簡字形變體 |
-| Timeout | 300 秒 |
+| Timeout | `MINERU_TIMEOUT_SECONDS`，預設 300 秒 |
 | 輸出 | `ParsedTable`（無 cell_bboxes）、`ParsedParagraph` |
 
-#### Layer 2b — Docling
+#### 可選 — OpenDataLoader
 
-Docling 會與 MinerU 並行運算，用來補足 cell-level bbox；當 MinerU 不可用或失敗時，也會成為解析備案。
-
-| 項目 | 說明 |
-|------|------|
-| 用途 | 佈局分析 + Tesseract OCR，可取得**格子級 BBox** |
-| OCR 策略 | `force_full_page_ocr=False`，只對真正圖片頁做 OCR，避免對有文字層的頁面重複辨識 |
-| 語言支援 | `chi_tra + chi_sim + eng`（可透過 `OCR_LANGS` env var 調整） |
-| 優勢 | `table_item.data.table_cells` 提供每格座標，diff 可以精準框出哪個格子改了 |
-| 座標處理 | 讀取 `coord_origin` 屬性，同時支援 top/bottom origin |
-| 輸出 | `ParsedTable`（含 `cell_bboxes: dict[(row,col), BBox]`）、`ParsedParagraph` |
+`TABLE_PARSER_STRATEGY=opendataloader_first` 時，會先嘗試 OpenDataLoader JSON adapter，將階層式 row/cell 與元素 bbox 轉成既有 `ParsedTable`。套件或 Java runtime 不存在、解析失敗或未產生表格時，會自動 fallback Docling／MinerU；Docker 正式預設尚未啟用。
 
 #### Layer 3 — pdftotext（poppler）
 
@@ -644,6 +653,17 @@ docker compose up --build -d
 - 同一 PDF hash 在不同案號下視為不同案件，避免正式案件台帳混淆
 
 ---
+
+### 2026-06-27 — CPU-only 解析路由與快取優化
+
+- PyMuPDF 增加無模型表格快篩：連通格線或重複數字欄位成立時才呼叫重型表格引擎；probe 失敗會保守執行重型引擎。
+- Docker 預設 `docling_first`，有有效表格立即採用，否則 fallback MinerU；舊 `parallel_race` 保留作 A/B。
+- 重型解析加入全域 semaphore，預設同時一個，避免新舊文件外層並行再放大成四個模型工作。
+- 新增 SHA-256 bounded in-process cache 與 single-flight；相同 PDF 同時進件只解析一次。
+- 像素/NCC/局部 OCR 結果依新舊 PDF 內容雜湊快取；重新比對回傳深拷貝，避免下游 diff ID 汙染快取。
+- PyMuPDF `rawdict` 僅在解析當下使用，不再整份塞入 `raw_json`，降低任務與快取記憶體。
+- `engine_stats.parser_routing` 記錄新舊兩側的引擎嘗試、排隊／執行時間、選用結果與 cache hit。
+- OpenDataLoader JSON adapter 已完成，但 Docker 正式預設未安裝／啟用；待黃金樣本 shadow 驗證後再切換。
 
 ### 2026-05-04 — 三項效能優化 + 鄰近差異合併 + docker port 調整
 
