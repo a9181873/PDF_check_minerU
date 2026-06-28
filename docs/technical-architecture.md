@@ -579,15 +579,19 @@ Docker Compose
 
 ### 8.1 MinerU 服務建構
 
-`mineru/Dockerfile` 在 build 時預下載模型（`mineru-models-download -s modelscope -m pipeline`），掛載 volume 後重建不需重複下載。
+`mineru/Dockerfile` 在 build 時預下載模型（`mineru-models-download -s modelscope -m pipeline`），模型會成為 image layer。runtime 掛載的 `mineru_model_cache_minerU` 只保存容器執行期間的 ModelScope 快取；它不會直接提供給 Docker build。只要前置 layer 與 BuildKit cache 仍有效，重建可重用模型 layer；若基底 image、pip 安裝指令或上游套件解析結果改變，模型 layer 會失效並重新下載。
+
+`six` 是 MinerU OCR pipeline 的執行期相依套件。2026-06-28 已在 Dockerfile 明確安裝，避免 API 健康檢查正常、實際 `/file_parse` 卻因 `ModuleNotFoundError` 回傳 `409 Conflict`。
 
 ```bash
 # 僅重建 backend（不影響 MinerU 模型）
 docker compose build backend-minerU && docker compose up -d backend-minerU
 
-# 完整重建（模型已在 volume，不會重新下載）
+# 完整重建（是否重下模型取決於 Docker build cache）
 docker compose up --build -d
 ```
+
+目前 `mineru[pipeline]` 與 backend 的 Docling 皆採最低版本範圍，未鎖定完整 dependency lock。2026-06-28 OCI ARM64 重建實際解析到 MinerU 3.4.0、Docling 2.107.0、Torch 2.12.1，並下載大型 CUDA wheel；服務仍以 CPU-only 執行，但 image 與建置時間會明顯增加。正式供應鏈治理應固定版本，並另建 CPU-only image profile。
 
 ### 8.2 MinerU 繁體中文設定
 
@@ -617,6 +621,17 @@ docker compose up --build -d
 | 預設帳號 | 固定本機管理員 `admin` | 啟動時確保帳號存在且啟用；不產生 `.initial_admin_password`，不在 log 或畫面顯示初始密碼資訊 |
 
 ## 10. 變更清單
+
+### 2026-06-28 — 架構拆分、非同步阻塞修正與正式回歸
+
+- 將比對流程從 API router 抽離為 `compare_job_runner.py` 與 `compare_orchestrator.py`，router 只保留輸入驗證與回應。
+- 使用 `COMPARE_MAX_CONCURRENCY`、`COMPARE_MAX_PENDING_TASKS` 建立有限程序內佇列，避免多份 PDF 同時放大 CPU/RAM 使用量。
+- 含同步 SQLite 存取的 FastAPI route 改由同步 handler 執行，交給 threadpool，避免卡住 ASGI event loop。
+- UploadPage 的檔案上傳區移出父元件 render；HTTP client、diff helper、對話框 focus trap 改為共用模組。
+- WebSocket 完成後會取消舊 HTTP polling，降低舊回應覆蓋新狀態的競態條件。
+- MinerU Dockerfile 明確加入 `six`；OCI 驗證版本為 MinerU 3.4.0、six 1.17.0，MinerU 與 backend 健康端點皆正常。
+- 6 組、12 份商品 DM、60 頁完成 Docker 回歸；模型載入後觀察值約 6.40 秒/頁。詳細結果見 `full_pdf_regression_2026-06-28.md`。
+- 後端完整測試 120 項通過，前端 TypeScript/Vite production build 通過。
 
 ### 2026-05-08 — 核心引擎升級：SSIM 子區域定位 + 區域性 OCR
 

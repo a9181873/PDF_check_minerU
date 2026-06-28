@@ -4,6 +4,21 @@ PDF Check MinerU 是一套用來比對「舊版 PDF」與「新版 PDF」差異�
 
 這個專案特別適合保險 DM、條款、費率表、簡章、公告等需要反覆改版與人工審核的 PDF。
 
+## 目前技術狀態（2026-06-28）
+
+| 項目 | 正式使用狀況 |
+|------|--------------|
+| 部署 | 維持 Docker Compose；本機與 OCI 均使用 Linux containers |
+| 後端 | FastAPI + 有限比對佇列 + 流程協調器；同步 SQLite I/O 交由 FastAPI threadpool，避免阻塞 event loop |
+| 解析 | PyMuPDF 輕量快篩 → Docling 表格解析 → MinerU fallback；影像型 PDF 預設保留視覺差異，MinerU OCR 召回需明確開啟 |
+| 資源控制 | 重型 parser 與比對任務預設各只同時執行 1 個，並限制等待佇列，適合 CPU-only 主機 |
+| 快取 | PDF SHA-256 解析快取、single-flight、像素/NCC/OCR 配對快取均已啟用 |
+| 前端 | React 19 + TypeScript 6 + Vite 8；支援 WebSocket 進度、輪詢取消、虛擬列表與對話框鍵盤操作 |
+| 正式驗證 | 後端 120 項測試通過、前端 production build 通過；6 組商品 DM、12 份 PDF、60 頁完成 Docker 回歸 |
+| OCI | ARM64、CPU-only、MinerU 3.4.0；`six 1.17.0` 已固定加入 MinerU Dockerfile 並通過健康檢查 |
+
+詳細版本、資料流、解析路由、效能數據、OCI 差異與已知風險，請看 `docs/technical-usage-status_2026-06-28.md`。
+
 ## 一句話說明
 
 把兩份 PDF 丟進系統，系統會找出差異，讓人員在畫面上確認，並保存「誰在什麼時間審了什麼」。
@@ -88,7 +103,7 @@ http://localhost:8001
 docker compose down
 ```
 
-第一次啟動會下載 MinerU 模型，檔案較大，可能需要一段時間。模型會存在 Docker volume 裡，之後重建通常不用重新下載。
+第一次建置 MinerU image 時會下載 pipeline 模型，檔案較大，可能需要一段時間。模型會被寫入 image layer；只要 Docker build cache 未失效，後續建置可重用該層。runtime 的 ModelScope volume 用於容器執行期間的快取，不會取代 build 階段的模型下載。
 
 ## 初次登入
 
@@ -376,13 +391,13 @@ npm run build
 
 ### 目前 PDF 比對狀態
 
-2026-06-15 已針對影像型商品 DM 做一輪架構修正，詳細紀錄見 `docs/pdf_diff_architecture_review_2026-06-15.md`。
+截至 2026-06-28，影像型商品 DM 已完成架構修正、CPU-only 解析路由優化與一輪全 PDF Docker 回歸；完整技術現況見 `docs/technical-usage-status_2026-06-28.md`，逐案結果見 `docs/full_pdf_regression_2026-06-28.md`。
 
 | 項目 | 目前做法 |
 |------|----------|
 | 大表格或大版面差異 | 不再靜默壓掉，會以「表格/版面」項目進正式清單，讓審核人員可點開截圖確認 |
 | OCR 文字 | 只保留短數字、頁首/頁尾 Control No/version、可信文字；長段低可信 OCR 會被壓掉，避免亂碼誤報 |
-| 效能 | 新扶愛由約 62 秒降到約 31 秒，美利保由約 35 秒降到約 25 秒；仍未達 3-5 秒目標 |
+| 效能 | 2026-06-28 冷快取回歸共 60 頁；模型載入後的 54 頁觀察值約 6.40 秒/頁、9.38 頁/分鐘。首份冷啟動開始時間未記錄，不宣稱整批精確耗時 |
 | 表格數字 | P0 先保留表格區域可審核證據；逐格表格 OCR/欄列對齊仍屬下一階段 |
 | 固定回歸 | 鳳守愛、慈愛微型、新扶愛、美保發、美利保、臻美利六組 `商品DM/` 已跑過 Docker 回歸 |
 
@@ -447,7 +462,9 @@ stop-mac.command          macOS 一鍵停止
 
 - 開發手冊：`docs/dev-handbook.md`
 - 技術架構：`docs/technical-architecture.md`
+- 技術使用現況：`docs/technical-usage-status_2026-06-28.md`
 - 效能量測：`docs/performance-benchmark.md`
+- 2026-06-28 全 PDF 回歸：`docs/full_pdf_regression_2026-06-28.md`
 - 影像型 PDF 回歸 Runbook：`docs/recall-regression-runbook.md`
 - 商品 DM OCR A/B 紀錄：`docs/image_text_recall_strategy_ab_2026-05-26.md`
 - Docker 快速啟動：`DEPLOY.md`

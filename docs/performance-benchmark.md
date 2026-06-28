@@ -23,6 +23,19 @@
 
 > 注意：host Python 可能沒有 `fitz`、Tesseract、Docling 或 MinerU 連線；判斷真實 OCR 品質時，請以 Docker 容器流程為準。
 
+## 2026-06-28 Docker 實測基準
+
+| 指標 | 結果 |
+|------|------|
+| 測試資料 | 6 組商品 DM、12 份 PDF |
+| 工作量 | 60 頁、698 個段落 |
+| 快取 | 12 份皆為 `miss` |
+| 模型載入後觀察區間 | 其餘 11 份 PDF、54 頁，345.44 秒 |
+| 換算吞吐 | 約 6.40 秒/頁、9.38 頁/分鐘 |
+| 正確性輸出 | alignment 10 筆、heuristic 6 筆、hybrid 8 筆候選差異 |
+
+限制：A/B JSON 沒有記錄第一份 PDF 的請求開始時間，也沒有分離 parser、diff strategy、CPU 與 RSS，因此上述數字是模型已載入後的觀察值，不是完整冷啟動端到端 SLA。差異筆數也不是 precision/recall；尚未建立人工標註真值前，只能用來比較噪音與候選收斂程度。逐案內容見 `full_pdf_regression_2026-06-28.md`。
+
 ## Parser 量測腳本
 
 - 腳本位置：`backend/scripts/benchmark_parser.py`
