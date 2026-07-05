@@ -17,6 +17,7 @@ from models.database import (
     get_review_logs_with_changes,
     init_db,
     save_checklist,
+    save_analysis_report_state,
     save_comparison_report_state,
     update_review_item_state,
     verify_password,
@@ -100,6 +101,49 @@ def test_update_review_item_state_is_atomic_per_item(monkeypatch, tmp_path: Path
     assert update_review_item_state(
         comparison_id, "d999", reviewed=True, reviewed_by="x", reviewed_at="t", flagged=True,
     ) is False
+
+
+def test_progressive_report_merge_preserves_review_state(monkeypatch, tmp_path: Path):
+    _prepare_temp_db(monkeypatch, tmp_path)
+    init_db()
+    comparison_id = "cmp-progressive"
+    _create_comparison_record(comparison_id)
+
+    preliminary = DiffReport(
+        project_id="default",
+        old_filename="old.pdf",
+        new_filename="new.pdf",
+        created_at="2026-07-04T00:00:00Z",
+        total_diffs=1,
+        items=[
+            DiffItem(
+                id="d001",
+                candidate_id="c-stable",
+                diff_type=DiffType.IMAGE_DIFF,
+                context="Page 1 表格/版面變更",
+                confidence=0.9,
+            )
+        ],
+    )
+    save_analysis_report_state(comparison_id, preliminary)
+    assert update_review_item_state(
+        comparison_id,
+        "d001",
+        reviewed=True,
+        reviewed_by="alice",
+        reviewed_at="2026-07-04T01:00:00Z",
+        flagged=False,
+    )
+
+    enriched = preliminary.model_copy(deep=True)
+    enriched.items[0].old_value = "3.90%"
+    enriched.items[0].new_value = "4.00%"
+    merged = save_analysis_report_state(comparison_id, enriched, complete=True)
+
+    assert merged.items[0].id == "d001"
+    assert merged.items[0].reviewed is True
+    assert merged.items[0].reviewed_by == "alice"
+    assert merged.report_revision == 2
 
 
 def test_checklist_round_trip_persists_to_sqlite(monkeypatch, tmp_path: Path):

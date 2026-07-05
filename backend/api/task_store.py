@@ -13,6 +13,7 @@ class TaskState:
     current_step: str
     error_message: str | None = None
     result: DiffReport | None = None
+    result_revision: int = 0
     finished_at: float | None = None
 
 

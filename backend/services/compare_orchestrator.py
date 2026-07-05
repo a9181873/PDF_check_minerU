@@ -9,7 +9,7 @@ from api.task_store import TASK_STORE
 from config import settings
 from models.database import (
     save_comparison_error,
-    save_diff_report,
+    save_analysis_report_state,
     save_markdown_paths,
     save_snapshot_dir,
     update_comparison_status,
@@ -186,7 +186,7 @@ def run_compare_task(
         update_comparison_status(task_id, "diffing")
         _set_task_progress(task_id, "diffing", 80, "running diff engine")
         diff_started_at = time.perf_counter()
-        report = generate_diff_report(
+        preliminary_report = generate_diff_report(
             project_id=project_id,
             old_filename=old_name,
             new_filename=new_name,
@@ -194,7 +194,50 @@ def run_compare_task(
             new_doc=new_doc,
             old_pdf_path=old_path,
             new_pdf_path=new_path,
+            include_enrichment=False,
         )
+        timings["preliminary_diff_seconds"] = _elapsed_since(diff_started_at)
+        timings["preliminary_ready_seconds"] = _elapsed_since(task_started_at)
+        preliminary_report.case_number = case_number.strip() if case_number else None
+        preliminary_report.engine_stats["pipeline_timings_seconds"] = {
+            **preliminary_report.engine_stats.get("pipeline_timings_seconds", {}),
+            **timings,
+        }
+        preliminary_report = save_analysis_report_state(
+            task_id, preliminary_report, complete=False
+        )
+
+        def publish_preliminary(state):
+            state.status = "enriching"
+            state.progress_percent = 85
+            state.current_step = "OCR／表格證據補強"
+            state.result = preliminary_report
+            state.result_revision += 1
+
+        TASK_STORE.update(task_id, publish_preliminary)
+
+        needs_enrichment = bool(old_doc.is_image_pdf or new_doc.is_image_pdf)
+        if needs_enrichment:
+            enrichment_started_at = time.perf_counter()
+            report = generate_diff_report(
+                project_id=project_id,
+                old_filename=old_name,
+                new_filename=new_name,
+                old_doc=old_doc,
+                new_doc=new_doc,
+                old_pdf_path=old_path,
+                new_pdf_path=new_path,
+                include_enrichment=True,
+            )
+            timings["enrichment_seconds"] = _elapsed_since(enrichment_started_at)
+        else:
+            from models.diff_models import AnalysisStage, AnalysisStatus
+
+            report = preliminary_report.model_copy(deep=True)
+            report.analysis_status = AnalysisStatus.COMPLETE
+            for item in report.items:
+                item.analysis_stage = AnalysisStage.FINAL
+
         timings["diff_seconds"] = _elapsed_since(diff_started_at)
         report.case_number = case_number.strip() if case_number else None
         if not report.summary:
@@ -224,14 +267,15 @@ def run_compare_task(
                 task_id, old_path, new_path, report
             )
 
-        save_diff_report(task_id, report)
+        report = save_analysis_report_state(task_id, report, complete=True)
         del old_doc, new_doc
 
         def updater(state):
             state.status = "done"
             state.progress_percent = 100
             state.current_step = "complete"
-            state.result = None
+            state.result = report
+            state.result_revision += 1
             state.error_message = None
 
         TASK_STORE.update(task_id, updater)

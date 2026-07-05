@@ -16,7 +16,7 @@ from models.database import (
     get_review_logs_with_changes,
     get_verification_sessions_by_archive,
 )
-from models.diff_models import CheckStatus, DiffReport
+from models.diff_models import AnalysisStatus, CheckStatus, DiffReport, ReviewLane, RiskLevel
 from services.archive_service import (
     archive_comparison,
     ensure_comparison_hashes,
@@ -59,12 +59,26 @@ def _assert_archive_ready(comparison_id: str, report: DiffReport) -> None:
     checklist_unresolved = sum(1 for item in checklist if item.status != CheckStatus.CONFIRMED)
 
     blockers: list[str] = []
+    if report.analysis_status != AnalysisStatus.COMPLETE:
+        blockers.append("OCR／表格證據補強尚未完成")
     if pending:
         blockers.append(f"仍有 {pending} 筆待審差異")
     if flagged:
         blockers.append(f"仍有 {flagged} 筆標記問題")
     if checklist_unresolved:
         blockers.append(f"Checklist 尚有 {checklist_unresolved} 筆未完成")
+
+    unresolved_review = sum(
+        1
+        for item in report.items
+        if (
+            item.review_lane == ReviewLane.NEEDS_VISUAL_REVIEW
+            or item.risk_level in {RiskLevel.CRITICAL, RiskLevel.HIGH}
+        )
+        and not item.reviewed
+    )
+    if unresolved_review and not pending:
+        blockers.append(f"仍有 {unresolved_review} 筆高風險／人工判讀區域未完成")
 
     if blockers:
         raise HTTPException(

@@ -1,6 +1,6 @@
 # PDF 差異比對系統 — 技術架構文件
 
-> 版本: 2026-06-28 | 更新摘要: 加入有限比對佇列、流程協調器、同步 I/O 執行緒隔離、前端輪詢取消與無障礙對話框
+> 版本: 2026-07-05 | 更新摘要: 漸進式分析、雙軌審核、穩定候選 ID、ROI 補強、跨重啟快取與 CPU-only 供應鏈鎖定
 
 ---
 
@@ -25,7 +25,10 @@ graph TB
         WS[websocket.py<br/>即時進度]
         JOB[compare_job_runner.py<br/>有限工作佇列]
         ORCH[compare_orchestrator.py<br/>流程協調器]
-        DIFF[diff_service.py<br/>差異引擎<br/>cell-level + 聚合]
+        DIFF[diff_service.py<br/>72 DPI 頁級快掃<br/>144/200 DPI 分期差異]
+        EVID[evidence_service.py<br/>候選 ID / 風險 / 證據]
+        TART[table_artifact_service.py<br/>表格正規化與配對]
+        PCACHE[persistent_cache.py<br/>跨重啟分析快取]
         PARSE[parser_service.py<br/>PDF 解析 fallback 鏈]
         EXPSERV[export_service.py<br/>匯出服務]
     end
@@ -37,7 +40,7 @@ graph TB
 
     subgraph "Persistence"
         DB[(SQLite<br/>app.db)]
-        FS[Runtime FS<br/>uploads / exports]
+        FS[Runtime FS<br/>uploads / exports / analysis-cache]
     end
 
     LP --> AUTH
@@ -54,6 +57,9 @@ graph TB
     MINERU --- MCACHE
     PARSE -->|fallback| DIFF
     ORCH --> DIFF
+    DIFF --> EVID
+    DIFF --> TART
+    DIFF <--> PCACHE
     ORCH --> DB
     ORCH --> FS
     EXP --> EXPSERV
@@ -223,26 +229,38 @@ class ParsedDocument:
 | MinerU | top-left origin | `_mineru_bbox_to_bbox()` |
 | Docling | 彈性（讀 coord_origin）| `_bbox_from_docling()` |
 
-### 3.2b 四路聯集比對策略
+### 3.2b 漸進式四路聯集與雙軌審核
 
 ```mermaid
 graph TD
     A[ParsedDocument × 2] --> B{use_pixel_only?<br/>任一方 is_image_pdf}
-    B -->|是| PIX[C 像素 diff + D 嵌入圖片 diff<br/>保留 IMAGE_DIFF visual fallback]
-    PIX --> R{ENABLE_IMAGE_TEXT_RECALL?}
-    R -->|是| REC[MinerU forced-OCR recall<br/>strategy: alignment / heuristic / hybrid]
-    R -->|否| M
-    REC --> M
+    B -->|是| PRE[初步階段<br/>72 DPI 找變更頁<br/>144 DPI 視覺候選<br/>頁首/頁尾保護 OCR]
+    PRE --> PR[preliminary_result<br/>analysis_status=preliminary]
+    PR --> ENR[完整補強<br/>200 DPI + ROI OCR/表格<br/>可選 MinerU/PaddleOCR]
+    ENR --> M
     B -->|否| TXT[文字模式]
     TXT --> E[A 段落 diff<br/>SequenceMatcher]
     TXT --> F[B 表格 diff<br/>cell-level + 聚合]
     TXT --> G[C 像素 diff<br/>補充驗證]
     TXT --> H[D 嵌入圖片 diff<br/>pHash]
     E & F & G & H --> M[_merge_nearby_diffs<br/>鄰近合併]
-    M --> N[deduplication<br/>框中框去除]
-    N --> O[sort + assign ID<br/>d001, d002...]
-    O --> P[DiffReport]
+    M --> N[候選合併 / 去重<br/>框中框去除]
+    N --> O[evidence_service<br/>穩定 candidate_id<br/>risk / reason / evidence]
+    O --> L{審核軌道}
+    L --> C[content<br/>有可靠新舊值]
+    L --> V[needs_visual_review<br/>確有變動但無可靠文字]
+    C & V --> P[DiffReport<br/>result_updated → complete]
 ```
+
+漸進式分析的核心契約：
+
+| 階段 | 主要工作 | 對外事件 | 可否封存 |
+|------|----------|----------|----------|
+| preliminary | 原生文字、72 DPI 變更頁快掃、144 DPI 視覺候選、頁首／頁尾高風險欄位 | `preliminary_result` | 否 |
+| enriching | 200 DPI 完整像素分析、一般局部 OCR、表格與可選第二引擎補強 | `result_updated` | 否 |
+| complete | 以穩定 `candidate_id` 合併，保留人工審核狀態 | `complete` | 所有高風險與待判讀項目已審核後才可 |
+
+`DiffItem.id` 是報告內排序 ID；`candidate_id` 才是跨階段穩定識別。資料庫更新報告時以 `candidate_id` 合併，不得讓背景補強覆寫 reviewer 已完成的狀態。
 
 #### [A] 文字 Diff — `diff_paragraphs()`
 
@@ -274,13 +292,15 @@ graph TD
 
 | 步驟 | 說明 |
 |------|------|
-| 渲染 | 兩份 PDF 渲染為灰階 numpy uint8（200 DPI）|
-| 差分 | `\|arr_old - arr_new\|`，二值化（threshold=15）|
-| 形態學膨脹 | scipy，合併 4px 內鄰近像素 |
+| 頁級快掃 | 先以 72 DPI 找出有變更的頁，未變頁不進高解析分析 |
+| 渲染 | 初步階段 144 DPI；完整階段 200 DPI，灰階 numpy uint8 |
+| 差分 | `\|arr_old - arr_new\|`，預設亮度門檻 30 |
+| 形態學膨脹 | scipy，將鄰近字元筆畫合併成候選區域 |
 | 連通元件 | scipy `label()`，找出差異區塊 |
-| 面積過濾 | < 200 px² 忽略 |
-| NCC 過濾 | 正規化交叉相關 > 0.98 → 純位移噪訊，忽略 |
-| 文字提取 | ① 從 PDF 文字層取該區域文字；② 沒有則對 patch 做 Tesseract OCR |
+| 面積過濾 | 變更像素 < 100 忽略；變更密度 < 2% 視為渲染噪音 |
+| NCC 過濾 | 一般區域 > 0.94 抑制；小型數字區域僅在 > 0.985 時抑制，避免 `24→28` 被背景相似度吃掉 |
+| 文字提取 | 先取原生文字；初步只做頁首／頁尾保護 OCR，完整階段才做一般局部 OCR |
+| 無可靠文字 | 大表格／版面與小型實質變更保留為 `needs_visual_review`，不得只累加 `suppressed_count` |
 | 信心值 | 0.95 |
 
 與文字 diff 的關係：文字 PDF 模式下，像素 diff 是**補充路徑**，專門抓語義 diff 抓不到的圖形變化、公式位移、排版調整。
@@ -338,9 +358,11 @@ graph TD
 | 文字精準定位 | fitz char_bboxes | 線性插值降級 | 其他引擎無字元座標 |
 | 影像 PDF 文字召回 | `hybrid` strategy | `alignment` / `heuristic` A/B | 綜合文字序列對齊與 bbox heuristic，壓低 OCR 碎片 |
 | 相鄰碎片合併 | _merge_nearby_diffs | — | 解決解析器過度切割問題 |
-| 噪訊過濾 | NCC > 0.98 | 文字模糊匹配 ≥ 0.95 | 抑制 PDF 重新輸出的渲染差異 |
+| 噪訊過濾 | 一般 NCC > 0.94；小型區域 > 0.985 | 文字模糊匹配 ≥ 0.95 | 抑制重新輸出的渲染差異，同時保護小型數字變更 |
 
 ### 3.3 Cell-Level 表格 diff 與聚合策略
+
+表格先轉成 `TableArtifact`，保留頁碼、bbox、列欄結構、儲存格 bbox、文字、信心與來源引擎。新舊表格配對依序使用頁碼、bbox IoU、列欄形狀、表頭與數字簽章，不再假設兩個解析器的輸出順序一致；各引擎原始觀察保留，融合層不覆寫來源結果。
 
 MinerU 輸出的表格含完整 rowspan/colspan HTML，解析為 DataFrame 後執行逐格比對：
 
@@ -364,11 +386,11 @@ else:
 | 過濾器 | 說明 | 閾值 |
 |--------|------|------|
 | 像素門檻 | 偵測亮度差異門檻 (0-255) | 15 (原 30) |
-| NCC 結構相似度 | 像素區域的正規化交叉相關 | > 0.98 抑制 |
+| NCC 結構相似度 | 一般／小型像素區域的正規化交叉相關 | > 0.94／> 0.985 抑制 |
 | 文字模糊匹配 | 像素區域內的文字 SequenceMatcher 比率 | ≥ 0.95 抑制 |
-| 最小面積 | 變更像素數量 | < 200 px 忽略 (原 800) |
+| 最小面積 | 變更像素數量 | < 100 px 忽略 |
 | 噪點比率 | 實際變更像素 / 區域總像素 | < 2% 忽略 (原 5%) |
-| DPI | 渲染解析度 | 200 (原 150) |
+| DPI | 頁級快掃／初步／完整 | 72／144／200 |
 | 深度正規化 | NFKC + 去除零寬字元 + 統一空格/破折號 | — |
 
 ### 3.5 嵌入圖片與像素比對
@@ -567,10 +589,12 @@ Docker Compose
 │   ├── MINERU_API_URL=http://mineru-api-minerU:18080
 │   ├── ENABLE_IMAGE_TEXT_RECALL=false
 │   ├── IMAGE_TEXT_RECALL_STRATEGY=alignment
+│   ├── PyTorch 2.12.1+cpu（正式 CPU wheel，不含 CUDA 套件）
 │   └── Volume: backend_runtime_minerU → /app/runtime
 │       ├── uploads/old, uploads/new
 │       ├── exports/
 │       ├── snapshots/, crops/
+│       ├── analysis-cache/（跨重啟像素分析快取）
 │       └── app.db
 │
 └── Network: internal (bridge)
@@ -591,7 +615,7 @@ docker compose build backend-minerU && docker compose up -d backend-minerU
 docker compose up --build -d
 ```
 
-目前 `mineru[pipeline]` 與 backend 的 Docling 皆採最低版本範圍，未鎖定完整 dependency lock。2026-06-28 OCI ARM64 重建實際解析到 MinerU 3.4.0、Docling 2.107.0、Torch 2.12.1，並下載大型 CUDA wheel；服務仍以 CPU-only 執行，但 image 與建置時間會明顯增加。正式供應鏈治理應固定版本，並另建 CPU-only image profile。
+backend 直接依賴與關鍵轉接依賴已固定版本，Python／Node 基底映像固定 digest。PyTorch 與 torchvision 先由官方 CPU wheel index 安裝，版本必須帶 `+cpu`；若容器顯示 `+cu` 或存在 NVIDIA／CUDA 套件，視為建置錯誤。2026-07-05 ARM64 正式 backend image 約 764MB，取代舊版約 3.49GB 的 CUDA 映像。離線匯出流程會在可用時產生 SPDX SBOM。
 
 ### 8.2 MinerU 繁體中文設定
 
@@ -621,6 +645,19 @@ docker compose up --build -d
 | 預設帳號 | 固定本機管理員 `admin` | 啟動時確保帳號存在且啟用；不產生 `.initial_admin_password`，不在 log 或畫面顯示初始密碼資訊 |
 
 ## 10. 變更清單
+
+### 2026-07-05 — 漸進分析、雙軌證據與 CPU-only 正式映像
+
+- `compare_orchestrator` 先儲存並發布 preliminary report，再執行完整補強；WebSocket 新增 `preliminary_result`、`result_updated`、`complete`。
+- `CandidateRegion` 使用標準 PDF 座標與幾何雜湊產生穩定 `candidate_id`；報告背景更新以此合併並保留人工審核狀態。
+- 差異分成 `content` 與 `needs_visual_review`；確定有實質視覺變更但 OCR 不可靠時保留新舊裁切證據，`material_visual_suppressed` 固定為 0。
+- image-only PDF 初步採 72 DPI 頁級快掃、144 DPI 視覺候選與頁首／頁尾保護 OCR；完整階段採 200 DPI、一般局部 OCR、表格與可選第二引擎補強。
+- `pixel-v4` 提高小型數字區域 NCC 抑制門檻，讓鳳守愛 `24→28` 在初步階段即進入審核候選。
+- 新增 `TableArtifact` 與 page／bbox IoU／列欄結構／簽章配對，避免表格依輸出順序錯配。
+- 像素分析新增跨重啟磁碟快取；鍵包含 PDF SHA-256、頁面／ROI、DPI、OCR 模式、模型與演算法版本。
+- 封存閘門要求 `analysis_status=complete`，且高風險與待人工判讀區域均已審核。
+- Mac Docker 10 vCPU／8GB 正式五輪：cold 初步／完整 P95 10.13／56.04 秒，初步區域與完整必抓召回皆 100%，無 OOM。
+- 後端 127 項測試與前端 production build 通過。
 
 ### 2026-06-28 — 架構拆分、非同步阻塞修正與正式回歸
 

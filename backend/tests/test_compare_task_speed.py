@@ -80,7 +80,12 @@ def test_compare_task_records_speed_options_and_starts_artifacts_after_done(monk
     monkeypatch.setattr(compare_orchestrator, "update_comparison_status", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(compare_orchestrator, "save_comparison_error", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(compare_orchestrator, "generate_diff_report", fake_generate_diff_report)
-    monkeypatch.setattr(compare_orchestrator, "save_diff_report", lambda _task_id, report: saved_reports.append(report))
+    def fake_save_report(_task_id, report, *, complete=False):
+        if complete:
+            saved_reports.append(report)
+        return report
+
+    monkeypatch.setattr(compare_orchestrator, "save_analysis_report_state", fake_save_report)
     monkeypatch.setattr(compare_orchestrator, "_start_review_artifact_generation", fake_start_artifacts)
     monkeypatch.setattr("services.resource_monitor.ResourceMonitor", FakeMonitor)
     monkeypatch.setattr("services.resource_monitor.save_resource_log", lambda *_args, **_kwargs: None)

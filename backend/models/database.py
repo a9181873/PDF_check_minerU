@@ -315,6 +315,84 @@ def save_comparison_report_state(comparison_id: str, report: DiffReport) -> None
         )
 
 
+def save_analysis_report_state(
+    comparison_id: str,
+    report: DiffReport,
+    *,
+    complete: bool = False,
+) -> DiffReport:
+    """Merge a progressive analysis report without clobbering reviewer state.
+
+    Candidate ids remain stable across preliminary/enriched passes. Existing item
+    ids and review fields win, so a reviewer may safely work while enrichment is
+    still running.
+    """
+    with get_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT diff_result_json FROM comparisons WHERE id = ?",
+            (comparison_id,),
+        ).fetchone()
+        current_data: dict = {}
+        if row and row["diff_result_json"]:
+            payload = row["diff_result_json"]
+            current_data = json.loads(payload) if isinstance(payload, str) else payload
+
+        current_items = current_data.get("items", [])
+        by_candidate = {
+            item.get("candidate_id"): item
+            for item in current_items
+            if item.get("candidate_id")
+        }
+        by_id = {item.get("id"): item for item in current_items if item.get("id")}
+        used_ids: set[str] = set()
+        next_number = 1
+
+        def allocate_id(preferred: str | None) -> str:
+            nonlocal next_number
+            if preferred and preferred not in used_ids:
+                used_ids.add(preferred)
+                return preferred
+            while f"d{next_number:03d}" in used_ids:
+                next_number += 1
+            result = f"d{next_number:03d}"
+            used_ids.add(result)
+            next_number += 1
+            return result
+
+        for item in report.items:
+            old = by_candidate.get(item.candidate_id) or by_id.get(item.id)
+            if old:
+                item.id = allocate_id(old.get("id"))
+                item.reviewed = bool(old.get("reviewed", False))
+                item.reviewed_by = old.get("reviewed_by")
+                item.reviewed_at = old.get("reviewed_at")
+                item.flagged = bool(old.get("flagged", False))
+            else:
+                item.id = allocate_id(item.id)
+
+        report.total_diffs = len(report.items)
+        current_revision = int(current_data.get("report_revision", 0) or 0)
+        report.report_revision = max(report.report_revision, current_revision + 1)
+
+        if complete:
+            conn.execute(
+                """
+                UPDATE comparisons
+                SET status = 'done', diff_result_json = ?, error_message = NULL,
+                    completed_at = ?
+                WHERE id = ?
+                """,
+                (report.model_dump_json(), utc_now_iso(), comparison_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE comparisons SET diff_result_json = ? WHERE id = ?",
+                (report.model_dump_json(), comparison_id),
+            )
+        return report
+
+
 def update_review_item_state(
     comparison_id: str,
     diff_item_id: str,

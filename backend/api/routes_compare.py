@@ -212,7 +212,7 @@ def get_compare_status(task_id: str):
 @router.get("/{task_id}/result")
 def get_compare_result(task_id: str):
     state = TASK_STORE.get(task_id)
-    if state and state.status == "done" and state.result:
+    if state and state.result:
         return state.result
 
     report = get_comparison_report(task_id)

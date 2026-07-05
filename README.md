@@ -4,7 +4,7 @@ PDF Check MinerU 是一套用來比對「舊版 PDF」與「新版 PDF」差異�
 
 這個專案特別適合保險 DM、條款、費率表、簡章、公告等需要反覆改版與人工審核的 PDF。
 
-## 目前技術狀態（2026-06-28）
+## 目前技術狀態（2026-07-05）
 
 | 項目 | 正式使用狀況 |
 |------|--------------|
@@ -12,12 +12,29 @@ PDF Check MinerU 是一套用來比對「舊版 PDF」與「新版 PDF」差異�
 | 後端 | FastAPI + 有限比對佇列 + 流程協調器；同步 SQLite I/O 交由 FastAPI threadpool，避免阻塞 event loop |
 | 解析 | PyMuPDF 輕量快篩 → Docling 表格解析 → MinerU fallback；影像型 PDF 預設保留視覺差異，MinerU OCR 召回需明確開啟 |
 | 資源控制 | 重型 parser 與比對任務預設各只同時執行 1 個，並限制等待佇列，適合 CPU-only 主機 |
-| 快取 | PDF SHA-256 解析快取、single-flight、像素/NCC/OCR 配對快取均已啟用 |
+| 快取 | PDF SHA-256 解析快取、single-flight、像素/NCC/OCR 配對快取與跨重啟磁碟快取均已啟用 |
 | 前端 | React 19 + TypeScript 6 + Vite 8；支援 WebSocket 進度、輪詢取消、虛擬列表與對話框鍵盤操作 |
-| 正式驗證 | 後端 120 項測試通過、前端 production build 通過；6 組商品 DM、12 份 PDF、60 頁完成 Docker 回歸 |
-| OCI | ARM64、CPU-only、MinerU 3.4.0；`six 1.17.0` 已固定加入 MinerU Dockerfile 並通過健康檢查 |
+| 正式驗證 | 後端 127 項測試通過、前端 production build 通過；Mac M4 原生與正式 Docker 映像皆完成 cold＋warm 各 30 runs 驗收 |
+| OCI | ARM64、CPU-only、MinerU 3.4.0；`six 1.17.0` 與 PyTorch CPU wheel 已鎖定；最佳化版本尚未部署 OCI |
 
-詳細版本、資料流、解析路由、效能數據、OCI 差異與已知風險，請看 `docs/technical-usage-status_2026-06-28.md`。
+現行資料流、模組邊界與部署架構請看 `docs/technical-architecture.md`；本輪效能與準確度實作紀錄見 `docs/ocr_optimization_implementation_2026-07-04.md`。
+
+## 2026-07-04：雙軌證據與漸進分析
+
+比對結果已改成兩條明確的審核軌道：
+
+- `content`：有可靠新舊值的文字、數字、條款與表格內容差異。
+- `needs_visual_review`：像素證明區域有變，但 OCR 無法可靠解讀；仍會保留 bbox 與裁切圖，不再只縮成一個 `suppressed_count`。
+
+每筆差異現在帶有穩定 `candidate_id`、`risk_level`、`decision_reason`、`evidence[]` 與模型版本資訊。API/WebSocket 會先送 `preliminary_result`，有啟用 OCR 召回或第二引擎時再送 `result_updated`，最後送 `complete`。分析未完成、關鍵差異或待人工區域未審完時不得封存。
+
+另新增：
+
+- 依 PDF 雜湊與演算法設定建立的跨重啟像素分析快取。
+- 依 page、bbox IoU、列欄結構與表頭簽章配對表格，不再只依輸出順序。
+- PaddleOCR 實驗只辨識已變更 ROI，不再無條件全頁重跑。
+- `benchmarks/golden/v1/manifest.json` 六對商品 DM 黃金回歸集。
+- `backend/scripts/run_golden_benchmark.py`，可用完全相同條件比較 Mac、OCI 與未來地端主機。
 
 ## 一句話說明
 
@@ -155,6 +172,8 @@ docker compose down
 | `PARSER_CACHE_MAX_ENTRIES` | `8` | 記憶體解析快取最多保留文件數 |
 | `ENABLE_PIXEL_DIFF_CACHE` | `true` | 依新舊 PDF 內容雜湊快取像素/NCC/OCR 結果，重新比對時不重跑 OCR |
 | `PIXEL_DIFF_CACHE_MAX_ENTRIES` | `8` | 記憶體像素差異快取最多保留文件配對數 |
+| `ENABLE_PERSISTENT_ANALYSIS_CACHE` | `true` | 將昂貴像素分析寫入 runtime 快取，容器重啟後仍可重用 |
+| `PERSISTENT_ANALYSIS_CACHE_MAX_ENTRIES` | `128` | 每種分析 artifact 最多保留筆數 |
 | `ENABLE_DOCLING_PARALLEL` | `true` | 舊版相容設定；只有 `TABLE_PARSER_STRATEGY=parallel_race` 的 A/B 情境才有意義 |
 | `GENERATE_SNAPSHOTS` | `true` | 比對完成後是否產生頁面快照 |
 | `SNAPSHOT_DIFF_PAGES_ONLY` | `true` | 只為有差異的頁面產生快照 |
@@ -417,7 +436,7 @@ npm run build
 | 優先 | 建議 | 為什麼 |
 |------|------|--------|
 | 已完成 | 依 PDF hash 快取解析結果 | 使用 SHA-256 bounded cache + single-flight，同一份 PDF 不重複解析 |
-| P1 | 先做頁級變更偵測 | 先判斷哪些頁可能有變，再把重型 OCR/SSIM 放到可疑頁面 |
+| 已完成 | 先做頁級變更偵測 | 72 DPI 快掃先找變更頁，再對候選頁執行 144／200 DPI 分期分析 |
 | P1 | 把 snapshot 改成可控產生 | 預設可只在留存或匯出時產生，降低平常比對的等待時間 |
 | 已完成（程序內） | 對大 PDF 做有限任務佇列 | `COMPARE_MAX_CONCURRENCY` + `COMPARE_MAX_PENDING_TASKS` 限制執行與等待數；若需跨重啟復原，再升級外部持久化佇列 |
 | 已完成 | 前端延遲載入重型元件 | 只有進入比對頁才載入 PDF runtime，首頁維持快速開啟 |
@@ -429,18 +448,18 @@ npm run build
 | P0 | 正式 runtime 移除測試工具 | `pytest` 只放 `requirements-dev.txt`，降低正式容器套件數與資安掃描噪音 |
 | P0 | 補齊 `.dockerignore` | 排除 `.venv`、runtime、dist、node_modules，避免 Docker build context 從 KB 變成 GB |
 | 已完成 | 重型表格引擎改為可回退的循序路由 | 預設 Docling → MinerU，避免兩個都跑但只採用其中一份結果 |
-| P1 | 只對疑似圖片差異跑 OCR | OCR 成本高，集中在必要區域可省資源 |
+| 已完成 | 只對疑似圖片差異跑 OCR | 初步保留視覺候選；完整階段只對變更 ROI 與保護區域做 OCR |
 | P1 | 只保存必要 snapshot | 有差異頁優先保存，完整快照改成使用者需要時再產生 |
-| P2 | 建立資源用量儀表 | 長期記錄每次任務的頁數、耗時、CPU、RAM，作為硬體規格調整依據 |
-| P2 | 規劃 CPU-only / GPU profile | 目前保留 Torch/CUDA 相關依賴，方便未來 GPU 機器使用；若要做 CPU-only 精簡版，需先確認準確率不受影響 |
+| 已完成 | 建立資源用量儀表 | 基準記錄每次任務頁數、分階段耗時、CPU、RAM 與快取命中 |
+| 已完成（CPU） | 固定 CPU-only Torch | 正式 CPU 映像使用 `torch==2.12.1+cpu`，禁止把 CUDA wheel 帶進 OCI；GPU 另用獨立 profile 評估 |
 
 ### 建議執行順序
 
 1. 先做黃金測試集與準確率報表。
 2. 補齊疑難 PDF 回歸測試，避免辨識能力倒退。
 3. 再做 PDF hash 解析快取。
-4. 接著做頁級變更偵測，讓重型解析只跑在必要頁面。
-5. 最後做任務佇列、資源儀表與 CPU-only/GPU profile 規劃，提升多人使用穩定性並保留未來 GPU 彈性。
+4. 以正式基準守住頁級變更偵測與 ROI OCR，不讓速度優化犧牲初步區域召回。
+5. 將黃金集擴充至 30 對，再決定是否加入 GPU／VLM profile。
 
 ## 專案結構
 

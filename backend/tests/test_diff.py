@@ -48,6 +48,7 @@ def test_pixel_diff_cache_reuses_result_and_restores_metadata(monkeypatch):
 
     monkeypatch.setattr(settings, "enable_pixel_diff_cache", True)
     monkeypatch.setattr(settings, "pixel_diff_cache_max_entries", 2)
+    monkeypatch.setattr(settings, "enable_persistent_analysis_cache", False)
     monkeypatch.setattr(diff_service, "_pixel_cache_key", lambda *_args: "same-pair")
     monkeypatch.setattr(diff_service, "_diff_pixels_uncached", fake_uncached)
 
@@ -64,6 +65,47 @@ def test_pixel_diff_cache_reuses_result_and_restores_metadata(monkeypatch):
     assert second_warnings == ["pixel: test warning"]
     assert second[0].id == ""
     clear_pixel_diff_cache()
+
+
+def test_pixel_diff_cache_survives_process_memory_clear(monkeypatch, tmp_path):
+    clear_pixel_diff_cache()
+    calls = 0
+    old_pdf = tmp_path / "old.pdf"
+    new_pdf = tmp_path / "new.pdf"
+    old_pdf.write_bytes(b"old")
+    new_pdf.write_bytes(b"new")
+
+    def fake_uncached(*_args, engine_stats=None, engine_warnings=None, **_kwargs):
+        nonlocal calls
+        calls += 1
+        engine_stats["pixel_raw_regions"] = 1
+        return [
+            DiffItem(
+                id="",
+                diff_type=DiffType.IMAGE_DIFF,
+                old_bbox=BBox(page=1, x0=1, y0=1, x1=50, y1=50),
+                new_bbox=BBox(page=1, x0=1, y0=1, x1=50, y1=50),
+                context="Page 1 表格/版面變更",
+                confidence=0.9,
+            )
+        ]
+
+    monkeypatch.setattr(settings, "enable_pixel_diff_cache", True)
+    monkeypatch.setattr(settings, "enable_persistent_analysis_cache", True)
+    monkeypatch.setattr(settings, "analysis_cache_dir", tmp_path / "cache")
+    monkeypatch.setattr(diff_service, "_diff_pixels_uncached", fake_uncached)
+
+    first_stats = {}
+    diff_pixels(str(old_pdf), str(new_pdf), engine_stats=first_stats, engine_warnings=[])
+    clear_pixel_diff_cache()
+    second_stats = {}
+    second = diff_pixels(str(old_pdf), str(new_pdf), engine_stats=second_stats, engine_warnings=[])
+
+    assert calls == 1
+    assert first_stats["pixel_cache_tier"] == "miss"
+    assert second_stats["pixel_cache_tier"] == "disk"
+    assert len(second) == 1
+    clear_pixel_diff_cache(include_disk=True)
 
 
 def test_generate_diff_report_detects_number_change():
@@ -554,7 +596,7 @@ def test_content_filter_keeps_reviewable_table_visual_fallback():
         confidence=0.95,
     )
 
-    assert _drop_non_numeric_modifications([image_only]) == []
+    assert _drop_non_numeric_modifications([image_only]) == [image_only]
     kept = _drop_non_numeric_modifications([image_only], keep_image_diffs=True)
     assert kept == [image_only]
 
@@ -577,7 +619,7 @@ def test_content_filter_suppresses_small_visual_noise_even_in_image_mode():
         keep_image_diffs=True,
         stats=stats,
     ) == []
-    assert stats["suppressed_visual"] == 1
+    assert stats["suppressed_non_material_visual"] == 1
 
 
 def test_coalesce_reviewable_visual_items_groups_same_page_regions():
@@ -855,6 +897,44 @@ def test_generate_diff_report_keeps_table_visual_fallback_for_image_pdf(monkeypa
     assert "visual_retained=1" in (report.summary or "")
 
 
+def test_preliminary_image_report_is_visual_first_and_reviewer_facing(monkeypatch):
+    calls = []
+    visual = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_bbox=BBox(page=2, x0=20, y0=80, x1=80, y1=130),
+        new_bbox=BBox(page=2, x0=20, y0=80, x1=80, y1=130),
+        context="Page 2 待 OCR 視覺變更",
+        confidence=0.9,
+    )
+    old_doc = ParsedDocument(pages=2, paragraphs=[], tables=[], raw_json={}, is_image_pdf=True)
+    new_doc = ParsedDocument(pages=2, paragraphs=[], tables=[], raw_json={}, is_image_pdf=True)
+
+    def fake_pixels(*_args, **kwargs):
+        calls.append(kwargs)
+        return [visual]
+
+    monkeypatch.setattr("services.diff_service.diff_pixels", fake_pixels)
+    monkeypatch.setattr("services.diff_service.diff_images", lambda *_args, **_kwargs: [])
+
+    report = generate_diff_report(
+        project_id="p001",
+        old_filename="old.pdf",
+        new_filename="new.pdf",
+        old_doc=old_doc,
+        new_doc=new_doc,
+        old_pdf_path="/tmp/old.pdf",
+        new_pdf_path="/tmp/new.pdf",
+        include_enrichment=False,
+    )
+
+    assert calls[0]["enable_ocr"] is False
+    assert calls[0]["dpi"] == 144
+    assert report.analysis_status.value == "preliminary"
+    assert report.unresolved_region_count == 1
+    assert report.items[0].review_lane.value == "needs_visual_review"
+
+
 def test_generate_diff_report_suppresses_small_visual_noise_for_image_pdf(monkeypatch):
     small_noise = DiffItem(
         id="",
@@ -885,7 +965,7 @@ def test_generate_diff_report_suppresses_small_visual_noise_for_image_pdf(monkey
     assert report.total_diffs == 0
     assert report.items == []
     assert report.suppressed_count == 1
-    assert "visual_suppressed_final=1" in (report.summary or "")
+    assert "visual_noise_suppressed_final=1" in (report.summary or "")
 
 
 def test_generate_diff_report_fuses_visual_region_with_alignment_recall(monkeypatch):

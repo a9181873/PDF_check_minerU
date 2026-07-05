@@ -55,6 +55,7 @@ def parse_image_pdf_via_paddleocr(
     lang: str = "ch",
     max_pages: int | None = None,
     min_confidence: float = 0.35,
+    regions: list[BBox] | None = None,
 ) -> ParsedDocument:
     """Parse a PDF through local PaddleOCR and return positioned paragraphs.
 
@@ -89,25 +90,46 @@ def parse_image_pdf_via_paddleocr(
             tmp_path = Path(tmp_dir)
             for page_index in range(page_limit):
                 page = doc[page_index]
-                pix = page.get_pixmap(matrix=mat, alpha=False)
-                image_path = tmp_path / f"page_{page_index + 1}.png"
-                image = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-                image.save(image_path)
-
-                if not hasattr(ocr, "ocr"):
-                    raise RuntimeError("Installed PaddleOCR object has no supported ocr() method")
-                raw = ocr.ocr(str(image_path), cls=True)
-                for points, text, score in _extract_lines(raw):
-                    if score < min_confidence:
-                        continue
-                    scaled_points = [[float(x) * scale_to_pt, float(y) * scale_to_pt] for x, y in points]
-                    paragraphs.append(
-                        ParsedParagraph(
-                            text=text,
-                            bbox=_bbox_from_points(page_index + 1, page.rect.height, scaled_points),
-                            style=f"paddleocr:{score:.3f}",
+                page_regions = [region for region in (regions or []) if region.page == page_index + 1]
+                if regions is not None and not page_regions:
+                    continue
+                clips = page_regions or [None]
+                for region_index, region in enumerate(clips, start=1):
+                    clip = None
+                    offset_x = offset_y_top = 0.0
+                    if region is not None:
+                        clip = fitz.Rect(
+                            region.x0,
+                            page.rect.height - region.y1,
+                            region.x1,
+                            page.rect.height - region.y0,
                         )
-                    )
+                        offset_x, offset_y_top = float(clip.x0), float(clip.y0)
+                    pix = page.get_pixmap(matrix=mat, clip=clip, alpha=False)
+                    image_path = tmp_path / f"page_{page_index + 1}_region_{region_index}.png"
+                    image = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                    image.save(image_path)
+
+                    if not hasattr(ocr, "ocr"):
+                        raise RuntimeError("Installed PaddleOCR object has no supported ocr() method")
+                    raw = ocr.ocr(str(image_path), cls=True)
+                    for points, text, score in _extract_lines(raw):
+                        if score < min_confidence:
+                            continue
+                        scaled_points = [
+                            [
+                                float(x) * scale_to_pt + offset_x,
+                                float(y) * scale_to_pt + offset_y_top,
+                            ]
+                            for x, y in points
+                        ]
+                        paragraphs.append(
+                            ParsedParagraph(
+                                text=text,
+                                bbox=_bbox_from_points(page_index + 1, page.rect.height, scaled_points),
+                                style=f"paddleocr:{score:.3f}",
+                            )
+                        )
     finally:
         doc.close()
 
@@ -115,6 +137,12 @@ def parse_image_pdf_via_paddleocr(
         pages=page_count,
         paragraphs=paragraphs,
         tables=[],
-        raw_json={"source": "paddleocr", "lang": lang, "dpi": dpi, "max_pages": max_pages},
+        raw_json={
+            "source": "paddleocr",
+            "lang": lang,
+            "dpi": dpi,
+            "max_pages": max_pages,
+            "region_count": len(regions) if regions is not None else None,
+        },
         is_image_pdf=True,
     )

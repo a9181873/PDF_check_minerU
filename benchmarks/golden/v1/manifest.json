@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "name": "taiwan_life_dm_golden_v1",
+  "description": "六對商品 DM 的已知高風險回歸集；只代表既有案例，不代表母體準確率。",
+  "cases": [
+    {
+      "id": "fengshouai",
+      "old_pdf": "商品DM/台灣人壽鳳守愛防癌定期健康保險_商品DM_20260213適用.pdf",
+      "new_pdf": "商品DM/台灣人壽鳳守愛防癌定期健康保險_商品DM_20260506適用.pdf",
+      "must_detect": [
+        {"id": "p2_24_to_28", "page": 2, "old_regex": "(^|\\D)24(\\D|$)", "new_regex": "(^|\\D)28(\\D|$)"},
+        {"id": "p6_footer", "page": 6, "context_regex": "control/version|Control No|版號|版本"}
+      ],
+      "must_not_detect": ["\\[PAYV", "Version:\\s*975\\.18"]
+    },
+    {
+      "id": "ciai_micro",
+      "old_pdf": "商品DM/慈愛微型/台灣人壽慈愛微型一年定期傷害保險-DM(公版)-FINAL(製作人員-陳芸平)-1140825.pdf",
+      "new_pdf": "商品DM/慈愛微型/台灣人壽慈愛微型一年定期傷害保險-DM(公版)-FINAL(製作人員-陳柏婷)-1141003.pdf",
+      "must_detect": [
+        {"id": "p3_content_or_visual", "page": 3},
+        {"id": "p4_footer", "page": 4, "context_regex": "control/version|Control No|版號|版本"}
+      ],
+      "must_not_detect": ["(?:^|\\D)(?:2\\s*(?:->|→)\\s*3|3\\s*(?:->|→)\\s*5|9\\s*(?:->|→)\\s*1)(?:\\D|$)"]
+    },
+    {
+      "id": "xinfuaiai",
+      "old_pdf": "商品DM/新扶愛/台灣人壽新扶愛微型傷害保險_DM (公版)-FINAL(製作人員-林元華)-1131001.pdf",
+      "new_pdf": "商品DM/新扶愛/台灣人壽新扶愛微型傷害保險_商品DM_20251020適用.pdf",
+      "must_detect": [
+        {"id": "p1_table_or_layout", "page": 1, "context_regex": "表格|版面|內容"},
+        {"id": "p2_table_or_layout", "page": 2, "context_regex": "表格|版面|內容"},
+        {"id": "p3_table_or_layout", "page": 3, "context_regex": "表格|版面|內容"},
+        {"id": "p4_table_or_layout", "page": 4, "context_regex": "表格|版面|內容"}
+      ],
+      "must_not_detect": ["0800.*(?:->|→).*0800", "40歲.*(?:->|→).*40歲", "310元.*(?:->|→).*310元"]
+    },
+    {
+      "id": "meibaofa",
+      "old_pdf": "商品DM/美保發/台灣人壽美保發美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130101.pdf",
+      "new_pdf": "商品DM/美保發/台灣人壽美保發美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130418.pdf",
+      "must_detect": [
+        {"id": "p2_content_or_visual", "page": 2},
+        {"id": "p4_footer", "page": 4, "context_regex": "control/version|Control No|版號|版本"}
+      ],
+      "must_not_detect": ["\\[PAYV"]
+    },
+    {
+      "id": "meilbao",
+      "old_pdf": "商品DM/美利保/台灣人壽美利保美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130522.pdf",
+      "new_pdf": "商品DM/美利保/台灣人壽美利保美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130701.pdf",
+      "must_detect": [
+        {"id": "p3_main_table", "page": 3, "context_regex": "表格|版面|數字|內容"},
+        {"id": "p6_footer", "page": 6, "context_regex": "control/version|Control No|版號|版本"}
+      ],
+      "must_not_detect": ["447,6[iIl]12", "Version:\\s*975\\.18"]
+    },
+    {
+      "id": "zhenmeili",
+      "old_pdf": "商品DM/臻美利/台灣人壽臻美利美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130101.pdf",
+      "new_pdf": "商品DM/臻美利/台灣人壽臻美利美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130418.pdf",
+      "must_detect": [
+        {"id": "p2_note_or_visual", "page": 2, "context_regex": "註3|表格|版面|內容"},
+        {"id": "p3_note_or_visual", "page": 3, "context_regex": "註3|表格|版面|內容"},
+        {"id": "p4_note_or_visual", "page": 4, "context_regex": "註3|表格|版面|內容"},
+        {"id": "p6_footer", "page": 6, "context_regex": "control/version|Control No|版號|版本"}
+      ],
+      "must_not_detect": ["Version:\\s*975\\.18", "\\[PAYV"]
+    }
+  ]
+}

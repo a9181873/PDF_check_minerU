@@ -30,7 +30,7 @@ type WsMessage =
       };
     }
   | {
-      event: 'complete';
+      event: 'preliminary_result' | 'result_updated' | 'complete';
       data?: DiffReport | string;
     }
   | {
@@ -222,26 +222,32 @@ const ComparePage: React.FC = () => {
             return;
           }
 
-          if (message.event === 'complete') {
+          if (
+            message.event === 'preliminary_result' ||
+            message.event === 'result_updated' ||
+            message.event === 'complete'
+          ) {
             const payload =
               typeof message.data === 'string'
                 ? (JSON.parse(message.data) as DiffReport)
                 : message.data;
 
             if (payload) {
-              terminalStatusRef.current = true;
-              abortPollingRequests();
-              setStatus({
-                task_id: taskId,
-                status: 'done',
-                progress_percent: 100,
-                current_step: '完成',
-                error_message: null,
-              });
               setReport(payload);
               setIsLoading(false);
-              void loadChecklist(taskId, () => isActive);
-              socket.close();
+              if (message.event === 'complete') {
+                terminalStatusRef.current = true;
+                abortPollingRequests();
+                setStatus({
+                  task_id: taskId,
+                  status: 'done',
+                  progress_percent: 100,
+                  current_step: '完成',
+                  error_message: null,
+                });
+                void loadChecklist(taskId, () => isActive);
+                socket.close();
+              }
             }
             return;
           }
@@ -310,7 +316,7 @@ const ComparePage: React.FC = () => {
   }, [abortPollingRequests, loadChecklist, setReport, setStatus, taskId]);
 
   useEffect(() => {
-    if (!taskId || status?.status !== 'done') {
+    if (!taskId || !report) {
       setPdfUrls({ old: null, new: null });
       return undefined;
     }
@@ -321,7 +327,7 @@ const ComparePage: React.FC = () => {
       new: createPdfViewerSource(`/api/compare/${taskId}/pdf/new`),
     });
     return undefined;
-  }, [status?.status, taskId]);
+  }, [report, taskId]);
 
   useEffect(() => {
     if (!taskId) {
@@ -363,6 +369,12 @@ const ComparePage: React.FC = () => {
           setIsLoading(false);
           abortPollingRequests();
           await loadChecklist(taskId, () => isActive && terminalStatusRef.current);
+        } else if (statusData.status === 'enriching') {
+          const partialReport = await compareApi.getResult(taskId, controller.signal);
+          if (isActive && !terminalStatusRef.current) {
+            setReport(partialReport);
+            setIsLoading(false);
+          }
         } else if (statusData.status === 'error') {
           terminalStatusRef.current = true;
           setIsLoading(false);
@@ -410,6 +422,12 @@ const ComparePage: React.FC = () => {
           abortPollingRequests();
           await loadChecklist(taskId, () => isActive && terminalStatusRef.current);
           window.clearInterval(interval);
+        } else if (statusData.status === 'enriching') {
+          const partialReport = await compareApi.getResult(taskId, controller.signal);
+          if (isActive && !terminalStatusRef.current) {
+            setReport(partialReport);
+            setIsLoading(false);
+          }
         } else if (statusData.status === 'error') {
           terminalStatusRef.current = true;
           setIsLoading(false);
@@ -735,12 +753,12 @@ const ComparePage: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleVerifyAndArchive}
-                  disabled={archiving}
+                  disabled={archiving || report?.analysis_status !== 'complete'}
                   className="h-8 inline-flex items-center gap-1 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-60"
                   title="完成驗證並存檔"
                 >
                   <Save size={13} />
-                  {archiving ? '存檔中…' : '存檔'}
+                  {archiving ? '存檔中…' : report?.analysis_status !== 'complete' ? '分析中' : '存檔'}
                 </button>
                 <button
                   type="button"
@@ -828,11 +846,20 @@ const ComparePage: React.FC = () => {
               </div>
             </div>
 
-            {report?.suppressed_count ? (
+            {report?.analysis_status && report.analysis_status !== 'complete' ? (
+              <div className="mb-2 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-2 text-blue-800">
+                <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                <span className="text-xs">
+                  已先顯示初步差異；OCR／表格證據仍在補強，清單會自動更新。
+                </span>
+              </div>
+            ) : null}
+
+            {report?.unresolved_region_count ? (
               <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-800">
                 <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
                 <span className="text-xs">
-                  另有 {report.suppressed_count} 處低可信度表格/版面候選已降噪，請以清單項目與頁面截圖為主。
+                  有 {report.unresolved_region_count} 處待人工判讀區域，均已列入清單，請核對新舊裁切圖。
                 </span>
               </div>
             ) : null}

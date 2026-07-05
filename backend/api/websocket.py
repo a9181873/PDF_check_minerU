@@ -37,6 +37,7 @@ async def compare_progress_socket(websocket: WebSocket, task_id: str):
     await websocket.accept()
 
     last_signature: tuple[str, int, str, str | None] | None = None
+    last_result_revision = 0
     try:
         while True:
             state = TASK_STORE.get(task_id)
@@ -88,6 +89,17 @@ async def compare_progress_socket(websocket: WebSocket, task_id: str):
                     }
                 )
                 last_signature = signature
+
+            if state.result is not None and state.result_revision > last_result_revision:
+                event = (
+                    "preliminary_result"
+                    if state.result.analysis_status.value == "preliminary"
+                    else "result_updated"
+                )
+                await websocket.send_json(
+                    {"event": event, "data": state.result.model_dump(mode="json")}
+                )
+                last_result_revision = state.result_revision
 
             if state.status == "done":
                 report = state.result

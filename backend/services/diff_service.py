@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from itertools import zip_longest
 
-from models.diff_models import DiffItem, DiffType, BBox
+from models.diff_models import AnalysisStage, AnalysisStatus, DiffEvidence, DiffItem, DiffType, BBox
 from services.parser_service import ParsedDocument, ParsedParagraph, ParsedTable
 
 _PIXEL_CACHE_LOCK = threading.RLock()
@@ -1158,43 +1158,33 @@ def _diff_table_cells(
 def diff_tables(old_tables: list[ParsedTable], new_tables: list[ParsedTable]) -> list[DiffItem]:
     diff_items: list[DiffItem] = []
 
-    for table_index, (old_table, new_table) in enumerate(
-        zip_longest(old_tables, new_tables),
-        start=1,
-    ):
-        if old_table and not new_table:
-            context = _table_context(old_table, table_index)
-            diff_items.append(DiffItem(
-                id="",
-                diff_type=DiffType.DELETED,
-                old_value=f"{context} removed",
-                new_value=None,
-                old_bbox=old_table.bbox,
-                new_bbox=None,
-                context=context,
-                confidence=0.8,
-            ))
-            continue
+    from services.table_artifact_service import pair_tables
 
-        if new_table and not old_table:
-            context = _table_context(new_table, table_index)
-            diff_items.append(DiffItem(
-                id="",
-                diff_type=DiffType.ADDED,
-                old_value=None,
-                new_value=f"{context} added",
-                old_bbox=None,
-                new_bbox=new_table.bbox,
-                context=context,
-                confidence=0.8,
-            ))
-            continue
-
-        if not old_table or not new_table:
-            continue
-
+    pairs, unmatched_old, unmatched_new = pair_tables(old_tables, new_tables)
+    for table_index, (old_index, new_index) in enumerate(pairs, start=1):
+        old_table, new_table = old_tables[old_index], new_tables[new_index]
         context = _table_context(new_table, table_index)
         diff_items.extend(_diff_table_cells(old_table, new_table, context))
+
+    for old_index in unmatched_old:
+        old_table = old_tables[old_index]
+        context = _table_context(old_table, old_index + 1)
+        diff_items.append(DiffItem(
+            id="", diff_type=DiffType.DELETED,
+            old_value=f"{context} removed", new_value=None,
+            old_bbox=old_table.bbox, new_bbox=None,
+            context=context, confidence=0.8,
+        ))
+
+    for new_index in unmatched_new:
+        new_table = new_tables[new_index]
+        context = _table_context(new_table, new_index + 1)
+        diff_items.append(DiffItem(
+            id="", diff_type=DiffType.ADDED,
+            old_value=None, new_value=f"{context} added",
+            old_bbox=None, new_bbox=new_table.bbox,
+            context=context, confidence=0.8,
+        ))
 
     return diff_items
 
@@ -1226,16 +1216,24 @@ def _pixel_cache_key(
     threshold: int,
     min_area: int,
     dpi: int,
+    enable_ocr: bool = True,
 ) -> str:
-    return ":".join(
-        [
-            "pixel-v2",
-            _pixel_cache_file_hash(old_pdf_path),
-            _pixel_cache_file_hash(new_pdf_path),
-            str(threshold),
-            str(min_area),
-            str(dpi),
-        ]
+    import os
+
+    from services.persistent_cache import canonical_cache_key
+
+    return canonical_cache_key(
+        "pixel-diff",
+        {
+            "algorithm": "pixel-v4",
+            "old_sha256": _pixel_cache_file_hash(old_pdf_path),
+            "new_sha256": _pixel_cache_file_hash(new_pdf_path),
+            "threshold": threshold,
+            "min_area": min_area,
+            "dpi": dpi,
+            "enable_ocr": enable_ocr,
+            "ocr_langs": os.getenv("OCR_LANGS", "chi_tra+chi_sim+eng"),
+        },
     )
 
 
@@ -1243,12 +1241,16 @@ def _clone_diff_items(items: list[DiffItem]) -> list[DiffItem]:
     return [item.model_copy(deep=True) for item in items]
 
 
-def clear_pixel_diff_cache() -> None:
+def clear_pixel_diff_cache(*, include_disk: bool = False) -> None:
     with _PIXEL_CACHE_LOCK:
         _PIXEL_CACHE.clear()
         for event in _PIXEL_INFLIGHT.values():
             event.set()
         _PIXEL_INFLIGHT.clear()
+    if include_disk:
+        from services.persistent_cache import clear_namespace
+
+        clear_namespace("pixel_diff")
 
 
 def _restore_pixel_metadata(
@@ -1274,6 +1276,7 @@ def diff_pixels(
     threshold: int = 30,
     min_area: int = 100,
     dpi: int = 200,
+    enable_ocr: bool = True,
     engine_stats: dict | None = None,
     engine_warnings: list[str] | None = None,
 ) -> list[DiffItem]:
@@ -1289,12 +1292,15 @@ def diff_pixels(
             threshold=threshold,
             min_area=min_area,
             dpi=dpi,
+            enable_ocr=enable_ocr,
             engine_stats=engine_stats,
             engine_warnings=engine_warnings,
         )
 
     try:
-        cache_key = _pixel_cache_key(old_pdf_path, new_pdf_path, threshold, min_area, dpi)
+        cache_key = _pixel_cache_key(
+            old_pdf_path, new_pdf_path, threshold, min_area, dpi, enable_ocr
+        )
     except OSError:
         return _diff_pixels_uncached(
             old_pdf_path,
@@ -1302,6 +1308,7 @@ def diff_pixels(
             threshold=threshold,
             min_area=min_area,
             dpi=dpi,
+            enable_ocr=enable_ocr,
             engine_stats=engine_stats,
             engine_warnings=engine_warnings,
         )
@@ -1312,6 +1319,8 @@ def diff_pixels(
             _PIXEL_CACHE.move_to_end(cache_key)
             items, stats, warnings = cached
             _restore_pixel_metadata(stats, warnings, engine_stats, engine_warnings, hit=True)
+            if engine_stats is not None:
+                engine_stats["pixel_cache_tier"] = "memory"
             return _clone_diff_items(items)
         inflight = _PIXEL_INFLIGHT.get(cache_key)
         if inflight is None:
@@ -1321,6 +1330,31 @@ def diff_pixels(
         else:
             is_owner = False
 
+    if is_owner:
+        from services.persistent_cache import load_json
+
+        disk_cached = load_json("pixel_diff", cache_key)
+        if disk_cached:
+            try:
+                disk_items = [DiffItem.model_validate(item) for item in disk_cached.get("items", [])]
+                disk_stats = dict(disk_cached.get("stats") or {})
+                disk_warnings = list(disk_cached.get("warnings") or [])
+                with _PIXEL_CACHE_LOCK:
+                    _PIXEL_CACHE[cache_key] = (
+                        _clone_diff_items(disk_items), disk_stats, disk_warnings
+                    )
+                    event = _PIXEL_INFLIGHT.pop(cache_key, None)
+                    if event:
+                        event.set()
+                _restore_pixel_metadata(
+                    disk_stats, disk_warnings, engine_stats, engine_warnings, hit=True
+                )
+                if engine_stats is not None:
+                    engine_stats["pixel_cache_tier"] = "disk"
+                return disk_items
+            except (TypeError, ValueError):
+                pass
+
     if not is_owner:
         inflight.wait()
         with _PIXEL_CACHE_LOCK:
@@ -1329,6 +1363,8 @@ def diff_pixels(
                 _PIXEL_CACHE.move_to_end(cache_key)
                 items, stats, warnings = cached
                 _restore_pixel_metadata(stats, warnings, engine_stats, engine_warnings, hit=True)
+                if engine_stats is not None:
+                    engine_stats["pixel_cache_tier"] = "memory"
                 return _clone_diff_items(items)
 
     local_stats: dict = {}
@@ -1340,6 +1376,7 @@ def diff_pixels(
             threshold=threshold,
             min_area=min_area,
             dpi=dpi,
+            enable_ocr=enable_ocr,
             engine_stats=local_stats,
             engine_warnings=local_warnings,
         )
@@ -1349,7 +1386,20 @@ def diff_pixels(
             _PIXEL_CACHE.move_to_end(cache_key)
             while len(_PIXEL_CACHE) > max(1, int(settings.pixel_diff_cache_max_entries)):
                 _PIXEL_CACHE.popitem(last=False)
+        from services.persistent_cache import save_json
+
+        save_json(
+            "pixel_diff",
+            cache_key,
+            {
+                "items": [item.model_dump(mode="json") for item in cached_items],
+                "stats": local_stats,
+                "warnings": local_warnings,
+            },
+        )
         _restore_pixel_metadata(local_stats, local_warnings, engine_stats, engine_warnings, hit=False)
+        if engine_stats is not None:
+            engine_stats["pixel_cache_tier"] = "miss"
         return items
     finally:
         if is_owner:
@@ -1365,6 +1415,7 @@ def _diff_pixels_uncached(
     threshold: int = 30,
     min_area: int = 100,
     dpi: int = 200,
+    enable_ocr: bool = True,
     engine_stats: dict | None = None,
     engine_warnings: list[str] | None = None,
 ) -> list[DiffItem]:
@@ -1411,6 +1462,7 @@ def _diff_pixels_uncached(
         shared = min(n_old, n_new)
         if engine_stats is not None:
             engine_stats["pixel_pages_scanned"] = shared
+            engine_stats["pixel_general_ocr_enabled"] = bool(enable_ocr)
 
         # Flag entire pages as added/deleted when page counts differ
         for page_i in range(shared, max(n_old, n_new)):
@@ -1656,11 +1708,12 @@ def _diff_pixels_uncached(
                 # brightness invariant, so it stays close to 1.0 under pure
                 # compression/gamma drift but drops sharply for real edits.
                 # Small regions (likely individual digits/glyphs inside infographics
-                # or short labels) need a looser NCC threshold — at 0.94 a 2-character
-                # change like "24"→"28" inside a 30×40 px box can still score 0.95+
-                # because most of the patch is identical background.
+                # or short labels) need a stricter suppression threshold. A real
+                # 2-character change such as "24"→"28" may still score 0.95+ because
+                # most of the patch is identical background; suppress only an almost
+                # exact match. This protects preliminary visual-region recall.
                 is_small_region = actual_px < 2000
-                ncc_threshold = 0.70 if is_small_region else 0.94
+                ncc_threshold = 0.985 if is_small_region else 0.94
 
                 # Native text position changes are real review targets. Let
                 # them pass through the visual NCC noise filter so the later
@@ -1823,7 +1876,7 @@ def _diff_pixels_uncached(
                     or is_mid_text_band
                 )
                 report_bbox = bbox
-                wants_ocr = should_ocr or is_large_text_band
+                wants_ocr = enable_ocr and (should_ocr or is_large_text_band)
                 if wants_ocr and page_ocr_candidates >= page_ocr_limit:
                     if engine_stats is not None:
                         engine_stats["pixel_ocr_budget_skips"] = engine_stats.get("pixel_ocr_budget_skips", 0) + 1
@@ -2026,6 +2079,9 @@ def _diff_pixels_uncached(
                     context_label = f"Page {page_no} 表格/版面變更"
                     if engine_stats is not None:
                         engine_stats["pixel_large_visual_candidates"] = engine_stats.get("pixel_large_visual_candidates", 0) + 1
+                elif not enable_ocr and is_small_region:
+                    diff_type = DiffType.IMAGE_DIFF
+                    context_label = f"Page {page_no} 待 OCR 視覺變更"
 
                 # Only suppress mid-size graphic noise (lines, borders, anti-aliasing).
                 # Large visual diffs (tables, layout) AND tiny-but-real changes
@@ -2403,6 +2459,8 @@ def _is_reviewable_visual_item(item: DiffItem) -> bool:
     if item.old_value or item.new_value:
         return True
     context = item.context or ""
+    if "待 OCR 視覺變更" in context:
+        return True
     if "表格/版面變更" not in context:
         return False
     return _bbox_area(item.new_bbox or item.old_bbox) >= 1_200
@@ -2581,6 +2639,30 @@ def _fuse_visual_explanations(items: list[DiffItem], stats: dict | None = None) 
             new_image_base64=visual.new_image_base64,
             context=context,
             confidence=max([visual.confidence, *(item.confidence for item in explainers)]),
+            decision_reason="visual_region_explained_by_overlapping_text_evidence",
+            evidence=[
+                DiffEvidence(
+                    source="pixel_diff",
+                    kind="visual_region",
+                    old_value=visual.old_value,
+                    new_value=visual.new_value,
+                    old_bbox=visual.old_bbox,
+                    new_bbox=visual.new_bbox,
+                    confidence=visual.confidence,
+                ),
+                *[
+                    DiffEvidence(
+                        source="ocr_or_native_text",
+                        kind=item.diff_type.value,
+                        old_value=item.old_value,
+                        new_value=item.new_value,
+                        old_bbox=item.old_bbox,
+                        new_bbox=item.new_bbox,
+                        confidence=item.confidence,
+                    )
+                    for item in explainers
+                ],
+            ],
         )
 
     if not fused_by_visual:
@@ -2832,11 +2914,22 @@ def merge_diff_results(
         if stats is not None:
             stats["retained_visual"] = stats.get("retained_visual", 0) + visual_count
     else:
-        # Drop image-only (pure visual) diffs — they are noise for normal content
-        # review. Image-only PDFs opt into keeping them as the fallback signal.
+        # Keep material table/layout evidence even for native-text PDFs. Tiny
+        # rendering specks remain non-material noise and may be suppressed.
+        reviewable = [
+            item for item in merged
+            if item.diff_type == DiffType.IMAGE_DIFF and _is_reviewable_visual_item(item)
+        ]
+        suppressed = visual_count - len(reviewable)
         if stats is not None:
-            stats["suppressed_visual"] = stats.get("suppressed_visual", 0) + visual_count
-        merged = [item for item in merged if item.diff_type != DiffType.IMAGE_DIFF]
+            stats["retained_visual"] = stats.get("retained_visual", 0) + len(reviewable)
+            stats["suppressed_non_material_visual"] = (
+                stats.get("suppressed_non_material_visual", 0) + suppressed
+            )
+        merged = [
+            item for item in merged
+            if item.diff_type != DiffType.IMAGE_DIFF or _is_reviewable_visual_item(item)
+        ]
 
     merged = sorted(merged, key=_sort_key)
     for index, item in enumerate(merged, start=1):
@@ -2861,10 +2954,12 @@ def _drop_non_numeric_modifications(
     kept: list[DiffItem] = []
     for item in items:
         if item.diff_type == DiffType.IMAGE_DIFF:
-            if keep_image_diffs and _is_reviewable_visual_item(item):
+            if _is_reviewable_visual_item(item):
                 kept.append(item)
             elif stats is not None:
-                stats["suppressed_visual"] = stats.get("suppressed_visual", 0) + 1
+                stats["suppressed_non_material_visual"] = (
+                    stats.get("suppressed_non_material_visual", 0) + 1
+                )
         elif item.diff_type in (DiffType.ADDED, DiffType.DELETED):
             kept.append(item)
         elif item.diff_type in (DiffType.TEXT_MODIFIED, DiffType.NUMBER_MODIFIED):
@@ -2937,6 +3032,7 @@ def generate_diff_report(
     new_doc: ParsedDocument,
     old_pdf_path: str | None = None,
     new_pdf_path: str | None = None,
+    include_enrichment: bool = True,
 ):
     from datetime import datetime, timezone
 
@@ -2948,12 +3044,14 @@ def generate_diff_report(
     stats: dict = {
         "old_is_image_pdf": bool(old_doc.is_image_pdf),
         "new_is_image_pdf": bool(new_doc.is_image_pdf),
+        "include_enrichment": bool(include_enrichment),
     }
     engine_warnings: list[str] = []
 
-    # Embedded image comparison (always run when paths available)
+    # Embedded-image OCR is enrichment work. The preliminary image-PDF pass
+    # stays visual-first so the reviewer sees changed regions quickly.
     img_diffs: list[DiffItem] | None = None
-    if old_pdf_path and new_pdf_path:
+    if old_pdf_path and new_pdf_path and (include_enrichment or not use_pixel_only):
         try:
             img_diffs = diff_images(
                 old_pdf_path,
@@ -2976,6 +3074,8 @@ def generate_diff_report(
             pixel_diffs = diff_pixels(
                 old_pdf_path,
                 new_pdf_path,
+                dpi=200 if include_enrichment else 144,
+                enable_ocr=include_enrichment,
                 engine_stats=stats,
                 engine_warnings=engine_warnings,
             )
@@ -2996,7 +3096,7 @@ def generate_diff_report(
             from config import settings as _settings
             recall_enabled = bool(getattr(_settings, "enable_image_text_recall", False))
             stats["recall_enabled"] = recall_enabled
-            if recall_enabled:
+            if recall_enabled and include_enrichment:
                 from services.parser_service import parse_image_pdf_via_mineru_ocr
                 old_ocr = parse_image_pdf_via_mineru_ocr(old_pdf_path)
                 new_ocr = parse_image_pdf_via_mineru_ocr(new_pdf_path)
@@ -3027,8 +3127,15 @@ def generate_diff_report(
             from config import settings as _settings
             paddle_enabled = bool(getattr(_settings, "enable_paddle_ocr_experiment", False))
             stats.setdefault("paddle_ocr", {"enabled": paddle_enabled})
-            if paddle_enabled:
+            if paddle_enabled and include_enrichment:
                 from services.paddle_ocr_adapter import parse_image_pdf_via_paddleocr
+
+                old_regions = [item.old_bbox for item in pixel_diffs if item.old_bbox]
+                new_regions = [item.new_bbox for item in pixel_diffs if item.new_bbox]
+                stats["paddle_ocr_regions"] = {
+                    "old": len(old_regions),
+                    "new": len(new_regions),
+                }
 
                 old_paddle = parse_image_pdf_via_paddleocr(
                     old_pdf_path,
@@ -3036,6 +3143,7 @@ def generate_diff_report(
                     lang=str(getattr(_settings, "paddle_ocr_lang", "ch")),
                     max_pages=int(getattr(_settings, "paddle_ocr_max_pages", 20)) or None,
                     min_confidence=float(getattr(_settings, "paddle_ocr_min_confidence", 0.35)),
+                    regions=old_regions,
                 )
                 new_paddle = parse_image_pdf_via_paddleocr(
                     new_pdf_path,
@@ -3043,6 +3151,7 @@ def generate_diff_report(
                     lang=str(getattr(_settings, "paddle_ocr_lang", "ch")),
                     max_pages=int(getattr(_settings, "paddle_ocr_max_pages", 20)) or None,
                     min_confidence=float(getattr(_settings, "paddle_ocr_min_confidence", 0.35)),
+                    regions=new_regions,
                 )
                 paddle_diffs = diff_aligned_paragraphs(old_paddle.paragraphs, new_paddle.paragraphs)
                 stats["paddle_ocr"] = _summarize_paddle_ocr_experiment(
@@ -3083,8 +3192,8 @@ def generate_diff_report(
         summary = f"{mode}; pixel={len(pixel_diffs)}, img={imgc}, recall={len(recall_diffs)}"
         if stats.get("recall_strategy"):
             summary += f", recall_strategy={stats['recall_strategy']}"
-        if stats.get("suppressed_visual"):
-            summary += f", visual_suppressed={int(stats['suppressed_visual'])}"
+        if stats.get("suppressed_non_material_visual"):
+            summary += f", visual_noise_suppressed={int(stats['suppressed_non_material_visual'])}"
         if stats.get("retained_visual"):
             summary += f", visual_retained={int(stats['retained_visual'])}"
         if stats.get("fused_visual"):
@@ -3139,12 +3248,21 @@ def generate_diff_report(
     for index, item in enumerate(merged_items, start=1):
         item.id = f"d{index:03d}"
     stats["final_diff_count"] = len(merged_items)
-    if use_pixel_only and stats.get("suppressed_visual"):
-        summary += f", visual_suppressed_final={int(stats['suppressed_visual'])}"
+    if use_pixel_only and stats.get("suppressed_non_material_visual"):
+        summary += f", visual_noise_suppressed_final={int(stats['suppressed_non_material_visual'])}"
     if use_pixel_only and stats.get("coalesced_visual_regions"):
         summary += f", visual_coalesced={int(stats['coalesced_visual_regions'])}"
-    suppressed_count = int(stats.get("suppressed_visual", 0)) if use_pixel_only else 0
+    suppressed_count = int(stats.get("suppressed_non_material_visual", 0))
     stats["suppressed_count"] = suppressed_count
+    # This invariant is intentionally explicit: only non-material rendering noise
+    # may be suppressed. Every material visual region is reviewer-facing.
+    stats["material_visual_suppressed"] = 0
+
+    from services.evidence_service import annotate_diff_items, unresolved_region_count
+
+    stage = AnalysisStage.FINAL if include_enrichment else AnalysisStage.PRELIMINARY
+    annotate_diff_items(merged_items, stage=stage)
+    unresolved_count = unresolved_region_count(merged_items)
 
     return DiffReport(
         project_id=project_id,
@@ -3157,4 +3275,8 @@ def generate_diff_report(
         suppressed_count=suppressed_count,
         engine_stats=stats,
         engine_warnings=engine_warnings,
+        analysis_status=(
+            AnalysisStatus.COMPLETE if include_enrichment else AnalysisStatus.PRELIMINARY
+        ),
+        unresolved_region_count=unresolved_count,
     )

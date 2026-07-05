@@ -1,0 +1,1715 @@
+{
+  "schema_version": 1,
+  "benchmark": "taiwan_life_dm_golden_v1",
+  "created_at": "2026-07-04T11:12:22.902038+00:00",
+  "hardware": {
+    "host_label": "MacBook Air M4 10C/24GB; Docker 10vCPU/8GB",
+    "hostname": "199489b479df",
+    "platform": "Linux-6.12.76-linuxkit-aarch64-with-glibc2.41",
+    "machine": "aarch64",
+    "python": "3.11.15",
+    "cpu_count": 10,
+    "physical_cores": 10,
+    "logical_cores": 10,
+    "memory_total_gb": 7.65
+  },
+  "settings": {
+    "image_text_recall": false,
+    "paddle_ocr_experiment": false,
+    "table_parser_strategy": "docling_first"
+  },
+  "modes": {
+    "cold": {
+      "summary": {
+        "runs": 6,
+        "pages": 30,
+        "initial_ready_p50_seconds": 16.4357,
+        "initial_ready_p95_seconds": 28.9279,
+        "complete_p50_seconds": 16.4357,
+        "complete_p95_seconds": 28.9279,
+        "complete_mean_seconds": 17.1693,
+        "peak_memory_mb": 704.4,
+        "peak_cpu_percent": 464.8,
+        "must_detect_recall": 1.0,
+        "prohibited_false_positives": 0,
+        "material_visual_suppressed": 0,
+        "sla": {
+          "initial_ready_p95_le_15s": false,
+          "complete_p95_le_90s": true,
+          "known_critical_recall_100pct": true
+        }
+      },
+      "runs": [
+        {
+          "run_id": "cold-fengshouai-1",
+          "case_id": "fengshouai",
+          "pages": 6,
+          "timings": {
+            "parse_seconds": 0.0556,
+            "preliminary_diff_seconds": 4.7253,
+            "initial_ready_seconds": 4.781,
+            "enrichment_seconds": 0.0,
+            "complete_seconds": 4.781
+          },
+          "resources": {
+            "peak_memory_mb": 615.9,
+            "avg_cpu_percent": 85.8,
+            "peak_cpu_percent": 464.8
+          },
+          "cache": {
+            "old_parser_hit": false,
+            "new_parser_hit": false,
+            "pixel_hit": false
+          },
+          "total_diffs": 2,
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p2_24_to_28",
+                "passed": true,
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "hits": [
+                  "d002"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "\\[PAYV",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "Version:\\s*975\\.18",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 0
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-e317bc70243c195d",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 2,
+              "old_value": "24",
+              "new_value": "28",
+              "context": "Page 2 圖片數字變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-6285aca69d35d681",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 6,
+              "old_value": "Version: 2026.02; Control No: OP-2602-0081",
+              "new_value": "Version: 2026.05; Control No: 2605-OP-0029",
+              "context": "Page 6 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": false,
+            "pixel_pages_scanned": 6,
+            "pixel_pages_with_diffs": 2,
+            "pixel_raw_regions": 7,
+            "pixel_region_categories": {
+              "small": 4,
+              "text_band": 1
+            },
+            "pixel_pre_ocr_candidates": 5,
+            "pixel_ocr_calls_total": 16,
+            "pixel_numeric_fallback_ocr_calls": 4,
+            "pixel_priority_ocr_attempts": 1,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": false,
+            "pixel_cache_tier": "miss",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 1,
+            "mode": "image_pdf",
+            "pixel_diff_count": 6,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_non_material_visual": 1,
+            "suppressed_ocr_text": 1,
+            "final_diff_count": 2,
+            "suppressed_count": 1,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "cold-ciai_micro-1",
+          "case_id": "ciai_micro",
+          "pages": 4,
+          "timings": {
+            "parse_seconds": 0.0139,
+            "preliminary_diff_seconds": 18.5454,
+            "initial_ready_seconds": 18.5593,
+            "enrichment_seconds": 0.0,
+            "complete_seconds": 18.5593
+          },
+          "resources": {
+            "peak_memory_mb": 640.8,
+            "avg_cpu_percent": 86.7,
+            "peak_cpu_percent": 285.6
+          },
+          "cache": {
+            "old_parser_hit": false,
+            "new_parser_hit": false,
+            "pixel_hit": false
+          },
+          "total_diffs": 3,
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p3_content_or_visual",
+                "passed": true,
+                "hits": [
+                  "d001",
+                  "d002"
+                ]
+              },
+              {
+                "id": "p4_footer",
+                "passed": true,
+                "hits": [
+                  "d003"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "(?:^|\\D)(?:2\\s*(?:->|→)\\s*3|3\\s*(?:->|→)\\s*5|9\\s*(?:->|→)\\s*1)(?:\\D|$)",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 2
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-2bbd357c43f233e4",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_value": "亡被保險人所得清單",
+              "new_value": "(家庭成員投保適用 )",
+              "context": "Page 3 表格/版面變更; OCR/text: Page 3 內容變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-7034e11b713683d8",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 表格/版面變更"
+            },
+            {
+              "id": "d003",
+              "candidate_id": "c-568d66d677763d51",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 4,
+              "old_value": "Version: 2025.09; Control No: 2508-OP-0067",
+              "new_value": "Version: 2025.10; Control No: 2509-OP-0077",
+              "context": "Page 4 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": false,
+            "pixel_pages_scanned": 4,
+            "pixel_pages_with_diffs": 4,
+            "pixel_priority_ocr_attempts": 8,
+            "pixel_ocr_calls_total": 54,
+            "pixel_raw_regions": 1257,
+            "pixel_region_categories": {
+              "large_visual": 2,
+              "small": 35,
+              "mid_visual": 8,
+              "text_band": 11
+            },
+            "pixel_large_visual_candidates": 4,
+            "pixel_pre_ocr_candidates": 15,
+            "pixel_numeric_fallback_ocr_calls": 8,
+            "pixel_numeric_fallback_skips": 8,
+            "pixel_ocr_budget_skips": 29,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": false,
+            "pixel_cache_tier": "miss",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "fused_visual": 1,
+            "retained_visual": 3,
+            "mode": "image_pdf",
+            "pixel_diff_count": 39,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_non_material_visual": 1,
+            "final_diff_count": 3,
+            "suppressed_count": 1,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "cold-xinfuaiai-1",
+          "case_id": "xinfuaiai",
+          "pages": 4,
+          "timings": {
+            "parse_seconds": 0.0108,
+            "preliminary_diff_seconds": 30.4531,
+            "initial_ready_seconds": 30.4639,
+            "enrichment_seconds": 0.0,
+            "complete_seconds": 30.4639
+          },
+          "resources": {
+            "peak_memory_mb": 704.4,
+            "avg_cpu_percent": 67.0,
+            "peak_cpu_percent": 337.1
+          },
+          "cache": {
+            "old_parser_hit": false,
+            "new_parser_hit": false,
+            "pixel_hit": false
+          },
+          "total_diffs": 6,
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p1_table_or_layout",
+                "passed": true,
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p2_table_or_layout",
+                "passed": true,
+                "hits": [
+                  "d002"
+                ]
+              },
+              {
+                "id": "p3_table_or_layout",
+                "passed": true,
+                "hits": [
+                  "d003"
+                ]
+              },
+              {
+                "id": "p4_table_or_layout",
+                "passed": true,
+                "hits": [
+                  "d004",
+                  "d005"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "0800.*(?:->|→).*0800",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "40歲.*(?:->|→).*40歲",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "310元.*(?:->|→).*310元",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 4,
+            "must_detect_total": 4,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 4
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-6006d7c2e7c5b9c2",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 1,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 1 表格/版面變更（17 區域）"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-51a1ec5d93ad01d8",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 2,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 表格/版面變更（4 區域）"
+            },
+            {
+              "id": "d003",
+              "candidate_id": "c-8635d0f0a924232f",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 表格/版面變更"
+            },
+            {
+              "id": "d004",
+              "candidate_id": "c-04f0f067de160f49",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 4,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 4 表格/版面變更"
+            },
+            {
+              "id": "d005",
+              "candidate_id": "c-28f374fc2c155a7b",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 4,
+              "old_value": "3.本商品為保險商品受『財團法人保險安定基金』之『人身保險安定基金專戶』 / 故不受存款保險之保障。",
+              "new_value": "1. 消費者投保前應審慎瞭解本商品之承保範圍、除外不保事項及商品風險。 / 被保險人累計投保微型傷害保險之保險金額",
+              "context": "Page 4 表格/版面變更; OCR/text: Page 4 內容變更"
+            },
+            {
+              "id": "d006",
+              "candidate_id": "c-289969bf55bee045",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 4,
+              "old_value": "Version: 2024.10; Control No: 2409-2609-OP-0086",
+              "new_value": "Version: 2025.10; Control No: 2509-OP-0078",
+              "context": "Page 4 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": false,
+            "pixel_pages_scanned": 4,
+            "pixel_pages_with_diffs": 4,
+            "pixel_priority_ocr_attempts": 7,
+            "pixel_ocr_calls_total": 154,
+            "pixel_raw_regions": 292,
+            "pixel_region_categories": {
+              "large_visual": 18,
+              "text_band": 70,
+              "small": 53,
+              "mid_visual": 25
+            },
+            "pixel_large_visual_candidates": 41,
+            "pixel_pre_ocr_candidates": 52,
+            "pixel_numeric_fallback_ocr_calls": 36,
+            "pixel_numeric_fallback_skips": 5,
+            "pixel_ocr_budget_skips": 69,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": false,
+            "pixel_cache_tier": "miss",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "fused_visual": 1,
+            "retained_visual": 35,
+            "mode": "image_pdf",
+            "pixel_diff_count": 105,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_ocr_text": 8,
+            "suppressed_non_material_visual": 12,
+            "coalesced_visual_regions": 19,
+            "final_diff_count": 6,
+            "suppressed_count": 12,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "cold-meibaofa-1",
+          "case_id": "meibaofa",
+          "pages": 4,
+          "timings": {
+            "parse_seconds": 0.0109,
+            "preliminary_diff_seconds": 10.5685,
+            "initial_ready_seconds": 10.5794,
+            "enrichment_seconds": 0.0,
+            "complete_seconds": 10.5794
+          },
+          "resources": {
+            "peak_memory_mb": 692.5,
+            "avg_cpu_percent": 84.4,
+            "peak_cpu_percent": 316.9
+          },
+          "cache": {
+            "old_parser_hit": false,
+            "new_parser_hit": false,
+            "pixel_hit": false
+          },
+          "total_diffs": 2,
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p2_content_or_visual",
+                "passed": true,
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p4_footer",
+                "passed": true,
+                "hits": [
+                  "d002"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "\\[PAYV",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 1
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-580bb1ea54552351",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 2,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 表格/版面變更（2 區域）"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-4dd28010e3e0160c",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 4,
+              "old_value": "Version: 2024.01; Control No: 2312-2512-OP2-0300",
+              "new_value": "Version: 2024.04; Control No: OP-2404-2604-0238",
+              "context": "Page 4 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": false,
+            "pixel_pages_scanned": 4,
+            "pixel_pages_with_diffs": 2,
+            "pixel_priority_ocr_attempts": 3,
+            "pixel_ocr_calls_total": 44,
+            "pixel_raw_regions": 158,
+            "pixel_region_categories": {
+              "large_visual": 1,
+              "small": 26,
+              "text_band": 1
+            },
+            "pixel_large_visual_candidates": 2,
+            "pixel_pre_ocr_candidates": 15,
+            "pixel_numeric_fallback_ocr_calls": 8,
+            "pixel_numeric_fallback_skips": 10,
+            "pixel_ocr_budget_skips": 12,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": false,
+            "pixel_cache_tier": "miss",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 2,
+            "mode": "image_pdf",
+            "pixel_diff_count": 29,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "coalesced_visual_regions": 1,
+            "final_diff_count": 2,
+            "suppressed_count": 0,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "cold-meilbao-1",
+          "case_id": "meilbao",
+          "pages": 6,
+          "timings": {
+            "parse_seconds": 0.0254,
+            "preliminary_diff_seconds": 24.2945,
+            "initial_ready_seconds": 24.3199,
+            "enrichment_seconds": 0.0,
+            "complete_seconds": 24.3199
+          },
+          "resources": {
+            "peak_memory_mb": 665.8,
+            "avg_cpu_percent": 85.6,
+            "peak_cpu_percent": 347.5
+          },
+          "cache": {
+            "old_parser_hit": false,
+            "new_parser_hit": false,
+            "pixel_hit": false
+          },
+          "total_diffs": 2,
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p3_main_table",
+                "passed": true,
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "hits": [
+                  "d002"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "447,6[iIl]12",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "Version:\\s*975\\.18",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 1
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-ff356773db3b0c94",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 表格/版面變更（2 區域）"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-5cd9de46503c5681",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 6,
+              "old_value": "Version: 2024.05; Control No: OP-2405-2605-0342",
+              "new_value": "Version: 2024.07; Control No: 2406-2606-OP-0046",
+              "context": "Page 6 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": false,
+            "pixel_pages_scanned": 6,
+            "pixel_pages_with_diffs": 6,
+            "pixel_priority_ocr_attempts": 11,
+            "pixel_ocr_calls_total": 60,
+            "pixel_raw_regions": 2493,
+            "pixel_region_categories": {
+              "small": 49,
+              "large_visual": 1,
+              "text_band": 1
+            },
+            "pixel_pre_ocr_candidates": 15,
+            "pixel_numeric_fallback_ocr_calls": 8,
+            "pixel_large_visual_candidates": 2,
+            "pixel_numeric_fallback_skips": 10,
+            "pixel_ocr_budget_skips": 35,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": false,
+            "pixel_cache_tier": "miss",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 3,
+            "mode": "image_pdf",
+            "pixel_diff_count": 52,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_non_material_visual": 1,
+            "coalesced_visual_regions": 1,
+            "final_diff_count": 2,
+            "suppressed_count": 1,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "cold-zhenmeili-1",
+          "case_id": "zhenmeili",
+          "pages": 6,
+          "timings": {
+            "parse_seconds": 0.0162,
+            "preliminary_diff_seconds": 14.2959,
+            "initial_ready_seconds": 14.3122,
+            "enrichment_seconds": 0.0,
+            "complete_seconds": 14.3122
+          },
+          "resources": {
+            "peak_memory_mb": 689.7,
+            "avg_cpu_percent": 152.0,
+            "peak_cpu_percent": 326.5
+          },
+          "cache": {
+            "old_parser_hit": false,
+            "new_parser_hit": false,
+            "pixel_hit": false
+          },
+          "total_diffs": 4,
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p2_note_or_visual",
+                "passed": true,
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p3_note_or_visual",
+                "passed": true,
+                "hits": [
+                  "d002"
+                ]
+              },
+              {
+                "id": "p4_note_or_visual",
+                "passed": true,
+                "hits": [
+                  "d003"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "hits": [
+                  "d004"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "Version:\\s*975\\.18",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "\\[PAYV",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 4,
+            "must_detect_total": 4,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 3
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-fcac1a73d5596215",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 2,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 表格/版面變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-c1c11d87465e5332",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 表格/版面變更"
+            },
+            {
+              "id": "d003",
+              "candidate_id": "c-d87db1b842f55345",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 4,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 4 表格/版面變更"
+            },
+            {
+              "id": "d004",
+              "candidate_id": "c-0f99310cea5434cf",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 6,
+              "old_value": "Version: 2024.01; Control No: 2312-2512-OP2-0274",
+              "new_value": "Version: 2024.04; Control No: OP-2404-2604-0234",
+              "context": "Page 6 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": false,
+            "pixel_pages_scanned": 6,
+            "pixel_pages_with_diffs": 4,
+            "pixel_priority_ocr_attempts": 4,
+            "pixel_ocr_calls_total": 26,
+            "pixel_raw_regions": 32,
+            "pixel_region_categories": {
+              "large_visual": 3,
+              "text_band": 5,
+              "small": 4
+            },
+            "pixel_large_visual_candidates": 3,
+            "pixel_pre_ocr_candidates": 9,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": false,
+            "pixel_cache_tier": "miss",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 3,
+            "mode": "image_pdf",
+            "pixel_diff_count": 13,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_ocr_text": 3,
+            "final_diff_count": 4,
+            "suppressed_count": 0,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        }
+      ]
+    },
+    "warm": {
+      "summary": {
+        "runs": 6,
+        "pages": 30,
+        "initial_ready_p50_seconds": 1.4492,
+        "initial_ready_p95_seconds": 1.7567,
+        "complete_p50_seconds": 1.4492,
+        "complete_p95_seconds": 1.7567,
+        "complete_mean_seconds": 1.4561,
+        "peak_memory_mb": 609.2,
+        "peak_cpu_percent": 110.7,
+        "must_detect_recall": 1.0,
+        "prohibited_false_positives": 0,
+        "material_visual_suppressed": 0,
+        "sla": {
+          "initial_ready_p95_le_15s": true,
+          "complete_p95_le_90s": true,
+          "known_critical_recall_100pct": true
+        }
+      },
+      "runs": [
+        {
+          "run_id": "warm-fengshouai-1",
+          "case_id": "fengshouai",
+          "pages": 6,
+          "timings": {
+            "parse_seconds": 0.0049,
+            "preliminary_diff_seconds": 1.7096,
+            "initial_ready_seconds": 1.7144,
+            "enrichment_seconds": 0.0,
+            "complete_seconds": 1.7144
+          },
+          "resources": {
+            "peak_memory_mb": 591.2,
+            "avg_cpu_percent": 100.6,
+            "peak_cpu_percent": 105.7
+          },
+          "cache": {
+            "old_parser_hit": true,
+            "new_parser_hit": true,
+            "pixel_hit": true
+          },
+          "total_diffs": 2,
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p2_24_to_28",
+                "passed": true,
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "hits": [
+                  "d002"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "\\[PAYV",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "Version:\\s*975\\.18",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 0
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-e317bc70243c195d",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 2,
+              "old_value": "24",
+              "new_value": "28",
+              "context": "Page 2 圖片數字變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-6285aca69d35d681",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 6,
+              "old_value": "Version: 2026.02; Control No: OP-2602-0081",
+              "new_value": "Version: 2026.05; Control No: 2605-OP-0029",
+              "context": "Page 6 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": false,
+            "pixel_pages_scanned": 6,
+            "pixel_pages_with_diffs": 2,
+            "pixel_raw_regions": 7,
+            "pixel_region_categories": {
+              "small": 4,
+              "text_band": 1
+            },
+            "pixel_pre_ocr_candidates": 5,
+            "pixel_ocr_calls_total": 16,
+            "pixel_numeric_fallback_ocr_calls": 4,
+            "pixel_priority_ocr_attempts": 1,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": true,
+            "pixel_cache_tier": "memory",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 1,
+            "mode": "image_pdf",
+            "pixel_diff_count": 6,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_non_material_visual": 1,
+            "suppressed_ocr_text": 1,
+            "final_diff_count": 2,
+            "suppressed_count": 1,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "warm-ciai_micro-1",
+          "case_id": "ciai_micro",
+          "pages": 4,
+          "timings": {
+            "parse_seconds": 0.0047,
+            "preliminary_diff_seconds": 1.1615,
+            "initial_ready_seconds": 1.1662,
+            "enrichment_seconds": 0.0,
+            "complete_seconds": 1.1662
+          },
+          "resources": {
+            "peak_memory_mb": 591.3,
+            "avg_cpu_percent": 99.2,
+            "peak_cpu_percent": 102.7
+          },
+          "cache": {
+            "old_parser_hit": true,
+            "new_parser_hit": true,
+            "pixel_hit": true
+          },
+          "total_diffs": 3,
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p3_content_or_visual",
+                "passed": true,
+                "hits": [
+                  "d001",
+                  "d002"
+                ]
+              },
+              {
+                "id": "p4_footer",
+                "passed": true,
+                "hits": [
+                  "d003"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "(?:^|\\D)(?:2\\s*(?:->|→)\\s*3|3\\s*(?:->|→)\\s*5|9\\s*(?:->|→)\\s*1)(?:\\D|$)",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 2
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-2bbd357c43f233e4",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_value": "亡被保險人所得清單",
+              "new_value": "(家庭成員投保適用 )",
+              "context": "Page 3 表格/版面變更; OCR/text: Page 3 內容變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-7034e11b713683d8",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 表格/版面變更"
+            },
+            {
+              "id": "d003",
+              "candidate_id": "c-568d66d677763d51",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 4,
+              "old_value": "Version: 2025.09; Control No: 2508-OP-0067",
+              "new_value": "Version: 2025.10; Control No: 2509-OP-0077",
+              "context": "Page 4 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": false,
+            "pixel_pages_scanned": 4,
+            "pixel_pages_with_diffs": 4,
+            "pixel_priority_ocr_attempts": 8,
+            "pixel_ocr_calls_total": 54,
+            "pixel_raw_regions": 1257,
+            "pixel_region_categories": {
+              "large_visual": 2,
+              "small": 35,
+              "mid_visual": 8,
+              "text_band": 11
+            },
+            "pixel_large_visual_candidates": 4,
+            "pixel_pre_ocr_candidates": 15,
+            "pixel_numeric_fallback_ocr_calls": 8,
+            "pixel_numeric_fallback_skips": 8,
+            "pixel_ocr_budget_skips": 29,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": true,
+            "pixel_cache_tier": "memory",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "fused_visual": 1,
+            "retained_visual": 3,
+            "mode": "image_pdf",
+            "pixel_diff_count": 39,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_non_material_visual": 1,
+            "final_diff_count": 3,
+            "suppressed_count": 1,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "warm-xinfuaiai-1",
+          "case_id": "xinfuaiai",
+          "pages": 4,
+          "timings": {
+            "parse_seconds": 0.0047,
+            "preliminary_diff_seconds": 1.1559,
+            "initial_ready_seconds": 1.1606,
+            "enrichment_seconds": 0.0,
+            "complete_seconds": 1.1606
+          },
+          "resources": {
+            "peak_memory_mb": 607.3,
+            "avg_cpu_percent": 100.0,
+            "peak_cpu_percent": 106.3
+          },
+          "cache": {
+            "old_parser_hit": true,
+            "new_parser_hit": true,
+            "pixel_hit": true
+          },
+          "total_diffs": 6,
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p1_table_or_layout",
+                "passed": true,
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p2_table_or_layout",
+                "passed": true,
+                "hits": [
+                  "d002"
+                ]
+              },
+              {
+                "id": "p3_table_or_layout",
+                "passed": true,
+                "hits": [
+                  "d003"
+                ]
+              },
+              {
+                "id": "p4_table_or_layout",
+                "passed": true,
+                "hits": [
+                  "d004",
+                  "d005"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "0800.*(?:->|→).*0800",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "40歲.*(?:->|→).*40歲",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "310元.*(?:->|→).*310元",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 4,
+            "must_detect_total": 4,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 4
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-6006d7c2e7c5b9c2",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 1,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 1 表格/版面變更（17 區域）"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-51a1ec5d93ad01d8",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 2,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 表格/版面變更（4 區域）"
+            },
+            {
+              "id": "d003",
+              "candidate_id": "c-8635d0f0a924232f",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 表格/版面變更"
+            },
+            {
+              "id": "d004",
+              "candidate_id": "c-04f0f067de160f49",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 4,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 4 表格/版面變更"
+            },
+            {
+              "id": "d005",
+              "candidate_id": "c-28f374fc2c155a7b",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 4,
+              "old_value": "3.本商品為保險商品受『財團法人保險安定基金』之『人身保險安定基金專戶』 / 故不受存款保險之保障。",
+              "new_value": "1. 消費者投保前應審慎瞭解本商品之承保範圍、除外不保事項及商品風險。 / 被保險人累計投保微型傷害保險之保險金額",
+              "context": "Page 4 表格/版面變更; OCR/text: Page 4 內容變更"
+            },
+            {
+              "id": "d006",
+              "candidate_id": "c-289969bf55bee045",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 4,
+              "old_value": "Version: 2024.10; Control No: 2409-2609-OP-0086",
+              "new_value": "Version: 2025.10; Control No: 2509-OP-0078",
+              "context": "Page 4 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": false,
+            "pixel_pages_scanned": 4,
+            "pixel_pages_with_diffs": 4,
+            "pixel_priority_ocr_attempts": 7,
+            "pixel_ocr_calls_total": 154,
+            "pixel_raw_regions": 292,
+            "pixel_region_categories": {
+              "large_visual": 18,
+              "text_band": 70,
+              "small": 53,
+              "mid_visual": 25
+            },
+            "pixel_large_visual_candidates": 41,
+            "pixel_pre_ocr_candidates": 52,
+            "pixel_numeric_fallback_ocr_calls": 36,
+            "pixel_numeric_fallback_skips": 5,
+            "pixel_ocr_budget_skips": 69,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": true,
+            "pixel_cache_tier": "memory",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "fused_visual": 1,
+            "retained_visual": 35,
+            "mode": "image_pdf",
+            "pixel_diff_count": 105,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_ocr_text": 8,
+            "suppressed_non_material_visual": 12,
+            "coalesced_visual_regions": 19,
+            "final_diff_count": 6,
+            "suppressed_count": 12,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "warm-meibaofa-1",
+          "case_id": "meibaofa",
+          "pages": 4,
+          "timings": {
+            "parse_seconds": 0.0036,
+            "preliminary_diff_seconds": 1.1803,
+            "initial_ready_seconds": 1.184,
+            "enrichment_seconds": 0.0,
+            "complete_seconds": 1.184
+          },
+          "resources": {
+            "peak_memory_mb": 575.3,
+            "avg_cpu_percent": 100.2,
+            "peak_cpu_percent": 110.3
+          },
+          "cache": {
+            "old_parser_hit": true,
+            "new_parser_hit": true,
+            "pixel_hit": true
+          },
+          "total_diffs": 2,
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p2_content_or_visual",
+                "passed": true,
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p4_footer",
+                "passed": true,
+                "hits": [
+                  "d002"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "\\[PAYV",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 1
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-580bb1ea54552351",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 2,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 表格/版面變更（2 區域）"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-4dd28010e3e0160c",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 4,
+              "old_value": "Version: 2024.01; Control No: 2312-2512-OP2-0300",
+              "new_value": "Version: 2024.04; Control No: OP-2404-2604-0238",
+              "context": "Page 4 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": false,
+            "pixel_pages_scanned": 4,
+            "pixel_pages_with_diffs": 2,
+            "pixel_priority_ocr_attempts": 3,
+            "pixel_ocr_calls_total": 44,
+            "pixel_raw_regions": 158,
+            "pixel_region_categories": {
+              "large_visual": 1,
+              "small": 26,
+              "text_band": 1
+            },
+            "pixel_large_visual_candidates": 2,
+            "pixel_pre_ocr_candidates": 15,
+            "pixel_numeric_fallback_ocr_calls": 8,
+            "pixel_numeric_fallback_skips": 10,
+            "pixel_ocr_budget_skips": 12,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": true,
+            "pixel_cache_tier": "memory",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 2,
+            "mode": "image_pdf",
+            "pixel_diff_count": 29,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "coalesced_visual_regions": 1,
+            "final_diff_count": 2,
+            "suppressed_count": 0,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "warm-meilbao-1",
+          "case_id": "meilbao",
+          "pages": 6,
+          "timings": {
+            "parse_seconds": 0.0081,
+            "preliminary_diff_seconds": 1.7451,
+            "initial_ready_seconds": 1.7532,
+            "enrichment_seconds": 0.0,
+            "complete_seconds": 1.7532
+          },
+          "resources": {
+            "peak_memory_mb": 609.2,
+            "avg_cpu_percent": 101.0,
+            "peak_cpu_percent": 110.7
+          },
+          "cache": {
+            "old_parser_hit": true,
+            "new_parser_hit": true,
+            "pixel_hit": true
+          },
+          "total_diffs": 2,
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p3_main_table",
+                "passed": true,
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "hits": [
+                  "d002"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "447,6[iIl]12",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "Version:\\s*975\\.18",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 1
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-ff356773db3b0c94",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 表格/版面變更（2 區域）"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-5cd9de46503c5681",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 6,
+              "old_value": "Version: 2024.05; Control No: OP-2405-2605-0342",
+              "new_value": "Version: 2024.07; Control No: 2406-2606-OP-0046",
+              "context": "Page 6 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": false,
+            "pixel_pages_scanned": 6,
+            "pixel_pages_with_diffs": 6,
+            "pixel_priority_ocr_attempts": 11,
+            "pixel_ocr_calls_total": 60,
+            "pixel_raw_regions": 2493,
+            "pixel_region_categories": {
+              "small": 49,
+              "large_visual": 1,
+              "text_band": 1
+            },
+            "pixel_pre_ocr_candidates": 15,
+            "pixel_numeric_fallback_ocr_calls": 8,
+            "pixel_large_visual_candidates": 2,
+            "pixel_numeric_fallback_skips": 10,
+            "pixel_ocr_budget_skips": 35,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": true,
+            "pixel_cache_tier": "memory",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 3,
+            "mode": "image_pdf",
+            "pixel_diff_count": 52,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_non_material_visual": 1,
+            "coalesced_visual_regions": 1,
+            "final_diff_count": 2,
+            "suppressed_count": 1,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "warm-zhenmeili-1",
+          "case_id": "zhenmeili",
+          "pages": 6,
+          "timings": {
+            "parse_seconds": 0.0084,
+            "preliminary_diff_seconds": 1.7495,
+            "initial_ready_seconds": 1.7579,
+            "enrichment_seconds": 0.0,
+            "complete_seconds": 1.7579
+          },
+          "resources": {
+            "peak_memory_mb": 600.3,
+            "avg_cpu_percent": 99.5,
+            "peak_cpu_percent": 103.5
+          },
+          "cache": {
+            "old_parser_hit": true,
+            "new_parser_hit": true,
+            "pixel_hit": true
+          },
+          "total_diffs": 4,
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p2_note_or_visual",
+                "passed": true,
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p3_note_or_visual",
+                "passed": true,
+                "hits": [
+                  "d002"
+                ]
+              },
+              {
+                "id": "p4_note_or_visual",
+                "passed": true,
+                "hits": [
+                  "d003"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "hits": [
+                  "d004"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "Version:\\s*975\\.18",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "\\[PAYV",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 4,
+            "must_detect_total": 4,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 3
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-fcac1a73d5596215",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 2,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 表格/版面變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-c1c11d87465e5332",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 表格/版面變更"
+            },
+            {
+              "id": "d003",
+              "candidate_id": "c-d87db1b842f55345",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 4,
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 4 表格/版面變更"
+            },
+            {
+              "id": "d004",
+              "candidate_id": "c-0f99310cea5434cf",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 6,
+              "old_value": "Version: 2024.01; Control No: 2312-2512-OP2-0274",
+              "new_value": "Version: 2024.04; Control No: OP-2404-2604-0234",
+              "context": "Page 6 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": false,
+            "pixel_pages_scanned": 6,
+            "pixel_pages_with_diffs": 4,
+            "pixel_priority_ocr_attempts": 4,
+            "pixel_ocr_calls_total": 26,
+            "pixel_raw_regions": 32,
+            "pixel_region_categories": {
+              "large_visual": 3,
+              "text_band": 5,
+              "small": 4
+            },
+            "pixel_large_visual_candidates": 3,
+            "pixel_pre_ocr_candidates": 9,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": true,
+            "pixel_cache_tier": "memory",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 3,
+            "mode": "image_pdf",
+            "pixel_diff_count": 13,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_ocr_text": 3,
+            "final_diff_count": 4,
+            "suppressed_count": 0,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        }
+      ]
+    }
+  }
+}

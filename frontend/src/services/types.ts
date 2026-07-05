@@ -6,6 +6,22 @@ export enum DiffType {
   IMAGE_DIFF = 'image_diff',
 }
 
+export type ReviewLane = 'content' | 'needs_visual_review';
+export type RiskLevel = 'critical' | 'high' | 'medium' | 'low';
+export type AnalysisStage = 'preliminary' | 'enriched' | 'final';
+export type AnalysisStatus = 'preliminary' | 'enriching' | 'complete';
+
+export interface DiffEvidence {
+  source: string;
+  kind: string;
+  old_value?: string | null;
+  new_value?: string | null;
+  old_bbox?: BBox | null;
+  new_bbox?: BBox | null;
+  confidence: number;
+  metadata?: Record<string, unknown>;
+}
+
 export interface BBox {
   page: number;
   x0: number;
@@ -29,6 +45,13 @@ export interface DiffItem {
   reviewed_by: string | null;
   reviewed_at: string | null;
   flagged?: boolean;
+  candidate_id?: string | null;
+  review_lane?: ReviewLane;
+  risk_level?: RiskLevel;
+  analysis_stage?: AnalysisStage;
+  decision_reason?: string | null;
+  evidence?: DiffEvidence[];
+  model_manifest?: Record<string, string>;
 }
 
 export interface DiffReport {
@@ -43,6 +66,9 @@ export interface DiffReport {
   suppressed_count?: number;
   engine_stats?: Record<string, unknown>;
   engine_warnings?: string[];
+  analysis_status?: AnalysisStatus;
+  unresolved_region_count?: number;
+  report_revision?: number;
 }
 
 export enum CheckStatus {

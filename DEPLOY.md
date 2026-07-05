@@ -8,6 +8,8 @@
 
 本系統目前以 Linux containers 執行兩個主要服務：`backend-minerU` 與 `mineru-api-minerU`。macOS / Windows 桌面環境建議用 Docker Desktop；正式常駐服務建議用 Linux Server 或 Linux VM 跑 Docker Engine + Compose plugin。
 
+現行漸進式分析、雙軌審核、快取與模組關係見 `docs/technical-architecture.md`。
+
 | 平台 | 建議環境 | 最低試跑 | 正式建議 |
 |------|----------|----------|----------|
 | macOS | Docker Desktop | Apple Silicon 或 Intel、16GB RAM、120GB SSD | Mac mini `M4 / 24GB / 512GB` 起；常跑 OCR 回歸建議 `M4 Pro / 48GB / 1TB` |
@@ -19,6 +21,39 @@
 - **Windows 注意**：需啟用 BIOS/UEFI 虛擬化與 WSL2。Docker Desktop 官方不支援 Windows Server 作為 Desktop 平台；Windows Server 建議改跑 Ubuntu VM 或直接使用 Linux Server。
 - **硬碟空間**：80GB 只適合短期試跑；正式環境請用 200GB 以上，長期封存/回歸建議 512GB 到 1TB。
 - **RAM**：16GB 只算能跑；24GB 是單人合理起點；多人或常跑影像型 PDF OCR 建議 32GB 以上。
+
+### Docker Desktop 配額不是主機規格
+
+macOS／Windows 即使主機有 24GB 或 32GB RAM，Docker Desktop 仍可能只分配 8GB。效能測試前必須記錄實際容器配額：
+
+```bash
+docker info --format '{{.Architecture}} CPU={{.NCPU}} RAM={{.MemTotal}}'
+```
+
+若容器 RAM 少於 12GB，結果只能視為低配基準；發生 OOM 時先調整 Docker Desktop Resources，再判斷是否需要採購新硬體。
+
+### Mac／OCI 同資料集效能基準
+
+在 backend image 已建置、repo 掛載到容器的環境執行：
+
+```bash
+python backend/scripts/run_golden_benchmark.py \
+  --repo-root . \
+  --mode both \
+  --repeat 1 \
+  --host-label 'host description' \
+  --output benchmarks/results/host.json
+```
+
+正式驗收將 `--repeat` 改為 `5`。腳本同時產生 JSON 與 Markdown，記錄 cold/warm、初步／完整 P50/P95、CPU、RSS、快取與黃金案例命中率。跨主機比較：
+
+MacBook Air M4 已於 2026-07-05 完成 `--repeat 5`：原生 cold 初步／完整 P95 為 7.41／38.45 秒；正式 Docker 映像（10 vCPU、8GB）為 10.13／56.04 秒。兩者的初步區域與完整必抓召回皆為 100%。部署容量規劃應採較保守的 Docker 結果；OCI 最佳化版本仍須部署後以相同指令驗收。
+
+```bash
+python backend/scripts/compare_benchmark_results.py \
+  benchmarks/results/mac.json benchmarks/results/oci.json \
+  --output benchmarks/results/mac_vs_oci.md
+```
 
 ---
 
@@ -244,6 +279,7 @@ GET http://localhost:8001/api/system/resource-logs/{task_id}
 | Linux / OCI | 正式服務首選；8 vCPU/32GB/512GB 起，長期主力用 12+ vCPU/64GB/1TB |
 
 > **ARM64 注意事項**：Docling 和 PyMuPDF 都支援 ARM64 (aarch64)。Apple Silicon 與 OCI Ampere A1 實測可跑，但 MinerU / OCR 仍是 CPU-heavy；首次 model download 或 image build 會較慢。若要跨架構打包，才需要明確使用 `--platform linux/arm64` 或 `linux/amd64`。
+> **CPU Torch 注意事項**：正式 CPU 映像必須使用 PyTorch 官方 CPU wheel，版本應帶 `+cpu`。若映像內顯示 `+cu`，代表誤裝 CUDA wheel，不得部署至 OCI CPU 主機。
 > **PaddleOCR 實驗版注意事項**：開啟後會多一次 PDF rasterize + OCR inference，CPU-only 環境會增加處理時間與記憶體峰值。第一階段建議 `PADDLE_OCR_MAX_PAGES=20`、`PADDLE_OCR_DPI=200`，並先在 8 vCPU / 32GB RAM 以上測試。
 
 ---

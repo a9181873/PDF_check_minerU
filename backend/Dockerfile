@@ -1,5 +1,5 @@
 # Frontend build stage
-FROM node:20-alpine AS frontend-builder
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS frontend-builder
 
 WORKDIR /app/frontend
 
@@ -11,7 +11,7 @@ COPY frontend ./
 RUN npm run build
 
 # Backend stage
-FROM python:3.11-slim
+FROM python:3.11-slim@sha256:b27df5841f3355e9473f9a516d38a6783b6c8dfeacaf2d14a240f443b368ddb6
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -31,8 +31,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY backend/requirements.txt ./requirements.txt
-RUN pip install --upgrade pip && pip install -r requirements.txt
+COPY backend/requirements.txt backend/constraints-oci-verified.txt ./
+RUN pip install --upgrade pip && \
+    pip install \
+      --index-url https://download.pytorch.org/whl/cpu \
+      --extra-index-url https://pypi.org/simple \
+      "torch==2.12.1+cpu" \
+      "torchvision==0.27.1+cpu" && \
+    pip install -r requirements.txt -c constraints-oci-verified.txt
 
 # Copy backend source
 COPY backend/ ./

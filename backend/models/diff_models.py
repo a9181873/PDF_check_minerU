@@ -12,6 +12,32 @@ class DiffType(str, Enum):
     IMAGE_DIFF = "image_diff"
 
 
+class ReviewLane(str, Enum):
+    """Reviewer-facing lane; visual uncertainty must never be silently hidden."""
+
+    CONTENT = "content"
+    NEEDS_VISUAL_REVIEW = "needs_visual_review"
+
+
+class RiskLevel(str, Enum):
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class AnalysisStage(str, Enum):
+    PRELIMINARY = "preliminary"
+    ENRICHED = "enriched"
+    FINAL = "final"
+
+
+class AnalysisStatus(str, Enum):
+    PRELIMINARY = "preliminary"
+    ENRICHING = "enriching"
+    COMPLETE = "complete"
+
+
 class BBox(BaseModel):
     """PDF coordinate bounding box, bottom-left origin in pt."""
 
@@ -20,6 +46,47 @@ class BBox(BaseModel):
     y0: float
     x1: float
     y1: float
+
+
+class CandidateRegion(BaseModel):
+    """Canonical page region shared by visual, OCR, table, and VLM evidence."""
+
+    candidate_id: str
+    page: int = Field(ge=1)
+    region_type: str
+    old_bbox: BBox | None = None
+    new_bbox: BBox | None = None
+    area_pt2: float = Field(default=0.0, ge=0.0)
+
+
+class DiffEvidence(BaseModel):
+    source: str
+    kind: str
+    old_value: str | None = None
+    new_value: str | None = None
+    old_bbox: BBox | None = None
+    new_bbox: BBox | None = None
+    confidence: float = Field(ge=0.0, le=1.0)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class TableCellArtifact(BaseModel):
+    row: int = Field(ge=0)
+    column: int = Field(ge=0)
+    text: str
+    bbox: BBox | None = None
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+
+
+class TableArtifact(BaseModel):
+    page: int = Field(ge=1)
+    bbox: BBox
+    rows: int = Field(ge=0)
+    columns: int = Field(ge=0)
+    cells: list[TableCellArtifact] = Field(default_factory=list)
+    source: str
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    structure_signature: str
 
 
 class DiffItem(BaseModel):
@@ -37,6 +104,14 @@ class DiffItem(BaseModel):
     reviewed_by: str | None = None
     reviewed_at: str | None = None
     flagged: bool = False  # reviewer marked this diff as an anomaly (action == "flagged")
+    candidate_id: str | None = None
+    candidate_region: CandidateRegion | None = None
+    review_lane: ReviewLane = ReviewLane.CONTENT
+    risk_level: RiskLevel = RiskLevel.MEDIUM
+    analysis_stage: AnalysisStage = AnalysisStage.FINAL
+    decision_reason: str | None = None
+    evidence: list[DiffEvidence] = Field(default_factory=list)
+    model_manifest: dict[str, str] = Field(default_factory=dict)
 
 
 class DiffReport(BaseModel):
@@ -53,6 +128,9 @@ class DiffReport(BaseModel):
     suppressed_count: int = 0
     engine_stats: dict[str, Any] = Field(default_factory=dict)
     engine_warnings: list[str] = Field(default_factory=list)
+    analysis_status: AnalysisStatus = AnalysisStatus.COMPLETE
+    unresolved_region_count: int = Field(default=0, ge=0)
+    report_revision: int = Field(default=1, ge=1)
 
 
 class CheckStatus(str, Enum):

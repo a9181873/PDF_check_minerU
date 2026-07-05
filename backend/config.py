@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     snapshots_dir: Path = Path(".")
     crops_dir: Path = Path(".")
     archive_dir: Path = Path(".")
+    analysis_cache_dir: Path = Path(".")
     db_path: Path = Path(".")
 
     allowed_origins: list[str] = ["http://localhost:8001"]
@@ -64,6 +65,8 @@ class Settings(BaseSettings):
     parser_cache_max_entries: int = 8
     enable_pixel_diff_cache: bool = True
     pixel_diff_cache_max_entries: int = 8
+    enable_persistent_analysis_cache: bool = True
+    persistent_analysis_cache_max_entries: int = 128
 
     # Image-only PDFs: also parse both sides via MinerU forced-OCR and diff text
     # by position, to recover large CJK block changes (e.g. an added clause) and
@@ -108,6 +111,7 @@ class Settings(BaseSettings):
         self.snapshots_dir = self.data_dir / "snapshots"
         self.crops_dir = self.data_dir / "crops"
         self.archive_dir = self.data_dir / "archive"
+        self.analysis_cache_dir = self.data_dir / "analysis_cache"
         self.db_path = self.data_dir / "app.db"
 
         # Auto-generate JWT secret if not provided (writes to data_dir for persistence)
@@ -167,6 +171,7 @@ class Settings(BaseSettings):
         "compare_max_concurrency",
         "parser_cache_max_entries",
         "pixel_diff_cache_max_entries",
+        "persistent_analysis_cache_max_entries",
         mode="before",
     )
     @classmethod
