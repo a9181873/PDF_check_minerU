@@ -1,0 +1,357 @@
+{
+  "schema_version": 1,
+  "benchmark": "taiwan_life_dm_golden_v1",
+  "created_at": "2026-07-05T05:46:32.515836+00:00",
+  "hardware": {
+    "host_label": "OCI A1 4 OCPU 24GB b875a9b smoke",
+    "hostname": "2bbf94e85a13",
+    "platform": "Linux-6.17.0-1010-oracle-aarch64-with-glibc2.41",
+    "machine": "aarch64",
+    "python": "3.11.15",
+    "cpu_count": 4,
+    "physical_cores": 4,
+    "logical_cores": 4,
+    "memory_total_gb": 23.41
+  },
+  "settings": {
+    "image_text_recall": false,
+    "paddle_ocr_experiment": false,
+    "table_parser_strategy": "docling_first"
+  },
+  "modes": {
+    "cold": {
+      "summary": {
+        "runs": 1,
+        "page_pairs": 6,
+        "input_pages": 12,
+        "initial_ready_p50_seconds": 4.7376,
+        "initial_ready_p95_seconds": 4.7376,
+        "complete_p50_seconds": 18.6237,
+        "complete_p95_seconds": 18.6237,
+        "complete_mean_seconds": 18.6237,
+        "peak_memory_mb": 573.5,
+        "peak_cpu_percent": 305.4,
+        "must_detect_recall": 1.0,
+        "preliminary_region_recall": 1.0,
+        "prohibited_false_positives": 0,
+        "material_visual_suppressed": 0,
+        "sla": {
+          "initial_ready_p95_le_15s": true,
+          "complete_p95_le_90s": true,
+          "known_critical_recall_100pct": true,
+          "preliminary_region_recall_100pct": true
+        }
+      },
+      "runs": [
+        {
+          "run_id": "cold-fengshouai-1",
+          "case_id": "fengshouai",
+          "pages": 6,
+          "input_pages": 12,
+          "timings": {
+            "parse_seconds": 0.1701,
+            "preliminary_diff_seconds": 4.5675,
+            "initial_ready_seconds": 4.7376,
+            "enrichment_seconds": 13.8861,
+            "complete_seconds": 18.6237
+          },
+          "resources": {
+            "peak_memory_mb": 573.5,
+            "avg_cpu_percent": 165.5,
+            "peak_cpu_percent": 305.4
+          },
+          "cache": {
+            "old_parser_hit": false,
+            "new_parser_hit": false,
+            "pixel_hit": false
+          },
+          "total_diffs": 2,
+          "preliminary_evaluation": {
+            "regions": [
+              {
+                "id": "p2_24_to_28",
+                "passed": true,
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "hits": [
+                  "d002",
+                  "d003"
+                ]
+              }
+            ],
+            "passed": 2,
+            "total": 2,
+            "region_recall": 1.0
+          },
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p2_24_to_28",
+                "passed": true,
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "hits": [
+                  "d002"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "\\[PAYV",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "Version:\\s*975\\.18",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 0
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-e317bc70243c195d",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 2,
+              "old_value": "24",
+              "new_value": "28",
+              "context": "Page 2 圖片數字變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-6285aca69d35d681",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 6,
+              "old_value": "Version: 2026.02; Control No: OP-2602-0081",
+              "new_value": "Version: 2026.05; Control No: 2605-OP-0029",
+              "context": "Page 6 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": true,
+            "pixel_pages_scanned": 6,
+            "pixel_general_ocr_enabled": true,
+            "pixel_pages_with_diffs": 2,
+            "pixel_raw_regions": 7,
+            "pixel_region_categories": {
+              "small": 4,
+              "text_band": 1
+            },
+            "pixel_pre_ocr_candidates": 5,
+            "pixel_ocr_calls_total": 16,
+            "pixel_numeric_fallback_ocr_calls": 4,
+            "pixel_priority_ocr_attempts": 1,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": false,
+            "pixel_cache_tier": "miss",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 1,
+            "mode": "image_pdf",
+            "pixel_diff_count": 6,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_non_material_visual": 1,
+            "suppressed_ocr_text": 1,
+            "final_diff_count": 2,
+            "suppressed_count": 1,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        }
+      ]
+    },
+    "warm": {
+      "summary": {
+        "runs": 1,
+        "page_pairs": 6,
+        "input_pages": 12,
+        "initial_ready_p50_seconds": 0.0107,
+        "initial_ready_p95_seconds": 0.0107,
+        "complete_p50_seconds": 3.7713,
+        "complete_p95_seconds": 3.7713,
+        "complete_mean_seconds": 3.7713,
+        "peak_memory_mb": 554.4,
+        "peak_cpu_percent": 107.1,
+        "must_detect_recall": 1.0,
+        "preliminary_region_recall": 1.0,
+        "prohibited_false_positives": 0,
+        "material_visual_suppressed": 0,
+        "sla": {
+          "initial_ready_p95_le_15s": true,
+          "complete_p95_le_90s": true,
+          "known_critical_recall_100pct": true,
+          "preliminary_region_recall_100pct": true
+        }
+      },
+      "runs": [
+        {
+          "run_id": "warm-fengshouai-1",
+          "case_id": "fengshouai",
+          "pages": 6,
+          "input_pages": 12,
+          "timings": {
+            "parse_seconds": 0.0036,
+            "preliminary_diff_seconds": 0.007,
+            "initial_ready_seconds": 0.0107,
+            "enrichment_seconds": 3.7606,
+            "complete_seconds": 3.7713
+          },
+          "resources": {
+            "peak_memory_mb": 554.4,
+            "avg_cpu_percent": 100.7,
+            "peak_cpu_percent": 107.1
+          },
+          "cache": {
+            "old_parser_hit": true,
+            "new_parser_hit": true,
+            "pixel_hit": true
+          },
+          "total_diffs": 2,
+          "preliminary_evaluation": {
+            "regions": [
+              {
+                "id": "p2_24_to_28",
+                "passed": true,
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "hits": [
+                  "d002",
+                  "d003"
+                ]
+              }
+            ],
+            "passed": 2,
+            "total": 2,
+            "region_recall": 1.0
+          },
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p2_24_to_28",
+                "passed": true,
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "hits": [
+                  "d002"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "\\[PAYV",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "Version:\\s*975\\.18",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 0
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-e317bc70243c195d",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 2,
+              "old_value": "24",
+              "new_value": "28",
+              "context": "Page 2 圖片數字變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-6285aca69d35d681",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 6,
+              "old_value": "Version: 2026.02; Control No: OP-2602-0081",
+              "new_value": "Version: 2026.05; Control No: 2605-OP-0029",
+              "context": "Page 6 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": true,
+            "pixel_pages_scanned": 6,
+            "pixel_general_ocr_enabled": true,
+            "pixel_pages_with_diffs": 2,
+            "pixel_raw_regions": 7,
+            "pixel_region_categories": {
+              "small": 4,
+              "text_band": 1
+            },
+            "pixel_pre_ocr_candidates": 5,
+            "pixel_ocr_calls_total": 16,
+            "pixel_numeric_fallback_ocr_calls": 4,
+            "pixel_priority_ocr_attempts": 1,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": true,
+            "pixel_cache_tier": "memory",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 1,
+            "mode": "image_pdf",
+            "pixel_diff_count": 6,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_non_material_visual": 1,
+            "suppressed_ocr_text": 1,
+            "final_diff_count": 2,
+            "suppressed_count": 1,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        }
+      ]
+    }
+  }
+}

@@ -47,7 +47,7 @@ python backend/scripts/run_golden_benchmark.py \
 
 正式驗收將 `--repeat` 改為 `5`。腳本同時產生 JSON 與 Markdown，記錄 cold/warm、初步／完整 P50/P95、CPU、RSS、快取與黃金案例命中率。跨主機比較：
 
-MacBook Air M4 已於 2026-07-05 完成 `--repeat 5`：原生 cold 初步／完整 P95 為 7.41／38.45 秒；正式 Docker 映像（10 vCPU、8GB）為 10.13／56.04 秒。兩者的初步區域與完整必抓召回皆為 100%。部署容量規劃應採較保守的 Docker 結果；OCI 最佳化版本仍須部署後以相同指令驗收。
+MacBook Air M4 已於 2026-07-05 完成 `--repeat 5`：原生 cold 初步／完整 P95 為 7.41／38.45 秒；正式 Docker 映像（10 vCPU、8GB）為 10.13／56.04 秒。兩者的初步區域與完整必抓召回皆為 100%。部署容量規劃應採較保守的 Docker 結果。OCI 已部署 `b875a9b`，鳳守愛單案例 cold smoke 初步／完整為 4.74／18.62 秒且四項守門值全過；六組正式五輪仍待離峰執行。
 
 ```bash
 python backend/scripts/compare_benchmark_results.py \

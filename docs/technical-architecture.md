@@ -657,6 +657,7 @@ backend 直接依賴與關鍵轉接依賴已固定版本，Python／Node 基底�
 - 像素分析新增跨重啟磁碟快取；鍵包含 PDF SHA-256、頁面／ROI、DPI、OCR 模式、模型與演算法版本。
 - 封存閘門要求 `analysis_status=complete`，且高風險與待人工判讀區域均已審核。
 - Mac Docker 10 vCPU／8GB 正式五輪：cold 初步／完整 P95 10.13／56.04 秒，初步區域與完整必抓召回皆 100%，無 OOM。
+- OCI Ampere A1 已部署 `b875a9b`：正式 backend image 764MB、`torch 2.12.1+cpu`、無 CUDA 套件；鳳守愛 cold smoke 初步／完整 4.74／18.62 秒，四項守門值全過。
 - 後端 127 項測試與前端 production build 通過。
 
 ### 2026-06-28 — 架構拆分、非同步阻塞修正與正式回歸

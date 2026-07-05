@@ -15,7 +15,7 @@ PDF Check MinerU 是一套用來比對「舊版 PDF」與「新版 PDF」差異�
 | 快取 | PDF SHA-256 解析快取、single-flight、像素/NCC/OCR 配對快取與跨重啟磁碟快取均已啟用 |
 | 前端 | React 19 + TypeScript 6 + Vite 8；支援 WebSocket 進度、輪詢取消、虛擬列表與對話框鍵盤操作 |
 | 正式驗證 | 後端 127 項測試通過、前端 production build 通過；Mac M4 原生與正式 Docker 映像皆完成 cold＋warm 各 30 runs 驗收 |
-| OCI | ARM64、CPU-only、MinerU 3.4.0；`six 1.17.0` 與 PyTorch CPU wheel 已鎖定；最佳化版本尚未部署 OCI |
+| OCI | ARM64、CPU-only、MinerU 3.4.0；`b875a9b` 已部署，後端為 764MB `torch +cpu` 映像；鳳守愛 cold smoke 初步／完整 4.74／18.62 秒 |
 
 現行資料流、模組邊界與部署架構請看 `docs/technical-architecture.md`；本輪效能與準確度實作紀錄見 `docs/ocr_optimization_implementation_2026-07-04.md`。
 
