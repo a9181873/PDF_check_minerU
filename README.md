@@ -14,8 +14,8 @@ PDF Check MinerU 是一套用來比對「舊版 PDF」與「新版 PDF」差異�
 | 資源控制 | 重型 parser 與比對任務預設各只同時執行 1 個，並限制等待佇列，適合 CPU-only 主機 |
 | 快取 | PDF SHA-256 解析快取、single-flight、像素/NCC/OCR 配對快取與跨重啟磁碟快取均已啟用 |
 | 前端 | React 19 + TypeScript 6 + Vite 8；支援 WebSocket 進度、輪詢取消、虛擬列表與對話框鍵盤操作 |
-| 正式驗證 | 本機工作樹後端 148 項測試、前端 production build 與 backend image build 通過；`pixel-v7` Mac M4 原生 cold＋warm 各 30 runs 為 16／16 錨點、數字誤讀 0 |
-| OCI | 已部署 `b875a9b` backend 為 `torch +cpu`／CUDA 套件 0，API image size 764MB、展開約 3.17GB；MinerU 仍是舊 `+cu130` 映像，本輪 CPU-only runtime 尚未部署 |
+| 正式驗證 | `fbec4bd` 後端 148 項測試、前端 production build 與 backend image build 通過；`pixel-v7` Mac M4 原生 cold＋warm 各 30 runs 為 16／16 錨點、數字誤讀 0 |
+| OCI | 2026-07-19 已部署 `fbec4bd` backend：`torch 2.12.1+cpu`、CUDA 不可用、API image 約 700MB（Docker 展開約 3.03GB），`/health` 通過；MinerU 維持既有 `+cu130` healthy 容器，CPU-only final 尚未部署 |
 
 完整修改脈絡、現行／已取代決策、準度與效能證據統一收錄於 [`docs/project-history.md`](docs/project-history.md)。現行模組與部署架構另見 `docs/technical-architecture.md`。
 
