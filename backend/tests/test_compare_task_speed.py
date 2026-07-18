@@ -16,16 +16,15 @@ def _parsed_doc(engine: str = "test") -> ParsedDocument:
     )
 
 
-def test_parse_pdf_pair_runs_old_and_new_in_parallel(monkeypatch):
-    task_id = "parallel-parse-test"
+def test_parse_pdf_pair_runs_old_and_new_sequentially_for_pymupdf_safety(monkeypatch):
+    task_id = "sequential-parse-test"
     TASK_STORE.create(task_id)
-    barrier = threading.Barrier(2)
+    calls = []
 
     def fake_parse_pdf(path: str) -> ParsedDocument:
-        barrier.wait(timeout=2)
+        calls.append(path)
         return _parsed_doc(engine=path)
 
-    monkeypatch.setattr(compare_orchestrator.settings, "parallel_pdf_parse", True)
     monkeypatch.setattr(compare_orchestrator, "parse_pdf", fake_parse_pdf)
 
     try:
@@ -35,9 +34,26 @@ def test_parse_pdf_pair_runs_old_and_new_in_parallel(monkeypatch):
 
     assert old_doc.raw_json["engine"] == "old.pdf"
     assert new_doc.raw_json["engine"] == "new.pdf"
+    assert calls == ["old.pdf", "new.pdf"]
     assert timings["parse_total_seconds"] >= 0
     assert "parse_old_seconds" in timings
     assert "parse_new_seconds" in timings
+
+
+def test_review_artifacts_stay_on_compare_worker_thread(monkeypatch):
+    caller_thread = threading.get_ident()
+    observed_threads: list[int] = []
+
+    def fake_generate(*_args):
+        observed_threads.append(threading.get_ident())
+
+    monkeypatch.setattr(compare_orchestrator, "_generate_review_artifacts", fake_generate)
+
+    compare_orchestrator._start_review_artifact_generation(
+        "task-id", "old.pdf", "new.pdf", object()
+    )
+
+    assert observed_threads == [caller_thread]
 
 
 def test_compare_task_records_speed_options_and_starts_artifacts_after_done(monkeypatch):
@@ -72,7 +88,6 @@ def test_compare_task_records_speed_options_and_starts_artifacts_after_done(monk
             engine_stats={},
         )
 
-    monkeypatch.setattr(compare_orchestrator.settings, "parallel_pdf_parse", False)
     monkeypatch.setattr(compare_orchestrator.settings, "postprocess_artifacts_after_done", True)
     monkeypatch.setattr(compare_orchestrator, "parse_pdf", lambda path: _parsed_doc(engine=path))
     monkeypatch.setattr(compare_orchestrator, "save_markdown", lambda *_args, **_kwargs: None)
@@ -105,7 +120,7 @@ def test_compare_task_records_speed_options_and_starts_artifacts_after_done(monk
 
     assert saved_reports
     report = saved_reports[0]
-    assert report.engine_stats["pipeline_options"]["parallel_pdf_parse"] is False
+    assert report.engine_stats["pipeline_options"]["pdf_parse_strategy"] == "sequential_pymupdf_safe"
     assert report.engine_stats["pipeline_options"]["postprocess_artifacts_after_done"] is True
     assert report.engine_stats["pipeline_timings_seconds"]["report_ready_seconds"] >= 0
     assert ("artifacts_started", "done") in events

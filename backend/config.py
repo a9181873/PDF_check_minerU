@@ -37,9 +37,10 @@ class Settings(BaseSettings):
     allowed_origins: list[str] = ["http://localhost:8001"]
     max_upload_size_mb: int = 100
 
-    # Bound CPU-heavy comparison jobs so concurrent uploads cannot exhaust the
-    # API process. Pending work remains in-process; a durable queue can replace
-    # this runner later without changing the orchestrator.
+    # The current job runner uses Python threads. Keep exactly one comparison
+    # worker because PyMuPDF does not support multithreading; a process-wide
+    # guard also serializes export/crop endpoints against this worker. Pending
+    # work remains bounded in-process.
     compare_max_concurrency: int = 1
     compare_max_pending_tasks: int = 4
 
@@ -67,6 +68,9 @@ class Settings(BaseSettings):
     pixel_diff_cache_max_entries: int = 8
     enable_persistent_analysis_cache: bool = True
     persistent_analysis_cache_max_entries: int = 128
+    # Old/new OCR calls are independent. Run each pair concurrently so the
+    # four-core OCI CPU host does not serialize hundreds of Tesseract processes.
+    enable_parallel_ocr_pairs: bool = True
 
     # Image-only PDFs: also parse both sides via MinerU forced-OCR and diff text
     # by position, to recover large CJK block changes (e.g. an added clause) and
@@ -93,10 +97,12 @@ class Settings(BaseSettings):
     # expensive, so default to pages that actually contain diffs.
     generate_snapshots: bool = True
     snapshot_diff_pages_only: bool = True
-    # Speed path: parse old/new PDFs concurrently and let audit artifacts render
-    # after the report is already available to reviewers.
-    parallel_pdf_parse: bool = True
-    postprocess_artifacts_after_done: bool = True
+    # Keep audit-artifact rendering in the compare worker. PyMuPDF does not
+    # support multithreading, so a background artifact thread could overlap the
+    # next comparison's parsing/rendering. ``True`` only changes whether the
+    # task is marked done before artifacts are generated; it never spawns a
+    # second thread.
+    postprocess_artifacts_after_done: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -168,7 +174,6 @@ class Settings(BaseSettings):
 
     @field_validator(
         "heavy_parser_max_concurrency",
-        "compare_max_concurrency",
         "parser_cache_max_entries",
         "pixel_diff_cache_max_entries",
         "persistent_analysis_cache_max_entries",
@@ -177,6 +182,14 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_positive_integer(cls, value):
         return max(1, int(value))
+
+    @field_validator("compare_max_concurrency", mode="before")
+    @classmethod
+    def force_single_threaded_compare_runner(cls, value):
+        # Validate the supplied value, but never allow multiple thread workers.
+        # Process-based parallelism may expose a larger value in a future runner.
+        int(value)
+        return 1
 
     @field_validator("compare_max_pending_tasks", mode="before")
     @classmethod

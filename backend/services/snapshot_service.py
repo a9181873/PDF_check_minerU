@@ -16,6 +16,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 
 from models.diff_models import DiffReport
+from services.pymupdf_guard import pymupdf_serialized
 
 _logger = logging.getLogger(__name__)
 
@@ -78,6 +79,7 @@ def generate_comparison_snapshots(
     return snap_dir
 
 
+@pymupdf_serialized
 def _render_pdf(
     pdf_path: str,
     report: DiffReport,
@@ -167,6 +169,7 @@ def generate_diff_crops(
     return out_dir
 
 
+@pymupdf_serialized
 def _crop_side(pdf_path: str, items, side: str, out_dir: Path) -> None:
     try:
         doc = fitz.open(pdf_path)

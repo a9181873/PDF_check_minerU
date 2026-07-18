@@ -13,6 +13,7 @@ from typing import Any
 
 from models.diff_models import BBox
 from services.parser_service import ParsedDocument, ParsedParagraph
+from services.pymupdf_guard import pymupdf_serialized
 
 
 def _bbox_from_points(page: int, page_height: float, points: list[list[float]]) -> BBox:
@@ -48,6 +49,7 @@ def _extract_lines(raw_result: Any) -> list[tuple[list[list[float]], str, float]
     return lines
 
 
+@pymupdf_serialized
 def parse_image_pdf_via_paddleocr(
     file_path: str,
     *,

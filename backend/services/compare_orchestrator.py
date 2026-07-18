@@ -1,9 +1,7 @@
 """Coordinate the PDF comparison pipeline outside the HTTP routing layer."""
 
 import logging
-import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from api.task_store import TASK_STORE
 from config import settings
@@ -64,35 +62,15 @@ def parse_pdf_pair(task_id: str, old_path: str, new_path: str):
     started_at = time.perf_counter()
     timings: dict[str, float] = {}
 
-    if not settings.parallel_pdf_parse:
-        _set_task_progress(task_id, "parsing", 10, "解析舊版 PDF")
-        old_doc, timings["parse_old_seconds"] = _parse_pdf_with_timing(old_path)
-        _set_task_progress(task_id, "parsing", 45, "解析新版 PDF")
-        new_doc, timings["parse_new_seconds"] = _parse_pdf_with_timing(new_path)
-        timings["parse_total_seconds"] = _elapsed_since(started_at)
-        return old_doc, new_doc, timings
-
-    _set_task_progress(task_id, "parsing", 10, "並行解析新舊 PDF")
-    results = {}
-    with ThreadPoolExecutor(max_workers=2, thread_name_prefix=f"parse-{task_id[:8]}") as pool:
-        futures = {
-            pool.submit(_parse_pdf_with_timing, old_path): "old",
-            pool.submit(_parse_pdf_with_timing, new_path): "new",
-        }
-        for future in as_completed(futures):
-            side = futures[future]
-            document, elapsed = future.result()
-            results[side] = document
-            timings[f"parse_{side}_seconds"] = elapsed
-            _set_task_progress(
-                task_id,
-                "parsing",
-                30 if len(results) == 1 else 55,
-                "舊版 PDF 解析完成" if side == "old" else "新版 PDF 解析完成",
-            )
-
+    # PyMuPDF explicitly does not support multithreading. Keep both parses on
+    # the task thread; a future parallel implementation must use isolated
+    # processes and include their startup/memory cost in the benchmark.
+    _set_task_progress(task_id, "parsing", 10, "解析舊版 PDF")
+    old_doc, timings["parse_old_seconds"] = _parse_pdf_with_timing(old_path)
+    _set_task_progress(task_id, "parsing", 45, "解析新版 PDF")
+    new_doc, timings["parse_new_seconds"] = _parse_pdf_with_timing(new_path)
     timings["parse_total_seconds"] = _elapsed_since(started_at)
-    return results["old"], results["new"], timings
+    return old_doc, new_doc, timings
 
 
 def _generate_review_artifacts(task_id: str, old_path: str, new_path: str, report) -> dict[str, float]:
@@ -141,13 +119,13 @@ def _generate_review_artifacts(task_id: str, old_path: str, new_path: str, repor
 
 
 def _start_review_artifact_generation(task_id: str, old_path: str, new_path: str, report) -> None:
-    worker = threading.Thread(
-        target=_generate_review_artifacts,
-        args=(task_id, old_path, new_path, report),
-        name=f"artifacts-{task_id[:8]}",
-        daemon=True,
-    )
-    worker.start()
+    """Generate artifacts on the compare worker to keep PyMuPDF single-threaded.
+
+    The task may already be marked ``done`` when the compatibility setting is
+    enabled, but this function intentionally remains synchronous. A future
+    asynchronous implementation must use an isolated process/worker.
+    """
+    _generate_review_artifacts(task_id, old_path, new_path, report)
 
 
 def run_compare_task(
@@ -253,12 +231,13 @@ def run_compare_task(
         }
         report.engine_stats["pipeline_options"] = {
             **report.engine_stats.get("pipeline_options", {}),
-            "parallel_pdf_parse": bool(settings.parallel_pdf_parse),
+            "pdf_parse_strategy": "sequential_pymupdf_safe",
             "postprocess_artifacts_after_done": bool(settings.postprocess_artifacts_after_done),
             "table_parser_strategy": settings.table_parser_strategy,
             "heavy_parser_max_concurrency": int(settings.heavy_parser_max_concurrency),
             "parser_cache_enabled": bool(settings.enable_parser_cache),
             "pixel_diff_cache_enabled": bool(settings.enable_pixel_diff_cache),
+            "parallel_ocr_pairs": bool(settings.enable_parallel_ocr_pairs),
         }
 
         if not settings.postprocess_artifacts_after_done:

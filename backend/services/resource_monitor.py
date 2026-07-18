@@ -112,14 +112,20 @@ class ResourceMonitor:
             live = [root]
             try:
                 live.extend(root.children(recursive=True))
-            except psutil.Error:
+            except (psutil.Error, PermissionError):
                 pass
-            live_by_pid = {proc.pid: proc for proc in live if proc.is_running()}
+            live_by_pid = {}
+            for proc in live:
+                try:
+                    if proc.is_running():
+                        live_by_pid[proc.pid] = proc
+                except (psutil.Error, PermissionError):
+                    continue
             for pid, proc in live_by_pid.items():
                 if pid not in self._tracked_processes:
                     try:
                         proc.cpu_percent(interval=None)
-                    except psutil.Error:
+                    except (psutil.Error, PermissionError):
                         continue
                     self._tracked_processes[pid] = proc
             self._tracked_processes = {
@@ -138,7 +144,7 @@ class ResourceMonitor:
                     try:
                         cpu += proc.cpu_percent(interval=None)
                         rss += proc.memory_info().rss
-                    except psutil.Error:
+                    except (psutil.Error, PermissionError):
                         continue
                 mem_mb = round(rss / (1024 ** 2), 1)
                 vm = psutil.virtual_memory()

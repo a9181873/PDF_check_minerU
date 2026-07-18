@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import importlib.metadata
+import os
 import platform
 import re
+import subprocess
+from functools import lru_cache
+from pathlib import Path
 
 from models.diff_models import (
     AnalysisStage,
@@ -93,16 +97,80 @@ def classify_risk(item: DiffItem) -> RiskLevel:
     return RiskLevel.MEDIUM
 
 
+@lru_cache(maxsize=1)
 def runtime_model_manifest() -> dict[str, str]:
     manifest = {
         "python": platform.python_version(),
         "platform": platform.machine(),
+        "ocr_langs": os.getenv("OCR_LANGS", "chi_tra+chi_sim+eng"),
     }
     for package in ("PyMuPDF", "docling", "paddleocr"):
         try:
             manifest[package.lower()] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
             continue
+
+    try:
+        result = subprocess.run(
+            ["tesseract", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+        first_line = (result.stdout or result.stderr).splitlines()[0]
+        manifest["tesseract"] = first_line.strip()
+    except (OSError, subprocess.SubprocessError, IndexError):
+        pass
+
+    try:
+        result = subprocess.run(
+            ["pdftoppm", "-v"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+        first_line = (result.stdout or result.stderr).splitlines()[0]
+        manifest["poppler"] = first_line.strip()
+    except (OSError, subprocess.SubprocessError, IndexError):
+        pass
+
+    try:
+        result = subprocess.run(
+            ["tesseract", "--list-langs"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+        location_match = re.search(r'in ["\']?(.+?)["\']? \(\d+\):', result.stdout)
+        if location_match:
+            tessdata_dir = Path(location_match.group(1))
+            traineddata_hashes = []
+            # Pixel OCR currently always invokes chi_tra and chi_tra+eng even
+            # when OCR_LANGS is customized for another parser path. Hash the
+            # union so a traineddata upgrade always invalidates pixel artifacts.
+            ocr_languages = {
+                language.strip()
+                for language in manifest["ocr_langs"].split("+")
+                if language.strip()
+            }
+            ocr_languages.update({"chi_tra", "eng"})
+            manifest["pixel_ocr_model_langs"] = "+".join(sorted(ocr_languages))
+            for language in sorted(ocr_languages):
+                traineddata = tessdata_dir / f"{language}.traineddata"
+                if not traineddata.is_file():
+                    continue
+                digest = hashlib.sha256()
+                with traineddata.open("rb") as source:
+                    for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                traineddata_hashes.append(f"{language}:{digest.hexdigest()[:16]}")
+            if traineddata_hashes:
+                manifest["tessdata_sha256"] = ",".join(traineddata_hashes)
+    except (OSError, subprocess.SubprocessError):
+        pass
     return manifest
 
 

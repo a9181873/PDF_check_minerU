@@ -12,11 +12,17 @@ _logger = logging.getLogger(__name__)
 
 class CompareJobRunner:
     def __init__(self, max_workers: int, max_pending: int):
+        if max_workers != 1:
+            _logger.warning(
+                "Thread-based PDF comparison concurrency is fixed at 1 for PyMuPDF safety; requested=%s",
+                max_workers,
+            )
+        safe_workers = 1
         self._executor = ThreadPoolExecutor(
-            max_workers=max_workers,
+            max_workers=safe_workers,
             thread_name_prefix="pdf-compare",
         )
-        self._capacity = BoundedSemaphore(max_workers + max_pending)
+        self._capacity = BoundedSemaphore(safe_workers + max_pending)
 
     def submit(
         self,

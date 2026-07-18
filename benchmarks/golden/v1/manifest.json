@@ -8,8 +8,8 @@
       "old_pdf": "商品DM/台灣人壽鳳守愛防癌定期健康保險_商品DM_20260213適用.pdf",
       "new_pdf": "商品DM/台灣人壽鳳守愛防癌定期健康保險_商品DM_20260506適用.pdf",
       "must_detect": [
-        {"id": "p2_24_to_28", "page": 2, "old_regex": "(^|\\D)24(\\D|$)", "new_regex": "(^|\\D)28(\\D|$)"},
-        {"id": "p6_footer", "page": 6, "context_regex": "control/version|Control No|版號|版本"}
+        {"id": "p2_24_to_28", "page": 2, "bbox": {"page": 2, "x0": 109, "y0": 662.9, "x1": 125, "y1": 676.9}, "min_region_coverage": 0.5, "old_regex": "(^|\\D)24(\\D|$)", "new_regex": "(^|\\D)28(\\D|$)"},
+        {"id": "p6_footer", "page": 6, "bbox": {"page": 6, "x0": 475, "y0": 14.9, "x1": 575, "y1": 23.9}, "min_region_coverage": 0.5, "context_regex": "control/version|Control No|版號|版本"}
       ],
       "must_not_detect": ["\\[PAYV", "Version:\\s*975\\.18"]
     },
@@ -18,8 +18,12 @@
       "old_pdf": "商品DM/慈愛微型/台灣人壽慈愛微型一年定期傷害保險-DM(公版)-FINAL(製作人員-陳芸平)-1140825.pdf",
       "new_pdf": "商品DM/慈愛微型/台灣人壽慈愛微型一年定期傷害保險-DM(公版)-FINAL(製作人員-陳柏婷)-1141003.pdf",
       "must_detect": [
-        {"id": "p3_content_or_visual", "page": 3},
-        {"id": "p4_footer", "page": 4, "context_regex": "control/version|Control No|版號|版本"}
+        {"id": "p3_content_or_visual", "page": 3, "bbox": {"page": 3, "x0": 128, "y0": 155.9, "x1": 386, "y1": 196.9}, "min_region_coverage": 0.3},
+        {"id": "p4_footer", "page": 4, "bbox": {"page": 4, "x0": 469, "y0": 14.9, "x1": 570, "y1": 23.9}, "min_region_coverage": 0.5, "context_regex": "control/version|Control No|版號|版本"}
+      ],
+      "must_not_interpret": [
+        {"id": "partial_p1_4_to_24", "page": 1, "diff_types": ["number_modified"], "old_regex": "^4$", "new_regex": "^24$"},
+        {"id": "partial_p2_35_to_5", "page": 2, "diff_types": ["number_modified"], "old_regex": "^35$", "new_regex": "^5$"}
       ],
       "must_not_detect": ["(?:^|\\D)(?:2\\s*(?:->|→)\\s*3|3\\s*(?:->|→)\\s*5|9\\s*(?:->|→)\\s*1)(?:\\D|$)"]
     },
@@ -28,10 +32,10 @@
       "old_pdf": "商品DM/新扶愛/台灣人壽新扶愛微型傷害保險_DM (公版)-FINAL(製作人員-林元華)-1131001.pdf",
       "new_pdf": "商品DM/新扶愛/台灣人壽新扶愛微型傷害保險_商品DM_20251020適用.pdf",
       "must_detect": [
-        {"id": "p1_table_or_layout", "page": 1, "context_regex": "表格|版面|內容"},
-        {"id": "p2_table_or_layout", "page": 2, "context_regex": "表格|版面|內容"},
-        {"id": "p3_table_or_layout", "page": 3, "context_regex": "表格|版面|內容"},
-        {"id": "p4_table_or_layout", "page": 4, "context_regex": "表格|版面|內容"}
+        {"id": "p1_table_or_layout", "page": 1, "bbox": {"page": 1, "x0": 296, "y0": 275.9, "x1": 330, "y1": 336.9}, "min_region_coverage": 0.3, "context_regex": "表格|版面|內容|影像|圖像"},
+        {"id": "p2_table_or_layout", "page": 2, "bbox": {"page": 2, "x0": 52, "y0": 383.9, "x1": 122, "y1": 409.9}, "min_region_coverage": 0.5, "context_regex": "表格|版面|內容|影像|圖像"},
+        {"id": "p3_table_or_layout", "page": 3, "bbox": {"page": 3, "x0": 108, "y0": 112.9, "x1": 378, "y1": 135.9}, "min_region_coverage": 0.3, "context_regex": "表格|版面|內容|影像|圖像"},
+        {"id": "p4_table_or_layout", "page": 4, "bbox": {"page": 4, "x0": 83, "y0": 764.9, "x1": 137, "y1": 824.9}, "min_region_coverage": 0.3, "context_regex": "表格|版面|內容|影像|圖像"}
       ],
       "must_not_detect": ["0800.*(?:->|→).*0800", "40歲.*(?:->|→).*40歲", "310元.*(?:->|→).*310元"]
     },
@@ -40,8 +44,8 @@
       "old_pdf": "商品DM/美保發/台灣人壽美保發美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130101.pdf",
       "new_pdf": "商品DM/美保發/台灣人壽美保發美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130418.pdf",
       "must_detect": [
-        {"id": "p2_content_or_visual", "page": 2},
-        {"id": "p4_footer", "page": 4, "context_regex": "control/version|Control No|版號|版本"}
+        {"id": "p2_content_or_visual", "page": 2, "bbox": {"page": 2, "x0": 228, "y0": 637.9, "x1": 282, "y1": 690.9}, "min_region_coverage": 0.3},
+        {"id": "p4_footer", "page": 4, "bbox": {"page": 4, "x0": 452, "y0": 14.9, "x1": 570, "y1": 23.9}, "min_region_coverage": 0.5, "context_regex": "control/version|Control No|版號|版本"}
       ],
       "must_not_detect": ["\\[PAYV"]
     },
@@ -50,8 +54,12 @@
       "old_pdf": "商品DM/美利保/台灣人壽美利保美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130522.pdf",
       "new_pdf": "商品DM/美利保/台灣人壽美利保美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130701.pdf",
       "must_detect": [
-        {"id": "p3_main_table", "page": 3, "context_regex": "表格|版面|數字|內容"},
-        {"id": "p6_footer", "page": 6, "context_regex": "control/version|Control No|版號|版本"}
+        {"id": "p3_main_table", "page": 3, "bbox": {"page": 3, "x0": 301, "y0": 235.2, "x1": 430, "y1": 257.2}, "min_region_coverage": 0.5, "context_regex": "表格|版面|數字|內容"},
+        {"id": "p6_footer", "page": 6, "bbox": {"page": 6, "x0": 449, "y0": 14.9, "x1": 570, "y1": 23.9}, "min_region_coverage": 0.5, "context_regex": "control/version|Control No|版號|版本"}
+      ],
+      "must_not_interpret": [
+        {"id": "partial_p3_95_to_00", "page": 3, "diff_types": ["number_modified"], "old_regex": "^95$", "new_regex": "^00$"},
+        {"id": "partial_p4_64_to_06", "page": 4, "diff_types": ["number_modified"], "old_regex": "^64$", "new_regex": "^06$"}
       ],
       "must_not_detect": ["447,6[iIl]12", "Version:\\s*975\\.18"]
     },
@@ -60,10 +68,14 @@
       "old_pdf": "商品DM/臻美利/台灣人壽臻美利美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130101.pdf",
       "new_pdf": "商品DM/臻美利/台灣人壽臻美利美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130418.pdf",
       "must_detect": [
-        {"id": "p2_note_or_visual", "page": 2, "context_regex": "註3|表格|版面|內容"},
-        {"id": "p3_note_or_visual", "page": 3, "context_regex": "註3|表格|版面|內容"},
-        {"id": "p4_note_or_visual", "page": 4, "context_regex": "註3|表格|版面|內容"},
-        {"id": "p6_footer", "page": 6, "context_regex": "control/version|Control No|版號|版本"}
+        {"id": "p2_note_or_visual", "page": 2, "bbox": {"page": 2, "x0": 333, "y0": 58.9, "x1": 559, "y1": 78.9}, "min_region_coverage": 0.3, "context_regex": "註3|表格|版面|內容|數字|人工判讀"},
+        {"id": "p3_note_or_visual", "page": 3, "bbox": {"page": 3, "x0": 333, "y0": 58.9, "x1": 559, "y1": 78.9}, "min_region_coverage": 0.3, "context_regex": "註3|表格|版面|內容|數字|人工判讀"},
+        {"id": "p4_note_or_visual", "page": 4, "bbox": {"page": 4, "x0": 332, "y0": 58.9, "x1": 559, "y1": 78.9}, "min_region_coverage": 0.3, "context_regex": "註3|表格|版面|內容|數字|人工判讀"},
+        {"id": "p6_footer", "page": 6, "bbox": {"page": 6, "x0": 449, "y0": 14.9, "x1": 570, "y1": 23.9}, "min_region_coverage": 0.5, "context_regex": "control/version|Control No|版號|版本"}
+      ],
+      "must_not_interpret": [
+        {"id": "partial_p3_71_to_7", "page": 3, "diff_types": ["number_modified"], "old_regex": "^71$", "new_regex": "^7$"},
+        {"id": "partial_p4_71_to_7", "page": 4, "diff_types": ["number_modified"], "old_regex": "^71$", "new_regex": "^7$"}
       ],
       "must_not_detect": ["Version:\\s*975\\.18", "\\[PAYV"]
     }

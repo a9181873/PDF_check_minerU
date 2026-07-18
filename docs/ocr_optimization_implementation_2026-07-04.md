@@ -24,7 +24,7 @@
 - MacBook Air M4 正式五輪（cold／warm 各 30 runs）：cold 初步 P95 7.41 秒、完整 P95 38.45 秒；初步區域與完整必抓召回皆 100%，禁止誤報與實質視覺靜默抑制皆為 0。
 - 同一 CPU-only 正式 Docker 映像在 Mac Docker Desktop 10 vCPU／8GB 正式五輪：cold 初步 P95 10.13 秒、完整 P95 56.04 秒；warm 為 0.020／2.62 秒，四項 SLA 全過、無 OOM，每個變更頁候選最多 3 個。
 - `pixel-v4` 修正小型數字區域 NCC 過度抑制；鳳守愛 `24→28` 在初步階段即進入待判讀區域，不再等完整 OCR 才出現。
-- CPU-only backend image 驗證為 `torch 2.12.1+cpu`、無 NVIDIA／CUDA 套件，映像約 764MB。
+- CPU-only backend image 驗證為 `torch 2.12.1+cpu`、無 NVIDIA／CUDA 套件；OCI image API `.Size` 約 764MB，`docker system df` 展開磁碟占用約 3.17GB，容量規劃採後者。
 - Mac／OCI 實測結果見[跨主機比較](../benchmarks/results/mac_vs_oci_20260704.md)。
 
 ## 尚未升正式的項目

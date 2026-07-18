@@ -2,14 +2,17 @@ import copy
 import hashlib
 import re
 import threading
+import time
 import unicodedata
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from itertools import zip_longest
 
 from models.diff_models import AnalysisStage, AnalysisStatus, DiffEvidence, DiffItem, DiffType, BBox
 from services.parser_service import ParsedDocument, ParsedParagraph, ParsedTable
+from services.pymupdf_guard import pymupdf_serialized
 
 _PIXEL_CACHE_LOCK = threading.RLock()
 _PIXEL_CACHE: OrderedDict[str, tuple[list[DiffItem], dict, list[str]]] = OrderedDict()
@@ -373,31 +376,53 @@ def _compact_numeric_ocr_pair(old_text: str | None, new_text: str | None) -> tup
     if not old_digits or not new_digits:
         return None
 
-    # Tiny graphic labels such as "24年" can OCR as "244"; trim one shared
-    # trailing pseudo-unit digit when at least one side has an extra digit.
-    if (
-        old_digits[-1:] == new_digits[-1:]
-        and min(len(old_digits), len(new_digits)) >= 2
-        and max(len(old_digits), len(new_digits)) <= 3
-        and (len(old_digits) > 2 or len(new_digits) > 2)
-    ):
-        if len(old_digits) > 2:
-            old_digits = old_digits[:-1]
-        if len(new_digits) > 2:
-            new_digits = new_digits[:-1]
-
-    if len(old_digits) == 2 and len(new_digits) == 3 and old_digits != new_digits[:2]:
-        new_digits = new_digits[:2]
-    elif len(new_digits) == 2 and len(old_digits) == 3 and new_digits != old_digits[:2]:
-        old_digits = old_digits[:2]
-
     if old_digits == new_digits:
         return None
-    if len(old_digits) == 1 and len(new_digits) == 1:
+    # A local OCR crop that loses a leading/trailing glyph can turn an unchanged
+    # label into misleading values such as 4->24, 35->5, or 71->7. Never promote
+    # unequal-width fragments to a critical numeric interpretation.
+    if len(old_digits) != len(new_digits):
+        return None
+    if len(old_digits) == 1:
         return None
     if len(old_digits) > 4 or len(new_digits) > 4:
         return None
+    # Bare compact OCR cannot distinguish a decimal fragment (for example the
+    # ``00`` in 4.00%) from a complete field. Keep these as visual evidence unless
+    # the surrounding OCR retained an explicit unit/decimal/text context.
+    if old_digits.startswith("0") or new_digits.startswith("0"):
+        return None
     return old_digits, new_digits
+
+
+def _has_explicit_numeric_context(old_text: str | None, new_text: str | None) -> bool:
+    combined = f"{old_text or ''} {new_text or ''}"
+    return bool(
+        _CJK_RE.search(combined)
+        or re.search(r"[A-Za-z]{2,}", combined)
+        or re.search(r"\d[.,]\d", combined)
+        or re.search(r"[%％$元歲年月日倍]", combined)
+    )
+
+
+def _has_stable_numeric_context(old_text: str | None, new_text: str | None) -> bool:
+    if not old_text or not new_text:
+        return False
+    if _numeric_ocr_confusion_count(old_text) or _numeric_ocr_confusion_count(new_text):
+        return False
+    if len(_extract_numbers(old_text)) != len(_extract_numbers(new_text)):
+        return False
+
+    def context_key(value: str) -> str:
+        without_numbers = NUMBER_PATTERN.sub(" ", _deep_normalize(value))
+        return re.sub(r"[^A-Za-z\u3400-\u9fff%％$元歲年月日倍]", "", without_numbers)
+
+    old_context = context_key(old_text)
+    new_context = context_key(new_text)
+    return (
+        min(len(old_context), len(new_context)) >= 2
+        and SequenceMatcher(None, old_context, new_context).ratio() >= 0.9
+    )
 
 
 def _is_title_like_image_text_region(old_key: str, new_key: str, bbox: BBox | None) -> bool:
@@ -432,9 +457,13 @@ def _is_reliable_image_pdf_text_diff(
     if not old_key or not new_key:
         return False
     if has_strong_numeric_change:
-        if _compact_numeric_ocr_pair(old_text, new_text) or max(len(old_key), len(new_key)) <= 40:
+        if _compact_numeric_ocr_pair(old_text, new_text):
             return True
-        return False
+        return (
+            max(len(old_key), len(new_key)) <= 40
+            and _has_explicit_numeric_context(old_text, new_text)
+            and _has_stable_numeric_context(old_text, new_text)
+        )
     if not _is_reliable_ocr_pair(old_text, new_text):
         return False
     if max(len(old_key), len(new_key)) > 80:
@@ -458,7 +487,23 @@ def _is_reliable_image_pdf_text_diff(
     return ratio <= 0.55
 
 
-def _ocr_pixmap_text(pix, *, lang: str = "chi_tra+eng", psm: str = "6") -> str:
+@pymupdf_serialized
+def _pixmap_raster_payload(pix) -> tuple[int, int, bytes] | None:
+    """Detach immutable raster bytes from a PyMuPDF Pixmap on the caller thread."""
+    if pix is None:
+        return None
+    try:
+        return int(pix.width), int(pix.height), bytes(pix.samples)
+    except Exception:
+        return None
+
+
+def _ocr_raster_payload(
+    payload: tuple[int, int, bytes] | None,
+    *,
+    lang: str = "chi_tra+eng",
+    psm: str = "6",
+) -> str:
     try:
         import os as _os
         import subprocess
@@ -469,8 +514,11 @@ def _ocr_pixmap_text(pix, *, lang: str = "chi_tra+eng", psm: str = "6") -> str:
     except ImportError:
         return ""
 
+    if payload is None:
+        return ""
     try:
-        pil_img = _PILImage.frombytes("L", (pix.width, pix.height), pix.samples)
+        width, height, samples = payload
+        pil_img = _PILImage.frombytes("L", (width, height), samples)
         if pil_img.height < 120:
             scale = max(1, 120 // max(pil_img.height, 1) + 1)
             pil_img = pil_img.resize(
@@ -506,18 +554,50 @@ def _ocr_pixmap_text(pix, *, lang: str = "chi_tra+eng", psm: str = "6") -> str:
         return ""
 
 
+@pymupdf_serialized
 def _ocr_page_region(page, rect, *, zoom: float = 4.0, lang: str = "chi_tra+eng", psm: str = "6") -> str:
+    pix = _render_page_region(page, rect, zoom=zoom)
+    return _ocr_raster_payload(_pixmap_raster_payload(pix), lang=lang, psm=psm)
+
+
+@pymupdf_serialized
+def _render_page_region(page, rect, *, zoom: float):
+    """Render a PyMuPDF page crop on the caller thread.
+
+    PyMuPDF page rendering is not thread-safe. Callers may parallelize the
+    independent Tesseract work only after both Pixmaps have been rendered.
+    """
     try:
         import fitz
 
-        pix = page.get_pixmap(
+        return page.get_pixmap(
             matrix=fitz.Matrix(zoom, zoom),
             clip=rect,
             colorspace=fitz.csGRAY,
         )
     except Exception:
-        return ""
-    return _ocr_pixmap_text(pix, lang=lang, psm=psm)
+        return None
+
+
+@pymupdf_serialized
+def _ocr_rendered_page_pair(
+    page_old,
+    page_new,
+    rect,
+    *,
+    zoom: float,
+    lang: str,
+    psm: str,
+    run_pair,
+) -> tuple[str, str]:
+    """Render sequentially, then run the two Tesseract calls concurrently."""
+    old_payload = _pixmap_raster_payload(_render_page_region(page_old, rect, zoom=zoom))
+    new_payload = _pixmap_raster_payload(_render_page_region(page_new, rect, zoom=zoom))
+    return run_pair(
+        lambda payload: _ocr_raster_payload(payload, lang=lang, psm=psm),
+        old_payload,
+        new_payload,
+    )
 
 
 @dataclass
@@ -1202,6 +1282,50 @@ def _clip_to_common_shape(a, b):
     return a[:h, :w], b[:h, :w]
 
 
+def _labeled_component_geometry(labeled, changed_mask, n_regions: int) -> list[tuple[int, int, int, int, int, int, int]]:
+    """Return component bounds/counts without rebuilding a full-page mask per label.
+
+    ``labeled == rid`` allocates and scans the complete page once for every
+    connected component. Image-based EDMs can contain thousands of components,
+    turning a linear operation into O(component_count * page_pixels). Bincount
+    and ``find_objects`` scan the page a constant number of times while preserving
+    the exact component boxes and changed-pixel counts used by the diff guards.
+    """
+    if n_regions <= 0:
+        return []
+
+    import numpy as np
+    from scipy import ndimage
+
+    component_sizes = np.bincount(labeled.ravel(), minlength=n_regions + 1)
+    changed_labels = labeled[changed_mask]
+    if changed_labels.size:
+        changed_counts = np.bincount(changed_labels.ravel(), minlength=n_regions + 1)
+    else:
+        changed_counts = np.zeros(n_regions + 1, dtype=np.int64)
+
+    geometries: list[tuple[int, int, int, int, int, int, int]] = []
+    for region_id, bounds in enumerate(
+        ndimage.find_objects(labeled, max_label=n_regions),
+        start=1,
+    ):
+        if bounds is None:
+            continue
+        row_slice, column_slice = bounds
+        geometries.append(
+            (
+                region_id,
+                int(row_slice.start),
+                int(row_slice.stop),
+                int(column_slice.start),
+                int(column_slice.stop),
+                int(changed_counts[region_id]),
+                int(component_sizes[region_id]),
+            )
+        )
+    return geometries
+
+
 def _pixel_cache_file_hash(path: str) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as source:
@@ -1220,12 +1344,15 @@ def _pixel_cache_key(
 ) -> str:
     import os
 
+    from services.evidence_service import runtime_model_manifest
     from services.persistent_cache import canonical_cache_key
+
+    runtime_manifest = runtime_model_manifest()
 
     return canonical_cache_key(
         "pixel-diff",
         {
-            "algorithm": "pixel-v4",
+            "algorithm": "pixel-v7",
             "old_sha256": _pixel_cache_file_hash(old_pdf_path),
             "new_sha256": _pixel_cache_file_hash(new_pdf_path),
             "threshold": threshold,
@@ -1233,6 +1360,9 @@ def _pixel_cache_key(
             "dpi": dpi,
             "enable_ocr": enable_ocr,
             "ocr_langs": os.getenv("OCR_LANGS", "chi_tra+chi_sim+eng"),
+            "pymupdf": runtime_manifest.get("pymupdf"),
+            "tesseract": runtime_manifest.get("tesseract"),
+            "tessdata_sha256": runtime_manifest.get("tessdata_sha256"),
         },
     )
 
@@ -1409,6 +1539,7 @@ def diff_pixels(
                     event.set()
 
 
+@pymupdf_serialized
 def _diff_pixels_uncached(
     old_pdf_path: str,
     new_pdf_path: str,
@@ -1451,6 +1582,21 @@ def _diff_pixels_uncached(
         )
         return []
 
+    from config import settings
+
+    ocr_executor = (
+        ThreadPoolExecutor(max_workers=1, thread_name_prefix="pixel-ocr-pair")
+        if settings.enable_parallel_ocr_pairs
+        else None
+    )
+
+    def _run_ocr_pair(ocr_function, old_input, new_input) -> tuple[str, str]:
+        if ocr_executor is None:
+            return ocr_function(old_input), ocr_function(new_input)
+        old_future = ocr_executor.submit(ocr_function, old_input)
+        new_result = ocr_function(new_input)
+        return old_future.result(), new_result
+
     mat = fitz.Matrix(dpi / 72.0, dpi / 72.0)
     scale_to_pt = 72.0 / dpi
     struct = ndimage.generate_binary_structure(2, 2)
@@ -1463,6 +1609,7 @@ def _diff_pixels_uncached(
         if engine_stats is not None:
             engine_stats["pixel_pages_scanned"] = shared
             engine_stats["pixel_general_ocr_enabled"] = bool(enable_ocr)
+            engine_stats["pixel_ocr_pair_parallel"] = ocr_executor is not None
 
         # Flag entire pages as added/deleted when page counts differ
         for page_i in range(shared, max(n_old, n_new)):
@@ -1486,6 +1633,7 @@ def _diff_pixels_uncached(
                     context=f"Page {page_no} 整頁新增", confidence=0.99,
                 ))
 
+        @pymupdf_serialized
         def _words_in_rect(words_list, rect):
             """Collect words that INTERSECT with rect.
             Uses intersection (not center-point) so that long Chinese
@@ -1497,6 +1645,7 @@ def _diff_pixels_uncached(
                     result.append(w)
             return result
 
+        @pymupdf_serialized
         def _priority_header_footer_diffs(page_old, page_new, page_no: int, mask) -> list[DiffItem]:
             """Protected OCR pass for high-value header/footer fields."""
             page_w = float(page_new.rect.width)
@@ -1526,20 +1675,19 @@ def _diff_pixels_uncached(
                 )
                 component_boxes: list[tuple[int, int, int, int, int]] = []
                 max_component_px = 0
-                for rid in range(1, n_regions + 1):
-                    region = labeled == rid
-                    component_px = int((sub_mask & region).sum())
+                for _, cr0, cr1, cc0, cc1, component_px, _ in _labeled_component_geometry(
+                    labeled,
+                    sub_mask,
+                    n_regions,
+                ):
                     max_component_px = max(max_component_px, component_px)
                     if component_px < 25:
                         continue
-                    rows, cols = np.where(region)
-                    if rows.size == 0 or cols.size == 0:
-                        continue
                     component_boxes.append((
-                        int(cols.min()) + c0,
-                        int(rows.min()) + r0,
-                        int(cols.max()) + c0 + 1,
-                        int(rows.max()) + r0 + 1,
+                        cc0 + c0,
+                        cr0 + r0,
+                        cc1 + c0,
+                        cr1 + r0,
                         component_px,
                     ))
 
@@ -1575,8 +1723,15 @@ def _diff_pixels_uncached(
                     engine_stats["pixel_priority_ocr_attempts"] = engine_stats.get("pixel_priority_ocr_attempts", 0) + 1
                     engine_stats["pixel_ocr_calls_total"] = engine_stats.get("pixel_ocr_calls_total", 0) + 2
 
-                old_raw = _ocr_page_region(page_old, ocr_rect, zoom=4.0, lang="chi_tra+eng", psm="6")
-                new_raw = _ocr_page_region(page_new, ocr_rect, zoom=4.0, lang="chi_tra+eng", psm="6")
+                old_raw, new_raw = _ocr_rendered_page_pair(
+                    page_old,
+                    page_new,
+                    ocr_rect,
+                    zoom=4.0,
+                    lang="chi_tra+eng",
+                    psm="6",
+                    run_pair=_run_ocr_pair,
+                )
                 old_priority = _extract_priority_ocr_text(old_raw)
                 new_priority = _extract_priority_ocr_text(new_raw)
                 if not old_priority and not new_priority:
@@ -1687,19 +1842,22 @@ def _diff_pixels_uncached(
             page_ocr_limit = 14 if n_regions > 45 else 28
             page_numeric_fallback_limit = 4 if n_regions > 45 else 8
 
-            for rid in range(1, n_regions + 1):
-                region = labeled == rid
-                actual_px = int((mask & region).sum())
+            component_scan_started = time.perf_counter()
+            component_geometry = _labeled_component_geometry(labeled, mask, n_regions)
+            if engine_stats is not None:
+                engine_stats["pixel_component_scan_strategy"] = "vectorized-v1"
+                engine_stats["pixel_component_scan_seconds"] = round(
+                    engine_stats.get("pixel_component_scan_seconds", 0.0)
+                    + (time.perf_counter() - component_scan_started),
+                    4,
+                )
+
+            for _, r0, r1, c0, c1, actual_px, region_total in component_geometry:
                 if actual_px < min_area:
                     continue
                 # Suppress noise: require at least 2% of the region to differ
-                region_total = int(region.sum())
                 if region_total > 0 and actual_px / region_total < 0.02:
                     continue
-
-                rows, cols = np.where(region)
-                r0, r1 = int(rows.min()), int(rows.max()) + 1
-                c0, c1 = int(cols.min()), int(cols.max()) + 1
 
                 # Structural-similarity filter: when the bounding box is nearly
                 # identical on both sides (e.g. the same raster image re-encoded
@@ -1887,55 +2045,23 @@ def _diff_pixels_uncached(
                     if engine_stats is not None:
                         engine_stats["pixel_pre_ocr_candidates"] = engine_stats.get("pixel_pre_ocr_candidates", 0) + 1
                     try:
-                        import subprocess, tempfile, os as _os
-                        from PIL import Image as _PILImage
-
                         # Render only the diff patch at 3× DPI for OCR clarity
                         clip_rect = fitz.Rect(fx0, fy0, fx1, fy1)
                         ocr_mat = fitz.Matrix(3.0, 3.0)
 
                         pix_o = page_old.get_pixmap(matrix=ocr_mat, clip=clip_rect, colorspace=fitz.csGRAY)
                         pix_n = page_new.get_pixmap(matrix=ocr_mat, clip=clip_rect, colorspace=fitz.csGRAY)
-
-                        def _ocr_patch(pix) -> str:
-                            """Run Tesseract on a fitz Pixmap with binarization preprocessing."""
-                            pil_img = _PILImage.frombytes("L", (pix.width, pix.height), pix.samples)
-                            # Scale up to at least 120px tall for Tesseract accuracy
-                            if pil_img.height < 120:
-                                scale = max(1, 120 // pil_img.height + 1)
-                                pil_img = pil_img.resize(
-                                    (pil_img.width * scale, pil_img.height * scale),
-                                    _PILImage.LANCZOS,
-                                )
-                            # Otsu-style binarization
-                            pil_arr = np.array(pil_img)
-                            thresh = int(pil_arr.mean()) - 20
-                            thresh = max(80, min(thresh, 200))
-                            pil_img = _PILImage.fromarray(
-                                ((pil_arr > thresh) * 255).astype(np.uint8)
-                            )
-                            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-                                pil_img.save(f.name)
-                                tmp_path = f.name
-                            try:
-                                result = subprocess.run(
-                                    ["tesseract", tmp_path, "stdout",
-                                     "-l", "chi_tra",
-                                     "--psm", "6",
-                                     "--oem", "1"],
-                                    capture_output=True, text=True, timeout=10,
-                                )
-                                return result.stdout.strip()
-                            except Exception:
-                                return ""
-                            finally:
-                                try:
-                                    _os.unlink(tmp_path)
-                                except Exception:
-                                    pass
-
-                        ocr_old_raw = _ocr_patch(pix_o)
-                        ocr_new_raw = _ocr_patch(pix_n)
+                        payload_o = _pixmap_raster_payload(pix_o)
+                        payload_n = _pixmap_raster_payload(pix_n)
+                        ocr_old_raw, ocr_new_raw = _run_ocr_pair(
+                            lambda payload: _ocr_raster_payload(
+                                payload,
+                                lang="chi_tra",
+                                psm="6",
+                            ),
+                            payload_o,
+                            payload_n,
+                        )
                         if engine_stats is not None:
                             engine_stats["pixel_ocr_calls_total"] = engine_stats.get("pixel_ocr_calls_total", 0) + 2
 
@@ -1944,19 +2070,14 @@ def _diff_pixels_uncached(
                             + _numeric_ocr_confusion_count(ocr_new_raw)
                         )
                         if raw_numeric_confusions:
-                            hi_old_raw = _ocr_page_region(
+                            hi_old_raw, hi_new_raw = _ocr_rendered_page_pair(
                                 page_old,
-                                clip_rect,
-                                zoom=6.0,
-                                lang="chi_tra+eng",
-                                psm="6",
-                            )
-                            hi_new_raw = _ocr_page_region(
                                 page_new,
                                 clip_rect,
                                 zoom=6.0,
                                 lang="chi_tra+eng",
                                 psm="6",
+                                run_pair=_run_ocr_pair,
                             )
                             if engine_stats is not None:
                                 engine_stats["pixel_high_zoom_ocr_calls"] = engine_stats.get("pixel_high_zoom_ocr_calls", 0) + 2
@@ -2009,26 +2130,27 @@ def _diff_pixels_uncached(
                                     engine_stats["pixel_numeric_fallback_skips"] = engine_stats.get("pixel_numeric_fallback_skips", 0) + 1
                             elif not in_header_footer:
                                 page_numeric_fallback_candidates += 1
-                                pad_pt = 4.0
+                                # A glyph-only component often encloses just the
+                                # changed stroke (for example only the ``4``/``8``
+                                # in 24→28). Include enough neighbouring text to
+                                # let Tesseract recover the complete field and
+                                # unit; semantic promotion still passes through
+                                # the strict compact-number gate below.
+                                pad_pt = 18.0
                                 numeric_rect = fitz.Rect(
                                     max(0.0, fx0 - pad_pt),
                                     max(0.0, fy0 - pad_pt),
                                     min(float(page_new.rect.width), fx1 + pad_pt),
                                     min(float(page_new.rect.height), fy1 + pad_pt),
                                 )
-                                numeric_old_raw = _ocr_page_region(
+                                numeric_old_raw, numeric_new_raw = _ocr_rendered_page_pair(
                                     page_old,
-                                    numeric_rect,
-                                    zoom=6.0,
-                                    lang="chi_tra+eng",
-                                    psm="6",
-                                )
-                                numeric_new_raw = _ocr_page_region(
                                     page_new,
                                     numeric_rect,
                                     zoom=6.0,
                                     lang="chi_tra+eng",
                                     psm="6",
+                                    run_pair=_run_ocr_pair,
                                 )
                                 if engine_stats is not None:
                                     engine_stats["pixel_numeric_fallback_ocr_calls"] = engine_stats.get("pixel_numeric_fallback_ocr_calls", 0) + 2
@@ -2090,6 +2212,28 @@ def _diff_pixels_uncached(
                 if diff_type == DiffType.IMAGE_DIFF and not is_large_region and not is_small_region:
                     continue
 
+                pixel_evidence = [
+                    DiffEvidence(
+                        source="pixel_diff",
+                        kind="visual_region",
+                        old_bbox=report_bbox,
+                        new_bbox=report_bbox,
+                        confidence=0.95,
+                        metadata={"ocr_interpreted": bool(old_text or new_text)},
+                    )
+                ]
+                if old_text or new_text:
+                    pixel_evidence.append(
+                        DiffEvidence(
+                            source="tesseract_local_ocr",
+                            kind=diff_type.value,
+                            old_value=old_text,
+                            new_value=new_text,
+                            old_bbox=report_bbox,
+                            new_bbox=report_bbox,
+                            confidence=0.95,
+                        )
+                    )
                 items.append(
                     DiffItem(
                         id="",
@@ -2105,11 +2249,14 @@ def _diff_pixels_uncached(
                         new_image_base64=None,
                         context=context_label,
                         confidence=0.95,
+                        evidence=pixel_evidence,
                     )
                 )
     finally:
         doc_old.close()
         doc_new.close()
+        if ocr_executor is not None:
+            ocr_executor.shutdown(wait=True, cancel_futures=True)
 
     return items
 
@@ -2227,6 +2374,29 @@ def _ocr_tile_pair(oi: dict, ni: dict, pixel_bbox: tuple) -> tuple[str, str]:
         return "", ""
 
 
+@pymupdf_serialized
+def _full_page_image_placement_count(page, coverage_threshold: float = 0.8) -> int:
+    """Return image count when every placement is an ignored full-page background."""
+    try:
+        placements = page.get_image_info(hashes=False, xrefs=False)
+        page_area = float(page.rect.width) * float(page.rect.height)
+    except Exception:
+        return 0
+    if not placements or page_area <= 0:
+        return 0
+
+    for placement in placements:
+        bbox = placement.get("bbox") if isinstance(placement, dict) else None
+        if not bbox or len(bbox) != 4:
+            return 0
+        x0, y0, x1, y1 = (float(value) for value in bbox)
+        area = max(0.0, x1 - x0) * max(0.0, y1 - y0)
+        if area / page_area <= coverage_threshold:
+            return 0
+    return len(placements)
+
+
+@pymupdf_serialized
 def diff_images(
     old_pdf_path: str,
     new_pdf_path: str,
@@ -2265,11 +2435,24 @@ def diff_images(
 
     items: list[DiffItem] = []
 
+    @pymupdf_serialized
     def _extract_images(doc) -> list[list[dict]]:
         """Return per-page list of {xref, bbox, phash}."""
         pages: list[list[dict]] = []
         for page in doc:
             page_imgs: list[dict] = []
+            full_page_count = _full_page_image_placement_count(page)
+            if full_page_count:
+                if engine_stats is not None:
+                    engine_stats["image_metadata_prefilter_pages"] = (
+                        engine_stats.get("image_metadata_prefilter_pages", 0) + 1
+                    )
+                    engine_stats["image_full_page_skipped_before_decode"] = (
+                        engine_stats.get("image_full_page_skipped_before_decode", 0)
+                        + full_page_count
+                    )
+                pages.append(page_imgs)
+                continue
             for img_info in page.get_images(full=True):
                 xref = img_info[0]
                 try:
@@ -2791,6 +2974,7 @@ def _merge_nearby_diffs(items: list[DiffItem], gap_threshold: float = 18.0) -> l
         has_number = False
         ctx_set: set[str] = set()
         keep_img_old = keep_img_new = None
+        merged_evidence: list[DiffEvidence] = []
 
         for it in value_group:
             if it.old_value:
@@ -2810,6 +2994,7 @@ def _merge_nearby_diffs(items: list[DiffItem], gap_threshold: float = 18.0) -> l
                 keep_img_old = it.old_image_base64
             if it.new_image_base64 and not keep_img_new:
                 keep_img_new = it.new_image_base64
+            merged_evidence.extend(evidence.model_copy(deep=True) for evidence in it.evidence)
 
         union_bbox = BBox(
             page=bboxes[0].page,
@@ -2834,6 +3019,7 @@ def _merge_nearby_diffs(items: list[DiffItem], gap_threshold: float = 18.0) -> l
                 else (next(iter(ctx_set)) if ctx_set else "N/A")
             ),
             confidence=best_conf,
+            evidence=merged_evidence,
         ))
 
     return result
@@ -2973,6 +3159,47 @@ def _drop_non_numeric_modifications(
                 ):
                     if stats is not None:
                         stats["suppressed_ocr_text"] = stats.get("suppressed_ocr_text", 0) + 1
+                    has_visual_source = bool(
+                        any(
+                            evidence.source == "pixel_diff" or evidence.kind == "visual_region"
+                            for evidence in item.evidence
+                        )
+                        or any(
+                            marker in (item.context or "")
+                            for marker in ("圖片數字變更", "圖形差異", "表格/版面變更")
+                        )
+                    )
+                    if has_visual_source and _numbers_changed(item.old_value, item.new_value):
+                        if stats is not None:
+                            stats["demoted_unreliable_ocr_to_visual"] = (
+                                stats.get("demoted_unreliable_ocr_to_visual", 0) + 1
+                            )
+                        # The pixels still prove that this numeric region changed.
+                        # Remove the untrustworthy semantic claim, but retain the
+                        # location so a reviewer never loses a real candidate.
+                        visual_item = item.model_copy(deep=True)
+                        visual_item.diff_type = DiffType.IMAGE_DIFF
+                        visual_item.old_value = None
+                        visual_item.new_value = None
+                        visual_item.context = (
+                            item.context.split("; OCR/text:", 1)[0]
+                            if "; OCR/text:" in item.context
+                            else "Page "
+                            f"{(item.new_bbox or item.old_bbox).page if (item.new_bbox or item.old_bbox) else '?'} "
+                            "待人工判讀數字區域"
+                        )
+                        visual_item.decision_reason = "ocr_interpretation_rejected_visual_retained"
+                        visual_item.evidence = [
+                            DiffEvidence(
+                                source="pixel_diff",
+                                kind="visual_region",
+                                old_bbox=visual_item.old_bbox,
+                                new_bbox=visual_item.new_bbox,
+                                confidence=visual_item.confidence,
+                                metadata={"ocr_interpretation_rejected": True},
+                            )
+                        ]
+                        kept.append(visual_item)
                     continue
             kept.append(item)
         elif item.context and any(m in item.context for m in _COMPREHENSIVE_MARKERS) and (item.old_value or item.new_value):

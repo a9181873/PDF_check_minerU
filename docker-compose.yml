@@ -7,15 +7,14 @@ services:
     container_name: mineru-api-minerU
     environment:
       MINERU_MODEL_SOURCE: local
-    volumes:
-      - mineru_model_cache_minerU:/root/.cache/modelscope
+      MINERU_API_MAX_CONCURRENT_REQUESTS: '1'
     networks:
       - internal
     expose:
       - '18080'
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:18080/health"]
+      test: ["CMD-SHELL", "python /app/verify_models.py >/dev/null && curl -sf http://localhost:18080/health >/dev/null"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -47,6 +46,7 @@ services:
       PIXEL_DIFF_CACHE_MAX_ENTRIES: '8'
       ENABLE_PERSISTENT_ANALYSIS_CACHE: 'true'
       PERSISTENT_ANALYSIS_CACHE_MAX_ENTRIES: '128'
+      ENABLE_PARALLEL_OCR_PAIRS: 'true'
       # Image-only PDF text-recall layer. Keep 'false' until validated with the
       # fixed-sample container regression (scripts/diagnose-pdf-samples.ps1).
       ENABLE_IMAGE_TEXT_RECALL: 'false'
@@ -66,7 +66,6 @@ services:
 volumes:
   backend_runtime_minerU:
   backend_hf_cache_minerU:
-  mineru_model_cache_minerU:
 
 networks:
   internal:

@@ -12,7 +12,6 @@ import socket
 import statistics
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -70,9 +69,41 @@ def _item_text(item) -> str:
     return " | ".join(filter(None, (item.context, item.old_value, item.new_value)))
 
 
+def _matches_location(bbox, expectation: dict[str, Any]) -> bool:
+    if expectation.get("page") and (not bbox or bbox.page != expectation["page"]):
+        return False
+    expected_bbox = expectation.get("bbox")
+    if expected_bbox:
+        if not bbox:
+            return False
+        if bbox.page != int(expected_bbox.get("page", bbox.page)):
+            return False
+        intersection = max(
+            0.0,
+            min(bbox.x1, float(expected_bbox["x1"]))
+            - max(bbox.x0, float(expected_bbox["x0"])),
+        ) * max(
+            0.0,
+            min(bbox.y1, float(expected_bbox["y1"]))
+            - max(bbox.y0, float(expected_bbox["y0"])),
+        )
+        expected_area = max(
+            0.0,
+            float(expected_bbox["x1"]) - float(expected_bbox["x0"]),
+        ) * max(
+            0.0,
+            float(expected_bbox["y1"]) - float(expected_bbox["y0"]),
+        )
+        if expected_area <= 0.0 or intersection / expected_area < float(
+            expectation.get("min_region_coverage", 0.5)
+        ):
+            return False
+    return True
+
+
 def _matches(item, expectation: dict[str, Any]) -> bool:
     bbox = item.new_bbox or item.old_bbox
-    if expectation.get("page") and (not bbox or bbox.page != expectation["page"]):
+    if not _matches_location(bbox, expectation):
         return False
     fields = (
         ("old_regex", item.old_value or ""),
@@ -86,19 +117,102 @@ def _matches(item, expectation: dict[str, Any]) -> bool:
     allowed_lanes = expectation.get("review_lanes")
     if allowed_lanes and item.review_lane.value not in allowed_lanes:
         return False
+    allowed_types = expectation.get("diff_types")
+    if allowed_types and item.diff_type.value not in allowed_types:
+        return False
     return True
 
 
+def _assign_distinct_matches(items, expectations, matcher) -> tuple[list[list[str]], list[str | None]]:
+    """Return maximum-cardinality one-to-one expectation/item assignments."""
+    candidate_indices = [
+        [item_index for item_index, item in enumerate(items) if matcher(item, expectation)]
+        for expectation in expectations
+    ]
+    item_to_expectation: dict[int, int] = {}
+
+    def augment(expectation_index: int, seen_items: set[int]) -> bool:
+        for item_index in candidate_indices[expectation_index]:
+            if item_index in seen_items:
+                continue
+            seen_items.add(item_index)
+            prior_expectation = item_to_expectation.get(item_index)
+            if prior_expectation is None or augment(prior_expectation, seen_items):
+                item_to_expectation[item_index] = expectation_index
+                return True
+        return False
+
+    for expectation_index in sorted(
+        range(len(expectations)),
+        key=lambda index: len(candidate_indices[index]),
+    ):
+        augment(expectation_index, set())
+
+    selected: list[str | None] = [None] * len(expectations)
+    for item_index, expectation_index in item_to_expectation.items():
+        selected[expectation_index] = items[item_index].id
+    hits = [[items[index].id for index in indices] for indices in candidate_indices]
+    return hits, selected
+
+
+def _matches_forbidden_interpretation(item, expectation: dict[str, Any]) -> bool:
+    if _matches(item, expectation):
+        return True
+
+    for evidence in item.evidence:
+        bbox = evidence.new_bbox or evidence.old_bbox or item.new_bbox or item.old_bbox
+        if not _matches_location(bbox, expectation):
+            continue
+        allowed_types = expectation.get("diff_types")
+        if allowed_types and evidence.kind not in allowed_types:
+            continue
+        fields = (
+            ("old_regex", evidence.old_value or ""),
+            ("new_regex", evidence.new_value or ""),
+            ("context_regex", item.context or ""),
+        )
+        if all(
+            not expectation.get(key)
+            or re.search(expectation[key], value, re.IGNORECASE)
+            for key, value in fields
+        ):
+            return True
+    return False
+
+
 def evaluate_report(report: DiffReport, case: dict[str, Any]) -> dict[str, Any]:
+    expectations = case.get("must_detect", [])
+    all_hits, selected_items = _assign_distinct_matches(report.items, expectations, _matches)
     detections = []
-    for expected in case.get("must_detect", []):
-        hits = [item.id for item in report.items if _matches(item, expected)]
-        detections.append({"id": expected["id"], "passed": bool(hits), "hits": hits})
+    for expected, hits, selected in zip(expectations, all_hits, selected_items, strict=True):
+        detections.append(
+            {
+                "id": expected["id"],
+                "passed": bool(selected),
+                "matched_item_id": selected,
+                "hits": hits,
+            }
+        )
 
     prohibited = []
     for pattern in case.get("must_not_detect", []):
         hits = [item.id for item in report.items if re.search(pattern, _item_text(item), re.IGNORECASE)]
         prohibited.append({"pattern": pattern, "passed": not hits, "hits": hits})
+
+    prohibited_interpretations = []
+    for forbidden in case.get("must_not_interpret", []):
+        hits = [
+            item.id
+            for item in report.items
+            if _matches_forbidden_interpretation(item, forbidden)
+        ]
+        prohibited_interpretations.append(
+            {
+                "id": forbidden["id"],
+                "passed": not hits,
+                "hits": hits,
+            }
+        )
 
     must_detect_passed = sum(row["passed"] for row in detections)
     total_expected = len(detections)
@@ -109,6 +223,10 @@ def evaluate_report(report: DiffReport, case: dict[str, Any]) -> dict[str, Any]:
         "must_detect_total": total_expected,
         "must_detect_recall": round(must_detect_passed / total_expected, 4) if total_expected else 1.0,
         "prohibited_false_positives": sum(not row["passed"] for row in prohibited),
+        "prohibited_interpretations": prohibited_interpretations,
+        "numeric_interpretation_false_positives": sum(
+            not row["passed"] for row in prohibited_interpretations
+        ),
         "material_visual_suppressed": int(report.engine_stats.get("material_visual_suppressed", 0)),
         "unresolved_region_count": report.unresolved_region_count,
     }
@@ -117,16 +235,29 @@ def evaluate_report(report: DiffReport, case: dict[str, Any]) -> dict[str, Any]:
 def evaluate_preliminary_region_coverage(
     report: DiffReport, case: dict[str, Any]
 ) -> dict[str, Any]:
-    rows = []
-    for expected in case.get("must_detect", []):
-        page = expected.get("page")
-        hits = [
-            item.id
-            for item in report.items
-            if page is None
-            or ((item.new_bbox or item.old_bbox) and (item.new_bbox or item.old_bbox).page == page)
-        ]
-        rows.append({"id": expected["id"], "passed": bool(hits), "hits": hits})
+    expectations = case.get("must_detect", [])
+    all_hits, selected_items = _assign_distinct_matches(
+        report.items,
+        expectations,
+        lambda item, expectation: _matches_location(
+            item.new_bbox or item.old_bbox,
+            expectation,
+        ),
+    )
+    rows = [
+        {
+            "id": expected["id"],
+            "passed": bool(selected),
+            "matched_item_id": selected,
+            "hits": hits,
+        }
+        for expected, hits, selected in zip(
+            expectations,
+            all_hits,
+            selected_items,
+            strict=True,
+        )
+    ]
     passed = sum(row["passed"] for row in rows)
     return {
         "regions": rows,
@@ -145,6 +276,8 @@ def _compact_items(report: DiffReport) -> list[dict[str, Any]]:
             "lane": item.review_lane.value,
             "risk": item.risk_level.value,
             "page": (item.new_bbox or item.old_bbox).page if (item.new_bbox or item.old_bbox) else None,
+            "old_bbox": item.old_bbox.model_dump() if item.old_bbox else None,
+            "new_bbox": item.new_bbox.model_dump() if item.new_bbox else None,
             "old_value": item.old_value,
             "new_value": item.new_value,
             "context": item.context,
@@ -162,10 +295,10 @@ def run_once(case: dict[str, Any], repo_root: Path, run_id: str) -> dict[str, An
     monitor = ResourceMonitor(run_id, interval=0.1)
     monitor.start()
     started = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        old_future = pool.submit(parse_pdf, str(old_path))
-        new_future = pool.submit(parse_pdf, str(new_path))
-        old_doc, new_doc = old_future.result(), new_future.result()
+    # PyMuPDF is not thread-safe. Benchmark the same safe sequential parse path
+    # used by production; process-based parallelism must be measured separately.
+    old_doc = parse_pdf(str(old_path))
+    new_doc = parse_pdf(str(new_path))
     parse_seconds = time.perf_counter() - started
 
     prelim_started = time.perf_counter()
@@ -262,6 +395,9 @@ def summarize(runs: list[dict[str, Any]]) -> dict[str, Any]:
         "prohibited_false_positives": sum(
             row["evaluation"]["prohibited_false_positives"] for row in runs
         ),
+        "numeric_interpretation_false_positives": sum(
+            row["evaluation"]["numeric_interpretation_false_positives"] for row in runs
+        ),
         "material_visual_suppressed": sum(
             row["evaluation"]["material_visual_suppressed"] for row in runs
         ),
@@ -270,6 +406,10 @@ def summarize(runs: list[dict[str, Any]]) -> dict[str, Any]:
             "complete_p95_le_90s": percentile(complete, 0.95) <= 90.0,
             "known_critical_recall_100pct": passed == expected,
             "preliminary_region_recall_100pct": preliminary_passed == preliminary_expected,
+            "numeric_interpretation_false_positives_zero": all(
+                row["evaluation"]["numeric_interpretation_false_positives"] == 0
+                for row in runs
+            ),
         },
     }
 
@@ -284,15 +424,16 @@ def write_markdown(result: dict[str, Any], path: Path) -> None:
         "",
         "## 摘要",
         "",
-        "| 模式 | Runs | 初步 P95 | 完整 P95 | 初步區域召回 | 完整必抓召回 | 禁止誤報 | 視覺靜默抑制 | 峰值 RAM |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| 模式 | Runs | 初步 P95 | 完整 P95 | 初步區域召回 | 完整必抓召回 | 禁止誤報 | 錯誤數字解讀 | 視覺靜默抑制 | 峰值 RAM |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for mode, block in result["modes"].items():
         s = block["summary"]
         lines.append(
             f"| {mode} | {s['runs']} | {s['initial_ready_p95_seconds']:.2f}s | {s['complete_p95_seconds']:.2f}s | "
             f"{s['preliminary_region_recall']:.1%} | {s['must_detect_recall']:.1%} | "
-            f"{s['prohibited_false_positives']} | {s['material_visual_suppressed']} | {s['peak_memory_mb']:.1f}MB |"
+            f"{s['prohibited_false_positives']} | {s['numeric_interpretation_false_positives']} | "
+            f"{s['material_visual_suppressed']} | {s['peak_memory_mb']:.1f}MB |"
         )
     lines.extend(["", "> 六對樣本只代表既有案例回歸，不代表母體 OCR 準確率。", ""])
     path.write_text("\n".join(lines), encoding="utf-8")
@@ -318,6 +459,7 @@ def main() -> None:
             "image_text_recall": settings.enable_image_text_recall,
             "paddle_ocr_experiment": settings.enable_paddle_ocr_experiment,
             "table_parser_strategy": settings.table_parser_strategy,
+            "parallel_ocr_pairs": settings.enable_parallel_ocr_pairs,
         },
         "modes": {},
     }

@@ -1,6 +1,8 @@
 # PDF 差異比對系統 — 技術架構文件
 
 > 版本: 2026-07-05 | 更新摘要: 漸進式分析、雙軌審核、穩定候選 ID、ROI 補強、跨重啟快取與 CPU-only 供應鏈鎖定
+>
+> 本文件描述 2026-07-05 架構基線；跨版本修改、目前部署差異與最新驗證結果以[工程歷程與決策紀錄](project-history.md)為準。
 
 ---
 
@@ -579,7 +581,7 @@ PaddleOCR 實驗版開啟時會額外進行 PDF rasterize 與本機 OCR inferenc
 Docker Compose
 ├── mineru-api-minerU (mineru-api:pipeline)
 │   ├── mineru-api --pipeline-backend pipeline :18080
-│   └── Volume: mineru_model_cache_minerU → /root/.cache/modelscope
+│   └── Pipeline 模型烘入 image；healthcheck 驗證 mineru.json＋7 組模型
 │
 ├── backend-minerU (pdf-check-backend:latest)
 │   ├── FastAPI (uvicorn :8000)
@@ -603,7 +605,7 @@ Docker Compose
 
 ### 8.1 MinerU 服務建構
 
-`mineru/Dockerfile` 在 build 時預下載模型（`mineru-models-download -s modelscope -m pipeline`），模型會成為 image layer。runtime 掛載的 `mineru_model_cache_minerU` 只保存容器執行期間的 ModelScope 快取；它不會直接提供給 Docker build。只要前置 layer 與 BuildKit cache 仍有效，重建可重用模型 layer；若基底 image、pip 安裝指令或上游套件解析結果改變，模型 layer 會失效並重新下載。
+`mineru/Dockerfile` 在 build 時預下載模型（`mineru-models-download -s modelscope -m pipeline`），模型會成為 image layer。建置與 runtime healthcheck 共用 `verify_models.py`，檢查 `mineru.json` 與 7 組必要模型。Compose 不再把 `/root/.cache/modelscope` 掛成 named volume，避免既有 volume 在映像升版後遮蔽新模型。只要前置 layer 與 BuildKit cache 仍有效，重建可重用模型 layer；若基底 image、pip 安裝指令或上游套件解析結果改變，模型 layer 會失效並重新下載。
 
 `six` 是 MinerU OCR pipeline 的執行期相依套件。2026-06-28 已在 Dockerfile 明確安裝，避免 API 健康檢查正常、實際 `/file_parse` 卻因 `ModuleNotFoundError` 回傳 `409 Conflict`。
 
@@ -615,7 +617,7 @@ docker compose build backend-minerU && docker compose up -d backend-minerU
 docker compose up --build -d
 ```
 
-backend 直接依賴與關鍵轉接依賴已固定版本，Python／Node 基底映像固定 digest。PyTorch 與 torchvision 先由官方 CPU wheel index 安裝，版本必須帶 `+cpu`；若容器顯示 `+cu` 或存在 NVIDIA／CUDA 套件，視為建置錯誤。2026-07-05 ARM64 正式 backend image 約 764MB，取代舊版約 3.49GB 的 CUDA 映像。離線匯出流程會在可用時產生 SPDX SBOM。
+backend 直接依賴與關鍵轉接依賴已固定版本，Python／Node 基底映像固定 digest。PyTorch 與 torchvision 先由官方 CPU wheel index 安裝，版本必須帶 `+cpu`；若容器顯示 `+cu` 或存在 NVIDIA／CUDA 套件，視為建置錯誤。2026-07-05 ARM64 正式 backend image 的 API `.Size` 約 764MB，OCI `docker system df` 展開磁碟占用約 3.17GB；容量規劃採後者。離線匯出流程會在可用時產生 SPDX SBOM。
 
 ### 8.2 MinerU 繁體中文設定
 
@@ -657,7 +659,7 @@ backend 直接依賴與關鍵轉接依賴已固定版本，Python／Node 基底�
 - 像素分析新增跨重啟磁碟快取；鍵包含 PDF SHA-256、頁面／ROI、DPI、OCR 模式、模型與演算法版本。
 - 封存閘門要求 `analysis_status=complete`，且高風險與待人工判讀區域均已審核。
 - Mac Docker 10 vCPU／8GB 正式五輪：cold 初步／完整 P95 10.13／56.04 秒，初步區域與完整必抓召回皆 100%，無 OOM。
-- OCI Ampere A1 已部署 `b875a9b`：正式 backend image 764MB、`torch 2.12.1+cpu`、無 CUDA 套件；鳳守愛 cold smoke 初步／完整 4.74／18.62 秒，四項守門值全過。
+- OCI Ampere A1 已部署 `b875a9b`：正式 backend image API `.Size` 764MB／展開磁碟占用約 3.17GB、`torch 2.12.1+cpu`、無 CUDA 套件；鳳守愛 cold smoke 初步／完整 4.74／18.62 秒，四項守門值全過。
 - 後端 127 項測試與前端 production build 通過。
 
 ### 2026-06-28 — 架構拆分、非同步阻塞修正與正式回歸

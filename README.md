@@ -4,7 +4,7 @@ PDF Check MinerU 是一套用來比對「舊版 PDF」與「新版 PDF」差異�
 
 這個專案特別適合保險 DM、條款、費率表、簡章、公告等需要反覆改版與人工審核的 PDF。
 
-## 目前技術狀態（2026-07-05）
+## 目前技術狀態（2026-07-19）
 
 | 項目 | 正式使用狀況 |
 |------|--------------|
@@ -14,10 +14,10 @@ PDF Check MinerU 是一套用來比對「舊版 PDF」與「新版 PDF」差異�
 | 資源控制 | 重型 parser 與比對任務預設各只同時執行 1 個，並限制等待佇列，適合 CPU-only 主機 |
 | 快取 | PDF SHA-256 解析快取、single-flight、像素/NCC/OCR 配對快取與跨重啟磁碟快取均已啟用 |
 | 前端 | React 19 + TypeScript 6 + Vite 8；支援 WebSocket 進度、輪詢取消、虛擬列表與對話框鍵盤操作 |
-| 正式驗證 | 後端 127 項測試通過、前端 production build 通過；Mac M4 原生與正式 Docker 映像皆完成 cold＋warm 各 30 runs 驗收 |
-| OCI | ARM64、CPU-only、MinerU 3.4.0；`b875a9b` 已部署，後端為 764MB `torch +cpu` 映像；鳳守愛 cold smoke 初步／完整 4.74／18.62 秒 |
+| 正式驗證 | 本機工作樹後端 148 項測試、前端 production build 與 backend image build 通過；`pixel-v7` Mac M4 原生 cold＋warm 各 30 runs 為 16／16 錨點、數字誤讀 0 |
+| OCI | 已部署 `b875a9b` backend 為 `torch +cpu`／CUDA 套件 0，API image size 764MB、展開約 3.17GB；MinerU 仍是舊 `+cu130` 映像，本輪 CPU-only runtime 尚未部署 |
 
-現行資料流、模組邊界與部署架構請看 `docs/technical-architecture.md`；本輪效能與準確度實作紀錄見 `docs/ocr_optimization_implementation_2026-07-04.md`。
+完整修改脈絡、現行／已取代決策、準度與效能證據統一收錄於 [`docs/project-history.md`](docs/project-history.md)。現行模組與部署架構另見 `docs/technical-architecture.md`。
 
 ## 2026-07-04：雙軌證據與漸進分析
 
@@ -120,7 +120,7 @@ http://localhost:8001
 docker compose down
 ```
 
-第一次建置 MinerU image 時會下載 pipeline 模型，檔案較大，可能需要一段時間。模型會被寫入 image layer；只要 Docker build cache 未失效，後續建置可重用該層。runtime 的 ModelScope volume 用於容器執行期間的快取，不會取代 build 階段的模型下載。
+第一次建置 MinerU image 時會下載 pipeline 模型，檔案較大，可能需要一段時間。模型會寫入 image layer；建置及 healthcheck 都會驗證 `mineru.json` 與 7 組必要模型。Compose 不再把 ModelScope volume 掛到同一路徑，避免既有 volume 遮蔽新版映像模型。
 
 ## 初次登入
 
@@ -168,12 +168,14 @@ docker compose down
 | `TABLE_PARSER_STRATEGY` | `docling_first` | 表格引擎順序；預設先取 Docling cell bbox，無表格時才 fallback MinerU。`parallel_race` 僅供舊版 A/B |
 | `ENABLE_LIGHTWEIGHT_TABLE_PROBE` | `true` | 先用 PyMuPDF 幾何線條／數字格網快篩；無表格跡象時不載入重型引擎 |
 | `HEAVY_PARSER_MAX_CONCURRENCY` | `1` | MinerU／Docling／OpenDataLoader 同時執行上限，避免 CPU-only 主機過度併發 |
+| `COMPARE_MAX_CONCURRENCY` | `1`（固定） | 比對執行器使用執行緒；為符合 PyMuPDF 安全限制，設定值會強制正規化為單一 worker |
 | `ENABLE_PARSER_CACHE` | `true` | 依 PDF SHA-256 快取解析結果；同一服務程序內重複比對不重新解析 |
 | `PARSER_CACHE_MAX_ENTRIES` | `8` | 記憶體解析快取最多保留文件數 |
 | `ENABLE_PIXEL_DIFF_CACHE` | `true` | 依新舊 PDF 內容雜湊快取像素/NCC/OCR 結果，重新比對時不重跑 OCR |
 | `PIXEL_DIFF_CACHE_MAX_ENTRIES` | `8` | 記憶體像素差異快取最多保留文件配對數 |
 | `ENABLE_PERSISTENT_ANALYSIS_CACHE` | `true` | 將昂貴像素分析寫入 runtime 快取，容器重啟後仍可重用 |
 | `PERSISTENT_ANALYSIS_CACHE_MAX_ENTRIES` | `128` | 每種分析 artifact 最多保留筆數 |
+| `ENABLE_PARALLEL_OCR_PAIRS` | `true` | 同一差異區域的新舊 OCR 以兩路並行執行；單核心主機可關閉 |
 | `ENABLE_DOCLING_PARALLEL` | `true` | 舊版相容設定；只有 `TABLE_PARSER_STRATEGY=parallel_race` 的 A/B 情境才有意義 |
 | `GENERATE_SNAPSHOTS` | `true` | 比對完成後是否產生頁面快照 |
 | `SNAPSHOT_DIFF_PAGES_ONLY` | `true` | 只為有差異的頁面產生快照 |
@@ -250,7 +252,7 @@ Docker 部署時，資料會存在 Docker volume，容器重啟後不會消失�
 | exports | 匯出 PDF、Excel、TXT、CSV |
 | archive | 留存用 PDF 與核驗歷史 |
 | snapshots | 稽核用頁面快照 |
-| model cache | MinerU / Hugging Face / ModelScope 模型快取 |
+| model assets/cache | MinerU 模型烘入其 image；backend Hugging Face cache 使用獨立 volume |
 
 ## 資料來源與隱私邊界
 
@@ -438,7 +440,7 @@ npm run build
 | 已完成 | 依 PDF hash 快取解析結果 | 使用 SHA-256 bounded cache + single-flight，同一份 PDF 不重複解析 |
 | 已完成 | 先做頁級變更偵測 | 72 DPI 快掃先找變更頁，再對候選頁執行 144／200 DPI 分期分析 |
 | P1 | 把 snapshot 改成可控產生 | 預設可只在留存或匯出時產生，降低平常比對的等待時間 |
-| 已完成（程序內） | 對大 PDF 做有限任務佇列 | `COMPARE_MAX_CONCURRENCY` + `COMPARE_MAX_PENDING_TASKS` 限制執行與等待數；若需跨重啟復原，再升級外部持久化佇列 |
+| 已完成（程序內） | 對大 PDF 做有限任務佇列 | 單一比對 worker + `COMPARE_MAX_PENDING_TASKS` 限制執行與等待數；若需平行化或跨重啟復原，再升級獨立 process／外部持久化佇列 |
 | 已完成 | 前端延遲載入重型元件 | 只有進入比對頁才載入 PDF runtime，首頁維持快速開啟 |
 
 ### 同步做：更省資源

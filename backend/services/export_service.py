@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from models.diff_models import CheckStatus, ChecklistItem, DiffItem, DiffReport, DiffType
+from services.pymupdf_guard import pymupdf_serialized
 
 _DIFF_COLORS = {
     DiffType.NUMBER_MODIFIED: (1.0, 0.5, 0.0),
@@ -15,6 +16,7 @@ _DIFF_COLORS = {
 }
 
 
+@pymupdf_serialized
 def _pdf_rect_from_bbox(page, bbox):
     import fitz
 
@@ -23,6 +25,7 @@ def _pdf_rect_from_bbox(page, bbox):
     return fitz.Rect(bbox.x0, y0_top, bbox.x1, y1_top)
 
 
+@pymupdf_serialized
 def export_annotated_pdf(new_pdf_path: str, diff_items: list[DiffItem], output_path: str) -> str:
     try:
         import fitz
@@ -123,6 +126,7 @@ def export_review_excel(
     return str(output)
 
 
+@pymupdf_serialized
 def export_review_report_pdf(
     comparison_id: str,
     diff_report: DiffReport,

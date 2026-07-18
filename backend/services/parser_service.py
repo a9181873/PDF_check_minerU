@@ -17,6 +17,7 @@ from pathlib import Path
 import pandas as pd
 
 from models.diff_models import BBox
+from services.pymupdf_guard import pymupdf_serialized
 
 DEFAULT_PAGE_WIDTH_PT = 595.0
 DEFAULT_PAGE_HEIGHT_PT = 842.0
@@ -206,6 +207,7 @@ def _get_docling_converter():
 
 # ── MinerU helpers ────────────────────────────────────────────────────────────
 
+@pymupdf_serialized
 def _get_page_sizes_fitz(pdf_path: Path) -> dict[int, tuple[float, float]]:
     """Return {page_no (1-based): (width_pt, height_pt)} using PyMuPDF."""
     try:
@@ -687,6 +689,7 @@ def _parse_via_opendataloader(pdf_path: Path) -> ParsedDocument:
 _NUMERIC_WORD_RE = re.compile(r"\d")
 
 
+@pymupdf_serialized
 def _page_has_numeric_grid(page) -> bool:
     """Cheap signal for borderless rate tables: repeated numeric rows/columns."""
     rows: dict[int, list[tuple[float, str]]] = {}
@@ -710,6 +713,7 @@ def _page_has_numeric_grid(page) -> bool:
     return sum(1 for count in bands.values() if count >= 3) >= 2
 
 
+@pymupdf_serialized
 def _probe_page_table_candidates(page) -> int:
     """Detect ruled tables without loading ML models; numeric grids cover borderless rate tables."""
     candidates = 1 if _page_has_numeric_grid(page) else 0
@@ -771,6 +775,7 @@ def _probe_page_table_candidates(page) -> int:
     return candidates
 
 
+@pymupdf_serialized
 def _parse_via_fitz(pdf_path: Path) -> ParsedDocument:
     import fitz
 

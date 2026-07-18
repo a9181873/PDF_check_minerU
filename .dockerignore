@@ -22,15 +22,21 @@ frontend/dist-ssr
 # Runtime data and generated outputs
 runtime
 backend/runtime
+backend/output
+output
 uploads
 exports
 archives
 snapshots
 crops
 benchmarks
+tmp
+商品DM
+samples
+*.pdf
+*.PDF
 
 # Local OS/editor files
 .DS_Store
 .idea
 .vscode
-

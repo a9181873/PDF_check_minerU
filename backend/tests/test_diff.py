@@ -1,4 +1,6 @@
-from models.diff_models import BBox, DiffItem, DiffType
+import threading
+
+from models.diff_models import BBox, DiffEvidence, DiffItem, DiffType
 from config import settings
 from services import diff_service
 from services.diff_service import (
@@ -6,9 +8,13 @@ from services.diff_service import (
     _coalesce_reviewable_visual_items,
     _drop_non_numeric_modifications,
     _extract_priority_ocr_text,
+    _full_page_image_placement_count,
+    _is_reliable_image_pdf_text_diff,
     _is_reliable_ocr_pair,
     _is_reliable_ocr_text,
+    _labeled_component_geometry,
     _numeric_ocr_confusion_count,
+    _ocr_rendered_page_pair,
     _same_native_text_is_rendering_noise,
     clear_pixel_diff_cache,
     diff_aligned_paragraphs,
@@ -24,6 +30,115 @@ def _paragraph(text: str, page: int = 1, y0: float = 100.0, y1: float = 120.0) -
         text=text,
         bbox=BBox(page=page, x0=10.0, y0=y0, x1=200.0, y1=y1),
     )
+
+
+def test_labeled_component_geometry_matches_legacy_full_mask_scan():
+    import numpy as np
+    from scipy import ndimage
+
+    changed = np.zeros((18, 24), dtype=bool)
+    changed[1:4, 2:5] = True
+    changed[8:10, 12:15] = True
+    changed[14:17, 19:22] = True
+    labeled, count = ndimage.label(ndimage.binary_dilation(changed, iterations=1))
+
+    legacy = []
+    for region_id in range(1, count + 1):
+        region = labeled == region_id
+        rows, columns = np.where(region)
+        legacy.append(
+            (
+                region_id,
+                int(rows.min()),
+                int(rows.max()) + 1,
+                int(columns.min()),
+                int(columns.max()) + 1,
+                int((changed & region).sum()),
+                int(region.sum()),
+            )
+        )
+
+    assert _labeled_component_geometry(labeled, changed, count) == legacy
+
+
+def test_full_page_image_prefilter_only_skips_pages_without_smaller_placements():
+    class Rect:
+        width = 100.0
+        height = 200.0
+
+    class Page:
+        rect = Rect()
+
+        def __init__(self, placements):
+            self._placements = placements
+
+        def get_image_info(self, **_kwargs):
+            return self._placements
+
+    full_page = {"bbox": (0.0, 0.0, 100.0, 200.0)}
+    small_overlay = {"bbox": (10.0, 10.0, 30.0, 30.0)}
+
+    assert _full_page_image_placement_count(Page([full_page])) == 1
+    assert _full_page_image_placement_count(Page([full_page, full_page])) == 2
+    assert _full_page_image_placement_count(Page([full_page, small_overlay])) == 0
+    assert _full_page_image_placement_count(Page([])) == 0
+
+
+def test_ocr_page_pair_renders_on_caller_thread_before_parallel_ocr(monkeypatch):
+    caller_thread = threading.get_ident()
+    render_threads = []
+
+    class Pixmap:
+        def __init__(self, name):
+            self.name = name
+
+        @property
+        def width(self):
+            assert threading.get_ident() == caller_thread
+            return 1
+
+        @property
+        def height(self):
+            assert threading.get_ident() == caller_thread
+            return 1
+
+        @property
+        def samples(self):
+            assert threading.get_ident() == caller_thread
+            return self.name.encode()
+
+    class Page:
+        def __init__(self, name):
+            self.name = name
+
+        def get_pixmap(self, **_kwargs):
+            render_threads.append(threading.get_ident())
+            return Pixmap(self.name)
+
+    monkeypatch.setattr(
+        diff_service,
+        "_ocr_raster_payload",
+        lambda payload, **_kwargs: f"ocr:{payload[2].decode()}",
+    )
+
+    def run_pair(function, old_input, new_input):
+        from concurrent.futures import ThreadPoolExecutor
+
+        assert render_threads == [caller_thread, caller_thread]
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            old_future = pool.submit(function, old_input)
+            new_result = function(new_input)
+            return old_future.result(), new_result
+
+    assert _ocr_rendered_page_pair(
+        Page("old"),
+        Page("new"),
+        object(),
+        zoom=4.0,
+        lang="chi_tra+eng",
+        psm="6",
+        run_pair=run_pair,
+    ) == ("ocr:old", "ocr:new")
 
 
 def test_pixel_diff_cache_reuses_result_and_restores_metadata(monkeypatch):
@@ -818,7 +933,7 @@ def test_image_pdf_text_gate_suppresses_number_diff_when_numbers_do_not_change()
     assert stats["suppressed_ocr_text"] == 1
 
 
-def test_image_pdf_text_gate_suppresses_single_digit_ocr_number_change():
+def test_image_pdf_text_gate_demotes_unreliable_number_but_keeps_visual_region():
     item = DiffItem(
         id="",
         diff_type=DiffType.NUMBER_MODIFIED,
@@ -826,11 +941,74 @@ def test_image_pdf_text_gate_suppresses_single_digit_ocr_number_change():
         new_value="3",
         old_bbox=BBox(page=3, x0=40, y0=720, x1=60, y1=740),
         new_bbox=BBox(page=3, x0=40, y0=720, x1=60, y1=740),
-        context="Page 3 圖片數字變更",
+        context="Page 3 內容變更",
         confidence=0.95,
+        evidence=[
+            DiffEvidence(
+                source="pixel_diff",
+                kind="visual_region",
+                old_bbox=BBox(page=3, x0=40, y0=720, x1=60, y1=740),
+                new_bbox=BBox(page=3, x0=40, y0=720, x1=60, y1=740),
+                confidence=0.95,
+            ),
+            DiffEvidence(
+                source="tesseract_local_ocr",
+                kind="number_modified",
+                old_value="2",
+                new_value="3",
+                confidence=0.95,
+            ),
+        ],
     )
 
-    assert _drop_non_numeric_modifications([item], image_pdf_text_gate=True) == []
+    stats = {}
+    filtered = _drop_non_numeric_modifications(
+        [item],
+        image_pdf_text_gate=True,
+        stats=stats,
+    )
+
+    assert len(filtered) == 1
+    assert filtered[0].diff_type == DiffType.IMAGE_DIFF
+    assert filtered[0].old_value is None
+    assert filtered[0].new_value is None
+    assert filtered[0].decision_reason == "ocr_interpretation_rejected_visual_retained"
+    assert [(e.source, e.kind, e.old_value, e.new_value) for e in filtered[0].evidence] == [
+        ("pixel_diff", "visual_region", None, None)
+    ]
+    assert stats["demoted_unreliable_ocr_to_visual"] == 1
+
+
+def test_nearby_pixel_ocr_merge_preserves_visual_provenance():
+    items = []
+    for index, x0 in enumerate((10.0, 32.0), start=1):
+        bbox = BBox(page=1, x0=x0, y0=10, x1=x0 + 18, y1=30)
+        items.append(
+            DiffItem(
+                id=f"d{index:03d}",
+                diff_type=DiffType.NUMBER_MODIFIED,
+                old_value=str(20 + index),
+                new_value=str(30 + index),
+                old_bbox=bbox,
+                new_bbox=bbox,
+                context="Page 1 內容變更",
+                confidence=0.95,
+                evidence=[
+                    DiffEvidence(
+                        source="pixel_diff",
+                        kind="visual_region",
+                        old_bbox=bbox,
+                        new_bbox=bbox,
+                        confidence=0.95,
+                    )
+                ],
+            )
+        )
+
+    merged = merge_diff_results([], [], items, keep_image_diffs=True)
+
+    assert len(merged) == 1
+    assert [e.source for e in merged[0].evidence] == ["pixel_diff", "pixel_diff"]
 
 
 def test_image_pdf_text_gate_keeps_number_diff_with_strong_numeric_change():
@@ -850,11 +1028,30 @@ def test_image_pdf_text_gate_keeps_number_diff_with_strong_numeric_change():
 
 def test_compact_numeric_ocr_pair_recovers_small_graphic_number_change():
     assert _compact_numeric_ocr_pair("24", "28%") == ("24", "28")
-    assert _compact_numeric_ocr_pair("24", "281") == ("24", "28")
-    assert _compact_numeric_ocr_pair("244", "284") == ("24", "28")
+    assert _compact_numeric_ocr_pair("24", "281") is None
+    assert _compact_numeric_ocr_pair("244", "284") == ("244", "284")
     assert _compact_numeric_ocr_pair("2", "3") is None
     assert _compact_numeric_ocr_pair("9", "1") is None
     assert _compact_numeric_ocr_pair("7 自權閣呈說明", "了") is None
+
+
+def test_compact_numeric_ocr_pair_rejects_historical_partial_ocr_values():
+    for old_value, new_value in (
+        ("4", "24"),
+        ("35", "5"),
+        ("95", "00"),
+        ("64", "06"),
+        ("71", "7"),
+        ("99", "100"),
+        ("24", "128"),
+        ("100", "99"),
+    ):
+        assert _compact_numeric_ocr_pair(old_value, new_value) is None
+        assert not _is_reliable_image_pdf_text_diff(old_value, new_value)
+
+
+def test_image_pdf_numeric_gate_keeps_explicit_percentage_context():
+    assert _is_reliable_image_pdf_text_diff("宣告利率 3.95%", "宣告利率 4.00%")
 
 
 def test_numeric_ocr_confusion_count_detects_letters_inside_numbers():
