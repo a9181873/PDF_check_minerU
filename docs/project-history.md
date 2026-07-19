@@ -34,7 +34,7 @@
 | 本輪最佳化 | **現行／待 OCI 正式 benchmark** | `pixel-v9`、連通元件向量化、不可變 raster bytes 雙路 OCR、全頁圖片 metadata 快篩、數字語意閘門、process-wide PyMuPDF 鎖、runtime 指紋與 Golden 語意負例均已提交；本機正式驗證通過，OCI backend 已完成健康／執行期稽核，但尚未在 OCI 跑隔離資料目錄的同版 cold／warm 多輪。 |
 | 使用者新增樣本 | **待驗證** | 心動溢生 `1140121 → 1140815` 與金放心85 `1120701 → 1140825` 已完成鎖後 cold／warm smoke，但尚未形成正式版本化 Golden v2。 |
 | 心動溢生事故止血 | **已提交／已部署** | `a56a247` 已修正 OCR 多執行緒超額競爭、同文 OCR 假差異、遠距區域整頁合框、右下版號漏抓與殘缺 OCR 快取；第二代內容優先架構已寫入技術架構文件，仍須完成 shadow 實作與固定回歸後才能切換。 |
-| OCI 部署 | **Backend 已部署** | OCI 已 fast-forward 至 `a56a247` 並重建 backend；既有 MinerU 映像仍為 `+cu130`，本輪未完成 CPU final image。為恢復服務，OCI compose 暫時將 MinerU healthcheck 降為 `/health`，並保留兩份 compose 備份。 |
+| OCI 部署 | **Backend + MinerU CPU 已部署** | OCI 已完成 `a56a247` backend 與 `5c190e0` 離線 CPU MinerU image 部署；恢復 `verify_models.py`＋`/health` 完整 readiness gate，並保留舊 image 與 compose 備份。 |
 
 ### 2.2 OCI 實際狀態
 
@@ -42,8 +42,8 @@
 |---|---|---|
 | 主機 | Ampere A1，4 OCPU／24GB RAM；磁碟約 193GB，86GB 已用、107GB 可用；稽核時 uptime 約 99 天 | 容器均健康，未發現 restart、OOM 或主機資源耗盡。 |
 | Backend | 2026-07-19 已部署 `a56a247`；`torch 2.12.1+cpu`、CUDA 不可用，image API `.Size` 699,824,003 bytes、`ENABLE_PARALLEL_OCR_PAIRS=true`；`pixel-v9` 與併發設定已在容器內確認 | **現行已部署**。容器 `/health` 回傳 `{"status":"ok"}`；未拿正式資料目錄執行 cold benchmark，避免污染或清除正式快取。 |
-| MinerU | MinerU 3.4.0；實際仍為 `torch 2.12.1+cu130`，含 18 個 CUDA／NVIDIA 套件，image 約 5.414GB；主機沒有 GPU | **現行但待修**。實際以 CPU 執行，CUDA 套件只造成映像、建置與磁碟浪費。 |
-| 本輪 MinerU CPU 映像 | Dockerfile 與 CPU constraints 已在本機工作樹調整 | **待驗證**。尚待包含模型下載層的完整 `final` build 驗證，亦尚未部署。 |
+| MinerU | MinerU 3.4.0；`torch 2.12.1+cpu`、CUDA/NVIDIA 套件 0，image 2,698,867,686 bytes；7 組模型 gate 通過，主機沒有 GPU | **現行已部署**。真實 `/file_parse` smoke HTTP 200、25.26 秒；相較舊 5.414GB CUDA image 約縮小 50.1%。 |
+| 本輪 MinerU CPU 映像 | `mineru/Dockerfile.cpu-offline` 從舊 image 只取模型層，重新安裝 CPU runtime | **已驗證／已部署**。`verify_models.py` 通過、CPU runtime 通過；避免再次經 ModelScope 下載約 2.5GB 模型。 |
 | 比對資料 | 34 組上傳配對／300 頁；依 SHA 去重後約 13 組獨立配對、23 份 PDF／91 頁；其中 14 份無文字層、9 份有原生文字層 | 歷史資料有代表性，但重複案件多，不能直接當 34 組獨立樣本。 |
 | 審核標註 | 27 份報告、201 個 diff item，僅 13 次 review action；可對齊標籤約 10 筆、約占 5%，只有 3 案完整審核 | 標註密度不足，不能由 OCI 歷史資料計算可靠的母體 precision／recall。 |
 | 實際工作負載 | 33 筆 resource log：完成時間 P50 27.4 秒、P95 133.4 秒、最大 225.8 秒；RSS P50 631MB、P95 3.231GB、最大 3.384GB | 長尾主要來自像素分析與 OCR。這是混合工作負載分布，不是固定樣本 benchmark。 |
@@ -109,7 +109,7 @@ OCI 另有 1 筆長時間停在 `diffing` 的舊紀錄，以及 6 組上傳檔�
 
 ### 3.5 2026-07-19：`pixel-v9` 止血最佳化與 Backend 部署
 
-本輪程式與本機驗證已形成 `a56a247` 正式基線，OCI backend 亦已部署；OCI 同版正式多輪與 MinerU CPU final 仍待完成。重點如下：
+本輪程式與本機驗證已形成 `a56a247` 正式基線，OCI backend 與 `5c190e0` CPU-only MinerU image 均已部署；OCI 同版正式多輪仍待完成。重點如下：
 
 - 將 connected-component 幾何統計改為 `numpy.bincount`＋`scipy.ndimage.find_objects`，移除每個 label 重掃全頁像素的 `O(K × page_pixels)` 熱點。
 - 同一 ROI 先在呼叫端循序完成 PyMuPDF render 並轉成不可變 raster bytes，再把舊版／新版 Tesseract OCR 以兩路並行執行；MinerU 服務併發則收斂為 1，避免 CPU-only 主機過度競爭。
@@ -118,10 +118,10 @@ OCI 另有 1 筆長時間停在 `diffing` 的舊紀錄，以及 6 組上傳檔�
 - Golden runner 改為一個 diff item 只能滿足一個 must-detect 錨點，新增 bbox coverage、diff type 與 `must_not_interpret` 語意負例。
 - 像素快取鍵加入 PyMuPDF、Tesseract、traineddata 與演算法版本指紋；runtime/model manifest 另記錄 Poppler，避免不相關版本變動誤殺像素快取，也避免真正相關版本改變後誤用舊結果。
 - 新增 process-wide `RLock`，涵蓋 parser、pixel/image diff、Paddle 實驗、snapshot/crop 與 PDF export 的完整 PyMuPDF 物件生命週期；thread-based compare runner 在設定與執行器兩層都固定為 1。
-- 本機新增 MinerU CPU constraints；runtime stage 已驗證為 `torch 2.12.1+cpu`、CUDA 套件 0。模型 volume 掛載已移除，建置與 healthcheck 會檢查 7 組模型；完整 final image 因 ModelScope 下載降至約 100 KB/s 而中止，仍待正式 build 與 pipeline smoke。
+- 本機新增 MinerU CPU constraints；runtime stage 已驗證為 `torch 2.12.1+cpu`、CUDA 套件 0。模型 volume 掛載已移除，建置與 healthcheck 會檢查 7 組模型；OCI 首次 ModelScope final build 因下載降至約 100 KB/s 而中止，後以 `Dockerfile.cpu-offline` 從既有 image 搬移模型完成 CPU image。
 - Docker build context 已排除 `商品DM`、`samples`、`backend/output`、所有 PDF 與暫存渲染，避免保險文件進入映像建置內容；最終 backend image 已實測不含 PDF。
 
-本輪驗證為 backend 153 tests、`git diff --check`、backend image build 與本機 Golden v1 全數通過。OCI backend 另完成 `a56a247` 容器建置、`/health`、CPU-only Torch、`pixel-v9`、併發設定與容器啟動紀錄稽核；MinerU 既有映像因缺少 `verify_models.py` 無法通過原 healthcheck，完整 CPU final image build 受模型下載頻寬影響中止。為恢復服務，OCI 暫時只以 MinerU `/health` 作為 compose readiness gate，未宣稱模型完整性已驗證。
+本輪驗證為 backend 153 tests、`git diff --check`、backend image build 與本機 Golden v1 全數通過。OCI backend 另完成 `a56a247` 容器建置、`/health`、CPU-only Torch、`pixel-v9`、併發設定與容器啟動紀錄稽核；MinerU 以 `5c190e0` 離線 image 完成 CPU runtime、7 組模型 gate、完整 healthcheck 與真實 `/file_parse` smoke（HTTP 200／25.26 秒）。
 
 ### 3.6 2026-07-19：心動溢生正式任務回歸與 v2 架構決策
 
@@ -230,7 +230,8 @@ Golden v1 隔離 cold 單輪另驗證 6／6 案例、16／16 必抓錨點、11�
 | 2026-07-05 | **已部署** | `b875a9b` backend CPU-only image 部署；backend API `.Size` 約 764MB、展開磁碟占用約 3.17GB，鳳守愛 smoke 通過。此結果只證明 backend，不代表 MinerU image 已 CPU-only。 |
 | 2026-07-19 | **稽核結果** | OCI backend 仍健康；MinerU 實際為 `+cu130`、18 個 CUDA／NVIDIA 套件、約 5.414GB。33 筆實際任務顯示 P95 133.4 秒與 RSS P95 3.231GB，需優先處理 OCR 長尾與映像浪費。 |
 | 2026-07-19 | **Backend 已部署** | GitHub／OCI 更新至 `a56a247`，只重建 `backend-minerU`；保留 OCI 的動態 host port、external network 與既有資料卷。新版 backend 為 `torch 2.12.1+cpu`、CUDA 不可用，image API size 699,824,003 bytes；`/health`、`pixel-v9` 與設定稽核通過。因 compose 依賴健康條件而重新建立既有 MinerU 容器，但未更換其舊映像；compose 覆寫與部署前映像均留有備份。 |
-| 2026-07-19 本輪 | **待驗證／未部署** | MinerU CPU runtime 已建置驗證：510,546,376 bytes、84 個依賴 pin 全數吻合、`torch 2.12.1+cpu`、CUDA 不可用、CUDA/NVIDIA 套件 0；舊 `mineru-api:pipeline` 為 5,414,027,692 bytes，runtime 部分縮小 90.6%。完整 final 的模型下載受外部頻寬阻擋，不能用 runtime 大小推稱最終映像大小；尚待 final build、7 模型 gate、真實 pipeline smoke 與維護時段部署。 |
+| 2026-07-19 本輪首次嘗試 | **受阻／未部署** | MinerU CPU runtime 已建置驗證：510,546,376 bytes、84 個依賴 pin 全數吻合；ModelScope 模型下載受外部頻寬阻擋而中止，當時未宣稱 final image。 |
+| 2026-07-19 離線重組 | **已部署／已驗證** | `5c190e0` 新增 `Dockerfile.cpu-offline`，從舊 `mineru-api:pipeline` 取 2.5GB 模型層重建 CPU-only image；新 image 2,698,867,686 bytes，`torch 2.12.1+cpu`、CUDA/NVIDIA 套件 0、7 組模型 gate 通過，真實 `/file_parse` smoke HTTP 200／25.26 秒。舊 CUDA image 保留為 `mineru-api:pipeline.pre_cpu_offline_20260719`。 |
 
 部署前後必須把 backend 與 MinerU 分開驗證：
 
@@ -251,7 +252,7 @@ Golden v1 隔離 cold 單輪另驗證 6／6 案例、16／16 必抓錨點、11�
 | PaddleOCR／PP-StructureV3 | **實驗** | 預設關閉，只處理 ROI metadata，不直接產生正式 diff。 |
 | VLM | **實驗／未部署** | 需先證明可解決至少 30% 待判讀區域、額外誤報不超過 5%，且 Complete P95 不超過 90 秒。 |
 | `pixel-v9` 與語意數字閘門 | **現行／待 OCI benchmark** | `a56a247` 已提交並部署 OCI backend；本機正式回歸、使用者兩對 smoke 通過，OCI 容器已完成載入與健康稽核，但同版 cold／warm 正式多輪尚待執行。 |
-| MinerU 純 CPU final image | **待驗證** | CPU runtime 與 7 模型 gate 已驗證；完整模型層 build 因外部下載過慢中止，最終容量、真實 pipeline 與 OCI 回歸尚未完成。 |
+| MinerU 純 CPU final image | **現行已部署** | `5c190e0` 離線重組 image 已完成；CPU runtime、7 模型 gate、完整 healthcheck 與真實 pipeline smoke 通過。 |
 | MinerU 供應鏈可重現性 | **待處理** | Python 84 個 pin 已固定；ModelScope 仍取 `master`，APT 套件與模型 snapshot／內容 digest 尚未固定。 |
 | Golden v2 | **待建立** | 需擴充至少 30 對並完成 item-level、bbox 與負例真值。 |
 | OCI 同版正式 benchmark | **待執行** | 應使用隔離 `DATA_DIR`，避免 cold 測試清除正式 persistent cache。 |
@@ -267,7 +268,7 @@ Golden v1 隔離 cold 單輪另驗證 6／6 案例、16／16 必抓錨點、11�
 | 四路聯集即可做到「零漏報」 | 不具統計依據。只能說固定 Golden 錨點是否全數命中。 |
 | 所有 cache 都在程序內，重啟即失效 | parser cache 仍是程序內；像素分析自 7/5 起已有跨重啟 persistent cache。 |
 | `TableArtifact` 與結構配對尚未完成 | 7/5 已完成基本 artifact 與 page／bbox／結構配對；密集表格逐格可靠 OCR 仍未完成。 |
-| OCI 已是完整 CPU-only 映像 | 只有 backend 已確認 CPU-only；MinerU 在 7/19 稽核時仍為 `+cu130`。 |
+| OCI 已是完整 CPU-only 映像 | 2026-07-19 起 backend 與 MinerU 均已確認 CPU-only；舊 CUDA MinerU image 僅保留作回復備份。 |
 | `summary.flagged` 固定為 0 | `533c139` 已修正；舊開發手冊描述已過時。 |
 | OCI 鳳守愛數字是 P95 | 只有單次 smoke，不能稱為 P95。 |
 

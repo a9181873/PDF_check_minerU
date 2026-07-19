@@ -15,7 +15,7 @@ PDF Check MinerU 是一套用來比對「舊版 PDF」與「新版 PDF」差異�
 | 快取 | PDF SHA-256 解析快取、single-flight、像素/NCC/OCR 配對快取與跨重啟磁碟快取均已啟用 |
 | 前端 | React 19 + TypeScript 6 + Vite 8；支援 WebSocket 進度、輪詢取消、虛擬列表與對話框鍵盤操作 |
 | 正式驗證 | `a56a247` 後端 153 項測試、`git diff --check`、frontend production build 與 backend image build 通過；`pixel-v9` Golden v1 必抓 16／16、必禁 11／11、語意負例 6／6 |
-| OCI | 2026-07-19 已部署 `a56a247` backend：`torch 2.12.1+cpu`、CUDA 不可用、API image 約 700MB（Docker 展開約 3.03GB），backend 與 MinerU `/health` 通過；MinerU 仍為既有 `+cu130` image，CPU-only final 尚未部署。OCI compose 暫時以 MinerU `/health` 作 readiness gate，模型完整性仍待後續維護時段驗證 |
+| OCI | 2026-07-19 已部署 `a56a247` backend 與 `5c190e0` CPU-only MinerU image：backend image 約 700MB、MinerU image 2.70GB，兩者 `/health` 通過；MinerU `torch 2.12.1+cpu`、CUDA/NVIDIA 套件 0，7 組模型驗證通過，真實 `/file_parse` smoke 25.26 秒回 HTTP 200 |
 
 完整修改脈絡、現行／已取代決策、準度與效能證據統一收錄於 [`docs/project-history.md`](docs/project-history.md)。現行模組與部署架構另見 `docs/technical-architecture.md`。
 
@@ -120,7 +120,7 @@ http://localhost:8001
 docker compose down
 ```
 
-第一次建置 MinerU image 時會下載 pipeline 模型，檔案較大，可能需要一段時間。模型會寫入 image layer；建置及 healthcheck 都會驗證 `mineru.json` 與 7 組必要模型。Compose 不再把 ModelScope volume 掛到同一路徑，避免既有 volume 遮蔽新版映像模型。
+第一次建置 MinerU image 時通常會下載 pipeline 模型，檔案較大，可能需要一段時間。模型會寫入 image layer；建置及 healthcheck 都會驗證 `mineru.json` 與 7 組必要模型。若 OCI／內網無法穩定連 ModelScope，可使用 `mineru/Dockerfile.cpu-offline` 從既有 image 搬移模型，只重建 CPU-only runtime，避免重複下載。Compose 不再把 ModelScope volume 掛到同一路徑，避免既有 volume 遮蔽新版映像模型。
 
 ## 初次登入
 
@@ -468,7 +468,7 @@ npm run build
 ```text
 backend/                  後端 API、PDF 解析、比對、匯出、資料庫
 frontend/                 前端畫面
-mineru/                   MinerU API 容器設定
+mineru/                   MinerU API 容器設定（含 CPU offline migration Dockerfile）
 docs/                     深入技術文件
 samples/                  測試或範例檔案
 docker-compose.yml        本機或伺服器部署設定
