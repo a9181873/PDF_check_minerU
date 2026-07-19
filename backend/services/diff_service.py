@@ -498,11 +498,35 @@ def _pixmap_raster_payload(pix) -> tuple[int, int, bytes] | None:
         return None
 
 
+@dataclass(frozen=True)
+class OcrRasterResult:
+    """Structured OCR outcome used to keep degraded work out of complete caches."""
+
+    text: str
+    status: str
+    error: str | None = None
+
+    @property
+    def complete(self) -> bool:
+        return self.status == "complete"
+
+
+def _notify_ocr_result(result: OcrRasterResult, on_result) -> OcrRasterResult:
+    if on_result is not None:
+        try:
+            on_result(result)
+        except Exception:
+            # Observability must never turn an OCR fallback into a task failure.
+            pass
+    return result
+
+
 def _ocr_raster_payload(
     payload: tuple[int, int, bytes] | None,
     *,
     lang: str = "chi_tra+eng",
     psm: str = "6",
+    on_result=None,
 ) -> str:
     try:
         import os as _os
@@ -511,11 +535,13 @@ def _ocr_raster_payload(
 
         import numpy as np
         from PIL import Image as _PILImage
-    except ImportError:
-        return ""
+    except ImportError as exc:
+        result = OcrRasterResult("", "unavailable", f"dependency unavailable: {exc}")
+        return _notify_ocr_result(result, on_result).text
 
     if payload is None:
-        return ""
+        result = OcrRasterResult("", "invalid_input", "missing raster payload")
+        return _notify_ocr_result(result, on_result).text
     try:
         width, height, samples = payload
         pil_img = _PILImage.frombytes("L", (width, height), samples)
@@ -541,17 +567,43 @@ def _ocr_raster_payload(
                 capture_output=True,
                 text=True,
                 timeout=15,
+                env={
+                    **_os.environ,
+                    # Each comparison may run the old/new ROI as two separate
+                    # Tesseract processes.  Letting both processes expand their
+                    # own OpenMP pools oversubscribes the 4-OCPU OCI host and can
+                    # make a tiny protected footer crop hit the 15 second timeout.
+                    "OMP_THREAD_LIMIT": "1",
+                    "OMP_NUM_THREADS": "1",
+                },
             )
-            return _sanitize_ocr_text(result.stdout)
-        except Exception:
-            return ""
+            if getattr(result, "returncode", 0) != 0:
+                stderr = _sanitize_ocr_text(getattr(result, "stderr", ""))[:240]
+                outcome = OcrRasterResult(
+                    "",
+                    "error",
+                    f"tesseract exited {result.returncode}: {stderr}".rstrip(),
+                )
+                return _notify_ocr_result(outcome, on_result).text
+            outcome = OcrRasterResult(
+                _sanitize_ocr_text(result.stdout),
+                "complete",
+            )
+            return _notify_ocr_result(outcome, on_result).text
+        except subprocess.TimeoutExpired:
+            outcome = OcrRasterResult("", "timeout", "tesseract timed out after 15 seconds")
+            return _notify_ocr_result(outcome, on_result).text
+        except Exception as exc:
+            outcome = OcrRasterResult("", "error", f"tesseract failed: {exc}")
+            return _notify_ocr_result(outcome, on_result).text
         finally:
             try:
                 _os.unlink(tmp_path)
             except Exception:
                 pass
-    except Exception:
-        return ""
+    except Exception as exc:
+        outcome = OcrRasterResult("", "error", f"raster preparation failed: {exc}")
+        return _notify_ocr_result(outcome, on_result).text
 
 
 @pymupdf_serialized
@@ -589,12 +641,18 @@ def _ocr_rendered_page_pair(
     lang: str,
     psm: str,
     run_pair,
+    on_result=None,
 ) -> tuple[str, str]:
     """Render sequentially, then run the two Tesseract calls concurrently."""
     old_payload = _pixmap_raster_payload(_render_page_region(page_old, rect, zoom=zoom))
     new_payload = _pixmap_raster_payload(_render_page_region(page_new, rect, zoom=zoom))
     return run_pair(
-        lambda payload: _ocr_raster_payload(payload, lang=lang, psm=psm),
+        lambda payload: _ocr_raster_payload(
+            payload,
+            lang=lang,
+            psm=psm,
+            on_result=on_result,
+        ),
         old_payload,
         new_payload,
     )
@@ -1352,7 +1410,9 @@ def _pixel_cache_key(
     return canonical_cache_key(
         "pixel-diff",
         {
-            "algorithm": "pixel-v7",
+            # v9 adds structured OCR completion state and refuses to cache a
+            # timeout/non-zero exit as a reusable complete comparison.
+            "algorithm": "pixel-v9",
             "old_sha256": _pixel_cache_file_hash(old_pdf_path),
             "new_sha256": _pixel_cache_file_hash(new_pdf_path),
             "threshold": threshold,
@@ -1511,25 +1571,31 @@ def diff_pixels(
             engine_warnings=local_warnings,
         )
         cached_items = _clone_diff_items(items)
-        with _PIXEL_CACHE_LOCK:
-            _PIXEL_CACHE[cache_key] = (cached_items, copy.deepcopy(local_stats), list(local_warnings))
-            _PIXEL_CACHE.move_to_end(cache_key)
-            while len(_PIXEL_CACHE) > max(1, int(settings.pixel_diff_cache_max_entries)):
-                _PIXEL_CACHE.popitem(last=False)
-        from services.persistent_cache import save_json
+        result_complete = bool(local_stats.get("pixel_result_complete", True))
+        if result_complete:
+            with _PIXEL_CACHE_LOCK:
+                _PIXEL_CACHE[cache_key] = (cached_items, copy.deepcopy(local_stats), list(local_warnings))
+                _PIXEL_CACHE.move_to_end(cache_key)
+                while len(_PIXEL_CACHE) > max(1, int(settings.pixel_diff_cache_max_entries)):
+                    _PIXEL_CACHE.popitem(last=False)
+            from services.persistent_cache import save_json
 
-        save_json(
-            "pixel_diff",
-            cache_key,
-            {
-                "items": [item.model_dump(mode="json") for item in cached_items],
-                "stats": local_stats,
-                "warnings": local_warnings,
-            },
-        )
+            save_json(
+                "pixel_diff",
+                cache_key,
+                {
+                    "items": [item.model_dump(mode="json") for item in cached_items],
+                    "stats": local_stats,
+                    "warnings": local_warnings,
+                },
+            )
+        else:
+            local_stats["pixel_cache_skipped_incomplete"] = True
         _restore_pixel_metadata(local_stats, local_warnings, engine_stats, engine_warnings, hit=False)
         if engine_stats is not None:
-            engine_stats["pixel_cache_tier"] = "miss"
+            engine_stats["pixel_cache_tier"] = (
+                "miss" if result_complete else "miss_incomplete_not_cached"
+            )
         return items
     finally:
         if is_owner:
@@ -1583,6 +1649,30 @@ def _diff_pixels_uncached(
         return []
 
     from config import settings
+
+    if engine_stats is not None:
+        engine_stats.setdefault("pixel_result_complete", True)
+    ocr_result_lock = threading.Lock()
+    reported_ocr_failures: set[tuple[str, str | None]] = set()
+
+    def _observe_ocr_result(result: OcrRasterResult) -> None:
+        if result.complete:
+            return
+        failure_key = (result.status, result.error)
+        with ocr_result_lock:
+            if engine_stats is not None:
+                engine_stats["pixel_result_complete"] = False
+                engine_stats["pixel_ocr_failures"] = (
+                    int(engine_stats.get("pixel_ocr_failures", 0)) + 1
+                )
+            if failure_key not in reported_ocr_failures:
+                reported_ocr_failures.add(failure_key)
+                _record_engine_warning(
+                    engine_warnings,
+                    engine_stats,
+                    "pixel_ocr_degraded",
+                    f"{result.status}: {result.error or 'unknown OCR failure'}",
+                )
 
     ocr_executor = (
         ThreadPoolExecutor(max_workers=1, thread_name_prefix="pixel-ocr-pair")
@@ -1713,12 +1803,19 @@ def _diff_pixels_uncached(
                 y1_px = max(b[3] for b in bbox_component_boxes)
                 ocr_pad_x_pt = 140.0 if label == "footer" else 48.0
                 ocr_pad_y_pt = 14.0 if label == "footer" else 10.0
-                ocr_rect = fitz.Rect(
-                    max(0.0, (x0_px / pt_to_px) - ocr_pad_x_pt),
-                    max(rect.y0, (y0_px / pt_to_px) - ocr_pad_y_pt),
-                    min(page_w, (x1_px / pt_to_px) + ocr_pad_x_pt),
-                    min(rect.y1, (y1_px / pt_to_px) + ocr_pad_y_pt),
-                )
+                if label == "footer":
+                    # Control numbers and versions have a stable business
+                    # location even when a re-export changes every glyph edge.
+                    # A deterministic right-footer ROI is more reliable than a
+                    # union inferred from a noisy pixel mask.
+                    ocr_rect = fitz.Rect(page_w * 0.45, rect.y0, page_w, rect.y1)
+                else:
+                    ocr_rect = fitz.Rect(
+                        max(0.0, (x0_px / pt_to_px) - ocr_pad_x_pt),
+                        max(rect.y0, (y0_px / pt_to_px) - ocr_pad_y_pt),
+                        min(page_w, (x1_px / pt_to_px) + ocr_pad_x_pt),
+                        min(rect.y1, (y1_px / pt_to_px) + ocr_pad_y_pt),
+                    )
                 if engine_stats is not None:
                     engine_stats["pixel_priority_ocr_attempts"] = engine_stats.get("pixel_priority_ocr_attempts", 0) + 1
                     engine_stats["pixel_ocr_calls_total"] = engine_stats.get("pixel_ocr_calls_total", 0) + 2
@@ -1731,6 +1828,7 @@ def _diff_pixels_uncached(
                     lang="chi_tra+eng",
                     psm="6",
                     run_pair=_run_ocr_pair,
+                    on_result=_observe_ocr_result,
                 )
                 old_priority = _extract_priority_ocr_text(old_raw)
                 new_priority = _extract_priority_ocr_text(new_raw)
@@ -2058,6 +2156,7 @@ def _diff_pixels_uncached(
                                 payload,
                                 lang="chi_tra",
                                 psm="6",
+                                on_result=_observe_ocr_result,
                             ),
                             payload_o,
                             payload_n,
@@ -2078,6 +2177,7 @@ def _diff_pixels_uncached(
                                 lang="chi_tra+eng",
                                 psm="6",
                                 run_pair=_run_ocr_pair,
+                                on_result=_observe_ocr_result,
                             )
                             if engine_stats is not None:
                                 engine_stats["pixel_high_zoom_ocr_calls"] = engine_stats.get("pixel_high_zoom_ocr_calls", 0) + 2
@@ -2102,7 +2202,11 @@ def _diff_pixels_uncached(
                         old_stripped = ocr_old_norm.replace(" ", "") if ocr_old_norm else ""
                         new_stripped = ocr_new_norm.replace(" ", "") if ocr_new_norm else ""
 
-                        if old_stripped and new_stripped and old_stripped == new_stripped and not is_small_region:
+                        # A normalized-equal OCR pair is never a content
+                        # change.  The previous small-region exception let
+                        # identical fragments survive, then get fused into a
+                        # large visual item with a fabricated change summary.
+                        if old_stripped and new_stripped and old_stripped == new_stripped:
                             continue
 
                         priority_old = _extract_priority_ocr_text(ocr_old_raw)
@@ -2151,6 +2255,7 @@ def _diff_pixels_uncached(
                                     lang="chi_tra+eng",
                                     psm="6",
                                     run_pair=_run_ocr_pair,
+                                    on_result=_observe_ocr_result,
                                 )
                                 if engine_stats is not None:
                                     engine_stats["pixel_numeric_fallback_ocr_calls"] = engine_stats.get("pixel_numeric_fallback_ocr_calls", 0) + 2
@@ -2639,7 +2744,9 @@ def _is_reviewable_visual_item(item: DiffItem) -> bool:
     """
     if item.diff_type != DiffType.IMAGE_DIFF:
         return False
-    if item.old_value or item.new_value:
+    if (item.old_value or item.new_value) and is_meaningful_diff(
+        item.old_value, item.new_value
+    ):
         return True
     context = item.context or ""
     if "待 OCR 視覺變更" in context:
@@ -2661,11 +2768,18 @@ def _bbox_union(boxes: list[BBox]) -> BBox | None:
     )
 
 
-def _coalesce_reviewable_visual_items(items: list[DiffItem], stats: dict | None = None) -> list[DiffItem]:
-    """Collapse many pure visual table/layout regions on the same page.
+def _coalesce_reviewable_visual_items(
+    items: list[DiffItem],
+    stats: dict | None = None,
+    *,
+    gap_threshold: float = 18.0,
+) -> list[DiffItem]:
+    """Collapse only spatially connected visual regions.
 
-    This keeps the zero-miss fallback for image-only PDFs without flooding the
-    reviewer with dozens of adjacent table-layout boxes on one page.
+    The previous implementation unioned every pure visual item on a page.  A
+    real header edit plus an unrelated footer re-render therefore became one
+    almost-full-page box.  Here visual regions form proximity clusters first;
+    distant changes stay independently reviewable.
     """
     from collections import defaultdict
 
@@ -2695,24 +2809,71 @@ def _coalesce_reviewable_visual_items(items: list[DiffItem], stats: dict | None 
         if len(group) == 1:
             coalesced.append(group[0])
             continue
-        old_boxes = [item.old_bbox for item in group if item.old_bbox]
-        new_boxes = [item.new_bbox for item in group if item.new_bbox]
-        old_bbox = _bbox_union(old_boxes)
-        new_bbox = _bbox_union(new_boxes)
-        confidence = max(item.confidence for item in group)
-        removed_count += len(group) - 1
-        coalesced.append(
-            DiffItem(
-                id="",
-                diff_type=DiffType.IMAGE_DIFF,
-                old_value=None,
-                new_value=None,
-                old_bbox=old_bbox,
-                new_bbox=new_bbox,
-                context=f"Page {page} 表格/版面變更（{len(group)} 區域）",
-                confidence=confidence,
+
+        parent = list(range(len(group)))
+
+        def find(index: int) -> int:
+            while parent[index] != index:
+                parent[index] = parent[parent[index]]
+                index = parent[index]
+            return index
+
+        def union(left: int, right: int) -> None:
+            left_root, right_root = find(left), find(right)
+            if left_root != right_root:
+                parent[right_root] = left_root
+
+        def close_enough(left: BBox, right: BBox) -> bool:
+            horizontal_gap = max(
+                0.0,
+                max(left.x0 - right.x1, right.x0 - left.x1),
             )
-        )
+            vertical_gap = max(
+                0.0,
+                max(left.y0 - right.y1, right.y0 - left.y1),
+            )
+            return horizontal_gap <= gap_threshold and vertical_gap <= gap_threshold
+
+        for left_index, left_item in enumerate(group):
+            left_bbox = left_item.new_bbox or left_item.old_bbox
+            if left_bbox is None:
+                continue
+            for right_index in range(left_index + 1, len(group)):
+                right_bbox = group[right_index].new_bbox or group[right_index].old_bbox
+                if right_bbox is not None and close_enough(left_bbox, right_bbox):
+                    union(left_index, right_index)
+
+        clusters: dict[int, list[DiffItem]] = defaultdict(list)
+        for index, item in enumerate(group):
+            clusters[find(index)].append(item)
+
+        for cluster in clusters.values():
+            if len(cluster) == 1:
+                coalesced.append(cluster[0])
+                continue
+            old_boxes = [item.old_bbox for item in cluster if item.old_bbox]
+            new_boxes = [item.new_bbox for item in cluster if item.new_bbox]
+            old_bbox = _bbox_union(old_boxes)
+            new_bbox = _bbox_union(new_boxes)
+            confidence = max(item.confidence for item in cluster)
+            removed_count += len(cluster) - 1
+            coalesced.append(
+                DiffItem(
+                    id="",
+                    diff_type=DiffType.IMAGE_DIFF,
+                    old_value=None,
+                    new_value=None,
+                    old_bbox=old_bbox,
+                    new_bbox=new_bbox,
+                    context=f"Page {page} 表格/版面變更（{len(cluster)} 區域）",
+                    confidence=confidence,
+                    evidence=[
+                        evidence.model_copy(deep=True)
+                        for item in cluster
+                        for evidence in item.evidence
+                    ],
+                )
+            )
 
     if stats is not None and removed_count:
         stats["coalesced_visual_regions"] = stats.get("coalesced_visual_regions", 0) + removed_count
@@ -2773,6 +2934,8 @@ def _fuse_visual_explanations(items: list[DiffItem], stats: dict | None = None) 
     assigned: dict[int, list[int]] = {idx: [] for idx in visual_indices}
     for ci, candidate in enumerate(items):
         if candidate.diff_type not in content_types:
+            continue
+        if not is_meaningful_diff(candidate.old_value, candidate.new_value):
             continue
 
         best_vi: int | None = None
@@ -3039,6 +3202,18 @@ def merge_diff_results(
     if image_diffs:
         merged.extend(image_diffs)
 
+    # Enforce the semantic invariant before proximity merge, visual fusion and
+    # containment deduplication.  Once an equal OCR fragment is fused into an
+    # IMAGE_DIFF, later content-only gates can no longer recognize the mistake.
+    merged = [
+        item
+        for item in merged
+        if not (
+            item.diff_type in {DiffType.TEXT_MODIFIED, DiffType.NUMBER_MODIFIED}
+            and not is_meaningful_diff(item.old_value, item.new_value)
+        )
+    ]
+
     # ── Proximity merge: combine adjacent text/number diffs ──
     merged = _merge_nearby_diffs(merged)
 
@@ -3140,8 +3315,31 @@ def _drop_non_numeric_modifications(
     kept: list[DiffItem] = []
     for item in items:
         if item.diff_type == DiffType.IMAGE_DIFF:
-            if _is_reviewable_visual_item(item):
-                kept.append(item)
+            visual_item = item
+            if (
+                (item.old_value or item.new_value)
+                and not is_meaningful_diff(item.old_value, item.new_value)
+            ):
+                # Preserve genuine pixel evidence but never show an identical
+                # OCR pair as the explanation for a change.
+                visual_item = item.model_copy(deep=True)
+                visual_item.old_value = None
+                visual_item.new_value = None
+                if "; OCR/text:" in visual_item.context:
+                    visual_item.context = visual_item.context.split("; OCR/text:", 1)[0]
+                visual_item.decision_reason = "normalized_equal_ocr_removed_visual_retained"
+                visual_item.evidence = [
+                    evidence
+                    for evidence in visual_item.evidence
+                    if not (
+                        (evidence.old_value or evidence.new_value)
+                        and not is_meaningful_diff(
+                            evidence.old_value, evidence.new_value
+                        )
+                    )
+                ]
+            if _is_reviewable_visual_item(visual_item):
+                kept.append(visual_item)
             elif stats is not None:
                 stats["suppressed_non_material_visual"] = (
                     stats.get("suppressed_non_material_visual", 0) + 1

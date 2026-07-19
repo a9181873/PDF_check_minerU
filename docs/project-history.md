@@ -30,9 +30,10 @@
 
 | 項目 | 狀態 | 說明 |
 |---|---|---|
-| 分支／Git HEAD | **現行** | `main@fbec4bd`；包含 `pixel-v7` 準度／效能最佳化、正式驗證結果與本文件整理。 |
+| 分支／Git HEAD | **現行** | `main@cf4b1aa`；backend 功能基線為 `fbec4bd`，後續 commit 補齊 OCI `pixel-v7` 部署紀錄。 |
 | 本輪最佳化 | **現行／待 OCI 正式 benchmark** | `pixel-v7`、連通元件向量化、不可變 raster bytes 雙路 OCR、全頁圖片 metadata 快篩、數字語意閘門、process-wide PyMuPDF 鎖、runtime 指紋與 Golden 語意負例均已提交；本機正式五輪通過，OCI backend 已部署並完成健康／執行期稽核，但尚未在 OCI 跑隔離資料目錄的同版 cold／warm 多輪。 |
 | 使用者新增樣本 | **待驗證** | 心動溢生 `1140121 → 1140815` 與金放心85 `1120701 → 1140825` 已完成鎖後 cold／warm smoke，但尚未形成正式版本化 Golden v2。 |
+| 心動溢生事故止血 | **本機工作樹／未提交未部署** | 已修正 OCR 多執行緒超額競爭、同文 OCR 假差異、遠距區域整頁合框、右下版號漏抓與殘缺 OCR 快取；第二代內容優先架構已寫入技術架構文件，仍須完成 shadow 實作與固定回歸後才能切換。 |
 | OCI 部署 | **Backend 已部署** | `fbec4bd` backend 已部署；MinerU CPU final 因模型下載未完成而未部署，既有 MinerU 容器保持不動。 |
 
 ### 2.2 OCI 實際狀態
@@ -121,6 +122,37 @@ OCI 另有 1 筆長時間停在 `diffing` 的舊紀錄，以及 6 組上傳檔�
 - Docker build context 已排除 `商品DM`、`samples`、`backend/output`、所有 PDF 與暫存渲染，避免保險文件進入映像建置內容；最終 backend image 已實測不含 PDF。
 
 本輪驗證為 backend 148 tests、frontend production build、backend image build、MinerU CPU runtime build 與 `docker compose config` 全數通過。OCI backend 另完成 `/health`、CPU-only Torch、`pixel-v7`、併發設定與容器啟動紀錄稽核；MinerU 容器 ID／啟動時間未變且維持 healthy。完整 MinerU final image 不在通過清單內。
+
+### 3.6 2026-07-19：心動溢生正式任務回歸與 v2 架構決策
+
+使用者回報心動溢生 `1140121 → 1140815` 比對結果把相同文字列為差異、首頁只顯示不明大框，且漏掉 Page 4 右下版號／Control No。OCI 任務 `27573c36-8a0e-4544-bc73-ddbb779e4710` 的唯讀稽核結果為：
+
+- 初步階段 73.494 秒、完整補強 174.719 秒，核心 diff 合計 248.219 秒。
+- 4／4 頁被視為有像素差，產生 1,131 個原始區域與 152 次 OCR 呼叫；最後只留下 3 項，且沒有 Page 4。
+- Page 2 項目把正規化後相同的「x 實際住院日數／特定傷病保險金」當成修改內容。
+- 舊檔四頁 raster 為 2481×3509、新檔為 2480×3508，Producer 與 PDF 小數頁面尺寸也不同；同內容重新輸出造成大量重採樣／抗鋸齒像素差。
+
+確認的根因不是單一門檻，而是舊引擎的責任混雜：
+
+1. old/new Tesseract 同時執行時，每個程序又自行展開 OpenMP 執行緒；4 OCPU OCI 被超額競爭，兩側頁尾 OCR 都撞到 15 秒 timeout。
+2. timeout／非零退出先前被吞成空字串，殘缺結果仍可寫入跨重啟快取，因此漏掉的 Page 4 會被穩定重播。
+3. 小區域的「正規化同文」例外讓假內容候選存活，後續 visual fusion 又把它包成 `IMAGE_DIFF`，使終端內容閘門無法辨識。
+4. 現行流程先處理大量 raw components、逐區 NCC／多次 OCR，再以同頁 coalesce 聯集；重新輸出噪音因此同時造成慢、大框與不明確說明。
+5. 初步與完整階段分別用 144／200 DPI 重跑完整流程，無法共用配準與候選，也是使用者等待時間被放大的原因。
+
+本機工作樹先做基礎止血，不再增加新的內容 heuristic：
+
+- Tesseract 固定 `OMP_THREAD_LIMIT=1` 與 `OMP_NUM_THREADS=1`。
+- OCR 改為可觀測的 `complete／timeout／error／unavailable` 結果；任何不完整 OCR 都將整次 pixel 結果標成 degraded，禁止寫入完整記憶體／磁碟快取。
+- 像素快取演算法版號升為 `pixel-v9`，避免重播先前殘缺結果。
+- 正規化同文在融合前直接拒絕；已有 visual evidence 時只保留局部框，不再顯示臆測文字。
+- 同頁 visual 區域只合併空間相鄰群組；Page 4 右下頁尾使用穩定保護 ROI。
+
+止血版目前 backend 153 tests 全過、`git diff --check` 通過。`pixel-v9` 相同條件隔離 cold 驗證為 Initial 6.1530 秒、Complete 22.0937 秒、OCR 140 次、峰值 RSS 871.9MB；結果標記 complete、engine warnings 為 0、同文假差異為 0，並正確抓到 `2025.01／OP-2501-2701-0029 → 2025.09／OP-2508-0594`。相較事故前本機重現的 Initial 7.6493 秒、Complete 27.2783 秒與 OCR 152 次已有改善；但 raw regions 仍為 1,131，Page 2 仍是連鎖大框，因此不得把 hotfix 宣稱為目標架構完成。
+
+Golden v1 隔離 cold 單輪另驗證 6／6 案例、16／16 必抓錨點、11／11 `must_not_detect` 與 6／6 `must_not_interpret` 全數通過，warnings 與 material visual 靜默抑制均為 0；Initial P95 6.0144 秒、Complete P95 27.6502 秒、峰值 RSS 1,133.5MB。即使閘門通過，六案仍合計 4,239 raw regions、628 次 OCR 與 25 個 unresolved regions，證明 v2 的必要性在於縮減候選與辨識成本，不是再往終端規則加條件。
+
+正式方向改為[技術架構文件 3.0 節](technical-architecture.md#30-內容優先差異引擎目標架構)的第二代引擎：逐頁分類、一次配準、字形／邊緣結構候選、頁級批次 OCR／QR 解碼、單一內容決策。數字、中文、英文與圖片內文字是正式內容；色彩、gamma、JPEG 與抗鋸齒不參與正式差異。v2 先以 shadow mode 驗證，達標後必須刪除逐元件 NCC、重複圖片 OCR、三套 recall 及事後 fusion／coalesce／dedup，不能讓兩代引擎永久疊加。
 
 ## 4. 仍有效的準度護欄
 

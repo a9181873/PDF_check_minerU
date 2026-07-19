@@ -1,4 +1,5 @@
 import threading
+from types import SimpleNamespace
 
 from models.diff_models import BBox, DiffEvidence, DiffItem, DiffType
 from config import settings
@@ -14,6 +15,7 @@ from services.diff_service import (
     _is_reliable_ocr_text,
     _labeled_component_geometry,
     _numeric_ocr_confusion_count,
+    _ocr_raster_payload,
     _ocr_rendered_page_pair,
     _same_native_text_is_rendering_noise,
     clear_pixel_diff_cache,
@@ -179,6 +181,35 @@ def test_pixel_diff_cache_reuses_result_and_restores_metadata(monkeypatch):
     assert second_stats["pixel_ocr_calls_total"] == 4
     assert second_warnings == ["pixel: test warning"]
     assert second[0].id == ""
+    clear_pixel_diff_cache()
+
+
+def test_pixel_diff_cache_does_not_reuse_incomplete_ocr_result(monkeypatch):
+    clear_pixel_diff_cache()
+    calls = 0
+
+    def fake_uncached(*_args, engine_stats=None, engine_warnings=None, **_kwargs):
+        nonlocal calls
+        calls += 1
+        engine_stats["pixel_result_complete"] = False
+        engine_stats["pixel_ocr_failures"] = 1
+        engine_warnings.append("pixel_ocr_degraded: timeout")
+        return []
+
+    monkeypatch.setattr(settings, "enable_pixel_diff_cache", True)
+    monkeypatch.setattr(settings, "enable_persistent_analysis_cache", False)
+    monkeypatch.setattr(diff_service, "_pixel_cache_key", lambda *_args: "incomplete-pair")
+    monkeypatch.setattr(diff_service, "_diff_pixels_uncached", fake_uncached)
+
+    first_stats, second_stats = {}, {}
+    diff_pixels("old.pdf", "new.pdf", engine_stats=first_stats, engine_warnings=[])
+    diff_pixels("old.pdf", "new.pdf", engine_stats=second_stats, engine_warnings=[])
+
+    assert calls == 2
+    assert first_stats["pixel_cache_skipped_incomplete"] is True
+    assert second_stats["pixel_cache_skipped_incomplete"] is True
+    assert first_stats["pixel_cache_tier"] == "miss_incomplete_not_cached"
+    assert second_stats["pixel_cache_tier"] == "miss_incomplete_not_cached"
     clear_pixel_diff_cache()
 
 
@@ -778,6 +809,111 @@ def test_coalesce_reviewable_visual_items_groups_same_page_regions():
     assert "2 區域" in visual_items[0].context
     assert any(item.diff_type == DiffType.NUMBER_MODIFIED for item in merged)
     assert stats["coalesced_visual_regions"] == 1
+
+
+def test_coalesce_reviewable_visual_items_keeps_distant_regions_separate():
+    header = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_bbox=BBox(page=1, x0=40, y0=650, x1=560, y1=730),
+        new_bbox=BBox(page=1, x0=40, y0=650, x1=560, y1=730),
+        context="Page 1 表格/版面變更",
+        confidence=0.95,
+    )
+    footer = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_bbox=BBox(page=1, x0=420, y0=10, x1=570, y1=45),
+        new_bbox=BBox(page=1, x0=420, y0=10, x1=570, y1=45),
+        context="Page 1 表格/版面變更",
+        confidence=0.95,
+    )
+
+    merged = _coalesce_reviewable_visual_items([header, footer])
+
+    assert len(merged) == 2
+    assert {tuple(item.new_bbox.model_dump().values()) for item in merged} == {
+        tuple(header.new_bbox.model_dump().values()),
+        tuple(footer.new_bbox.model_dump().values()),
+    }
+
+
+def test_merge_discards_normalized_equal_ocr_before_visual_fusion():
+    visual = DiffItem(
+        id="",
+        diff_type=DiffType.IMAGE_DIFF,
+        old_bbox=BBox(page=2, x0=30, y0=400, x1=560, y1=800),
+        new_bbox=BBox(page=2, x0=30, y0=400, x1=560, y1=800),
+        context="Page 2 表格/版面變更",
+        confidence=0.95,
+    )
+    equal_ocr = DiffItem(
+        id="",
+        diff_type=DiffType.TEXT_MODIFIED,
+        old_value="x 實際住院日數",
+        new_value="x   實際住院日數",
+        old_bbox=BBox(page=2, x0=250, y0=700, x1=380, y1=730),
+        new_bbox=BBox(page=2, x0=250, y0=700, x1=380, y1=730),
+        context="Page 2 內容變更",
+        confidence=0.95,
+    )
+
+    merged = merge_diff_results(
+        [equal_ocr],
+        [],
+        [visual],
+        keep_image_diffs=True,
+    )
+
+    assert merged == [visual]
+    assert merged[0].old_value is None
+    assert merged[0].new_value is None
+
+
+def test_tesseract_subprocess_is_limited_to_one_openmp_thread(monkeypatch):
+    captured = {}
+    outcomes = []
+
+    def fake_run(*_args, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(stdout="Control No : OP-2508-0594")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    result = _ocr_raster_payload(
+        (2, 2, bytes([255, 255, 255, 255])),
+        on_result=outcomes.append,
+    )
+
+    assert result == "Control No : OP-2508-0594"
+    assert captured["env"]["OMP_THREAD_LIMIT"] == "1"
+    assert captured["env"]["OMP_NUM_THREADS"] == "1"
+    assert len(outcomes) == 1
+    assert outcomes[0].complete is True
+
+
+def test_tesseract_nonzero_exit_is_observable_and_incomplete(monkeypatch):
+    outcomes = []
+
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            stdout="",
+            stderr="missing language data",
+            returncode=1,
+        ),
+    )
+
+    result = _ocr_raster_payload(
+        (2, 2, bytes([255, 255, 255, 255])),
+        on_result=outcomes.append,
+    )
+
+    assert result == ""
+    assert len(outcomes) == 1
+    assert outcomes[0].status == "error"
+    assert outcomes[0].complete is False
+    assert "exited 1" in outcomes[0].error
 
 
 def test_content_filter_can_keep_explained_image_fallback():
