@@ -246,11 +246,11 @@ Golden v1 隔離 cold 單輪另驗證 6／6 案例、16／16 必抓錨點、11�
 | 項目 | 狀態 | 說明 |
 |---|---|---|
 | PyMuPDF 快篩 → Docling → MinerU fallback | **現行** | `TABLE_PARSER_STRATEGY=docling_first`；舊 `parallel_race` 只供回歸 A/B。 |
-| `content`／`needs_visual_review` 雙軌 | **現行** | OCI `fbec4bd` 已部署。 |
+| `content`／`needs_visual_review` 雙軌 | **現行** | OCI `a56a247` 已部署。 |
 | Image text recall | **實驗** | 預設 `false`；alignment／heuristic／hybrid 可做 A/B。 |
 | PaddleOCR／PP-StructureV3 | **實驗** | 預設關閉，只處理 ROI metadata，不直接產生正式 diff。 |
 | VLM | **實驗／未部署** | 需先證明可解決至少 30% 待判讀區域、額外誤報不超過 5%，且 Complete P95 不超過 90 秒。 |
-| `pixel-v7` 與語意數字閘門 | **現行／待 OCI benchmark** | `fbec4bd` 已提交並部署 OCI backend；本機正式五輪與使用者兩對 smoke 通過，OCI 容器已完成載入與健康稽核，但同版 cold／warm 正式多輪尚待執行。 |
+| `pixel-v9` 與語意數字閘門 | **現行／待 OCI benchmark** | `a56a247` 已提交並部署 OCI backend；本機正式回歸、使用者兩對 smoke 通過，OCI 容器已完成載入與健康稽核，但同版 cold／warm 正式多輪尚待執行。 |
 | MinerU 純 CPU final image | **待驗證** | CPU runtime 與 7 模型 gate 已驗證；完整模型層 build 因外部下載過慢中止，最終容量、真實 pipeline 與 OCI 回歸尚未完成。 |
 | MinerU 供應鏈可重現性 | **待處理** | Python 84 個 pin 已固定；ModelScope 仍取 `master`，APT 套件與模型 snapshot／內容 digest 尚未固定。 |
 | Golden v2 | **待建立** | 需擴充至少 30 對並完成 item-level、bbox 與負例真值。 |
