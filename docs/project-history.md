@@ -1,6 +1,6 @@
 # PDF Check MinerU 工程歷程與決策紀錄
 
-> 最後整理：2026-07-19
+> 最後整理：2026-10-14
 > 本文件是 PDF／OCR／MinerU／OCI／準度與效能修改歷程的唯一敘事入口。其他日期型文件與 benchmark 原始檔仍保留作為證據，但若對「目前狀態」說法不同，以本文件、實際執行中的部署稽核與對應 commit 為準。
 
 ## 1. 閱讀方式
@@ -23,6 +23,14 @@
 5. 舊日期型文件、交接筆記與一次性診斷紀錄。
 
 「召回 100%」只表示固定回歸錨點全數命中，不代表所有保險商品 EDM 的母體準確率。沒有完整 item-level 人工真值前，不得延伸宣稱 precision、recall、F1 或零漏報。
+
+## 2.0 2026-10-14 核心升級
+
+MinerU 更新至 **4.0.12**（basic／ONNX CPU），Docling 更新至 **2.138.0**。V1 API、MiddleJson 2.0 座標與非同步結果查詢已遷移；Docling 使用當前 TableCell 的 offset 與直接 bbox。Pandas HTML 輸入改用 StringIO，避免 3.x 將表格解析為空。
+
+本機 163 tests、Mac ARM64 與 Docker ARM64 六組 cold／warm 各一輪全部通過；固定錨點召回 100%、禁止誤報與數字語意誤報為 0。MinerU 原生／掃描 PDF 和 Docling 12-cell bbox 真實 smoke 通過。完整依賴及 Golden 原始資料見 `benchmarks/results/core_upgrade_*_20261014.*`。
+
+**部署狀態：OCI 預驗證中。** 已保留舊映像、Compose、Git revision 與一致性 SQLite 備份於 `/home/ubuntu/backups/pdfcheck-core-20261014`；尚未切換正式服務。下節為 2026-07-19 的歷史快照，以本節及實際部署稽核為準。
 
 ## 2. 2026-07-19 基線快照
 
@@ -237,8 +245,8 @@ Golden v1 隔離 cold 單輪另驗證 6／6 案例、16／16 必抓錨點、11�
 
 - `torch.__version__`、`torch.version.cuda` 與 CUDA/NVIDIA package count。
 - 各自 image API size 與實際展開磁碟占用。
-- `/health` 之外，至少送一份真實 `/file_parse`，避免只有 API 健康但 pipeline 缺相依套件。
-- `verify_models.py` 必須確認 `mineru.json` 與 7 組 pipeline 模型；模型不可再被既有 `/root/.cache/modelscope` volume 遮蔽。
+- Backend `/health` 與 MinerU `/v1/health` 之外，必須執行真實 V1 PDF 原生／OCR／表格 smoke。
+- `verify_models.py` 必須通過官方 MinerU 4.x basic ONNX 模型清單；模型不可被舊 volume 遮蔽。
 - 固定 Golden cold／warm benchmark、容器 RSS、restart／OOM 與分析 cache 命中。
 - OCI 反向代理網路、動態 port 與資料卷不能因套用本機 compose 而改壞。
 

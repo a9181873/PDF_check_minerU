@@ -36,7 +36,7 @@ graph TB
     end
 
     subgraph "MinerU Service (獨立容器)"
-        MINERU[mineru-api-minerU:18080<br/>pipeline backend<br/>chinese_cht]
+        MINERU[mineru-api-minerU:18080<br/>V1 API basic tier<br/>ONNX CPU]
         MCACHE[(modelscope<br/>volume cache)]
     end
 
@@ -225,7 +225,7 @@ graph LR
     Q -->|無表格跡象| H
     Q -->|疑似表格| E[Layer 2a: Docling<br/>cell bbox]
     E -->|有表格| W((表格解析結果))
-    E -->|無結果/失敗| C[Layer 2b: MinerU REST API<br/>pipeline / chinese_cht]
+    E -->|無結果/失敗| C[Layer 2b: MinerU REST API<br/>basic / ONNX CPU]
     C -->|成功| W
     C -->|失敗/無表格| H
     F -->|失敗| G[Layer 4: Tesseract OCR<br/>pdftoppm 200dpi → 全頁 OCR]
@@ -270,7 +270,7 @@ Docling 是預設第一個重型表格引擎，提供 cell-level bbox；只有�
 | 項目 | 說明 |
 |------|------|
 | 用途 | 複雜表格偵測（rowspan/colspan）、繁/簡中文混排 OCR |
-| 呼叫參數 | `backend="pipeline"`, `lang_list="chinese_cht"`, `parse_method="auto"` |
+| 呼叫參數 | V1 query：`tier=basic`、`ocr_mode=auto`、`page_range=all`；要求 `markdown` 與 `middle_json`，HTTP 202 以同一 task ID 查詢 |
 | 表格解析 | 回傳 HTML → `pd.read_html()` → DataFrame |
 | 限制 | HTML 不含格子座標，cell_bboxes 為空（整表 bbox 仍有） |
 | 文字正規化 | NFKC + strip，合併繁簡字形變體 |
@@ -681,9 +681,9 @@ PaddleOCR 實驗版開啟時會額外進行 PDF rasterize 與本機 OCR inferenc
 
 ```
 Docker Compose
-├── mineru-api-minerU (mineru-api:pipeline)
-│   ├── mineru-api --pipeline-backend pipeline :18080
-│   └── Pipeline 模型烘入 image；healthcheck 驗證 mineru.json＋7 組模型
+├── mineru-api-minerU (mineru-api:basic-v4)
+│   ├── mineru-api --tier basic --concurrency 1 :18080
+│   └── 4.x ONNX 模型烘入 image；healthcheck 驗證官方模型清單＋/v1/health
 │
 ├── backend-minerU (pdf-check-backend:latest)
 │   ├── FastAPI (uvicorn :8000)
@@ -707,7 +707,7 @@ Docker Compose
 
 ### 8.1 MinerU 服務建構
 
-`mineru/Dockerfile` 在 build 時預下載模型（`mineru-models-download -s modelscope -m pipeline`），模型會成為 image layer。建置與 runtime healthcheck 共用 `verify_models.py`，檢查 `mineru.json` 與 7 組必要模型。Compose 不再把 `/root/.cache/modelscope` 掛成 named volume，避免既有 volume 在映像升版後遮蔽新模型。只要前置 layer 與 BuildKit cache 仍有效，重建可重用模型 layer；若基底 image、pip 安裝指令或上游套件解析結果改變，模型 layer 會失效並重新下載。
+`mineru/Dockerfile` 在 build 時預下載 4.x ONNX 模型（`mineru-kit models download --tier basic --small-backend onnx --source huggingface`），模型會成為 image layer。建置與 runtime healthcheck 共用 `verify_models.py`，使用官方模型清單檢查 `/opt/mineru/models`；API readiness 使用 `/v1/health`。3.x pipeline 模型無法直接搬入 4.x。Compose 不再把 `/root/.cache/modelscope` 掛成 named volume，避免既有 volume 在映像升版後遮蔽新模型。只要前置 layer 與 BuildKit cache 仍有效，重建可重用模型 layer；若基底 image、pip 安裝指令或上游套件解析結果改變，模型 layer 會失效並重新下載。
 
 `six` 是 MinerU OCR pipeline 的執行期相依套件。2026-06-28 已在 Dockerfile 明確安裝，避免 API 健康檢查正常、實際 `/file_parse` 卻因 `ModuleNotFoundError` 回傳 `409 Conflict`。
 
@@ -721,22 +721,13 @@ docker compose up --build -d
 
 backend 直接依賴與關鍵轉接依賴已固定版本，Python／Node 基底映像固定 digest。PyTorch 與 torchvision 先由官方 CPU wheel index 安裝，版本必須帶 `+cpu`；若容器顯示 `+cu` 或存在 NVIDIA／CUDA 套件，視為建置錯誤。2026-07-05 ARM64 正式 backend image 的 API `.Size` 約 764MB，OCI `docker system df` 展開磁碟占用約 3.17GB；容量規劃採後者。離線匯出流程會在可用時產生 SPDX SBOM。
 
-### 8.2 MinerU 繁體中文設定
+### 8.2 MinerU V1 與繁體中文
 
-`parser_service.py` 呼叫 MinerU API 時固定傳入：
+`parser_service.py` 透過 `/v1/file_parse` 送出 PDF，query 指定 `tier=basic`、`ocr_mode=auto`（影像召回用 `ocr`）、`page_range=all`，並要求 `markdown` 與 `middle_json`。HTTP 202 保留同一 task ID 查詢結果；逾時會取消本次任務，部分成功不可當作完整文件使用。
 
-```json
-{
-  "backend": "pipeline",
-  "lang_list": "chinese_cht",
-  "parse_method": "auto",
-  "return_content_list": "true"
-}
-```
+4.x 已移除 3.x 的 `lang_list=chinese_cht` 表單參數。basic ONNX 使用 PP-OCRv6；固定繁體中文合成樣本已驗證原生／掃描 PDF 的中文及表格，正式仍保持 Docling 優先。MiddleJson 2.0 的 bbox 為 0–1、左上原點，轉換為 PDF 點數與左下原點後才進入比對。
 
-`chinese_cht` 替代預設 `ch`，可將繁簡混用段落從 9 段降至 2 段以下。
-
-支援離線部署：先在有網路環境 build image + 預載模型，再匯出到離線環境。
+離線部署須先下載 4.x basic 模型，再匯出 `mineru-api:basic-v4`；3.x 的 `mineru.json` 與 pipeline 模型不相容。
 
 ## 9. 安全考量
 

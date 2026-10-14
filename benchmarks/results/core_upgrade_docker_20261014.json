@@ -1,0 +1,3570 @@
+{
+  "schema_version": 1,
+  "benchmark": "taiwan_life_dm_golden_v1",
+  "created_at": "2026-10-14T10:49:08.889797+00:00",
+  "hardware": {
+    "host_label": "Docker ARM64 Docling 2.138.0 MinerU 4.0.12",
+    "hostname": "933249a4fe19",
+    "platform": "Linux-7.0.14-linuxkit-aarch64-with-glibc2.41",
+    "machine": "aarch64",
+    "python": "3.11.15",
+    "cpu_count": 10,
+    "physical_cores": 10,
+    "logical_cores": 10,
+    "memory_total_gb": 7.75
+  },
+  "settings": {
+    "image_text_recall": false,
+    "paddle_ocr_experiment": false,
+    "table_parser_strategy": "docling_first",
+    "parallel_ocr_pairs": true
+  },
+  "modes": {
+    "cold": {
+      "summary": {
+        "runs": 6,
+        "page_pairs": 30,
+        "input_pages": 60,
+        "initial_ready_p50_seconds": 4.7874,
+        "initial_ready_p95_seconds": 5.3373,
+        "complete_p50_seconds": 20.1211,
+        "complete_p95_seconds": 28.51,
+        "complete_mean_seconds": 17.9035,
+        "peak_memory_mb": 793.8,
+        "peak_cpu_percent": 39303.6,
+        "must_detect_recall": 1.0,
+        "preliminary_region_recall": 1.0,
+        "prohibited_false_positives": 0,
+        "numeric_interpretation_false_positives": 0,
+        "material_visual_suppressed": 0,
+        "sla": {
+          "initial_ready_p95_le_15s": true,
+          "complete_p95_le_90s": true,
+          "known_critical_recall_100pct": true,
+          "preliminary_region_recall_100pct": true,
+          "numeric_interpretation_false_positives_zero": true
+        }
+      },
+      "runs": [
+        {
+          "run_id": "cold-fengshouai-1",
+          "case_id": "fengshouai",
+          "pages": 6,
+          "input_pages": 12,
+          "timings": {
+            "parse_seconds": 0.0594,
+            "preliminary_diff_seconds": 1.0145,
+            "initial_ready_seconds": 1.0739,
+            "enrichment_seconds": 2.2981,
+            "complete_seconds": 3.372
+          },
+          "resources": {
+            "peak_memory_mb": 581.0,
+            "avg_cpu_percent": 105.7,
+            "peak_cpu_percent": 638.1
+          },
+          "cache": {
+            "old_parser_hit": false,
+            "new_parser_hit": false,
+            "pixel_hit": false
+          },
+          "total_diffs": 2,
+          "preliminary_evaluation": {
+            "regions": [
+              {
+                "id": "p2_24_to_28",
+                "passed": true,
+                "matched_item_id": "d001",
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "matched_item_id": "d003",
+                "hits": [
+                  "d003"
+                ]
+              }
+            ],
+            "passed": 2,
+            "total": 2,
+            "region_recall": 1.0
+          },
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p2_24_to_28",
+                "passed": true,
+                "matched_item_id": "d001",
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "matched_item_id": "d002",
+                "hits": [
+                  "d002"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "\\[PAYV",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "Version:\\s*975\\.18",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "prohibited_interpretations": [],
+            "numeric_interpretation_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 0
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-a5395b2209ef7721",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 2,
+              "old_bbox": {
+                "page": 2,
+                "x0": 97.19999999999999,
+                "y0": 646.4399829101562,
+                "x1": 142.2,
+                "y1": 693.9599829101562
+              },
+              "new_bbox": {
+                "page": 2,
+                "x0": 97.19999999999999,
+                "y0": 646.4399829101562,
+                "x1": 142.2,
+                "y1": 693.9599829101562
+              },
+              "old_value": "24",
+              "new_value": "28",
+              "context": "Page 2 圖片數字變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-6285aca69d35d681",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 6,
+              "old_bbox": {
+                "page": 6,
+                "x0": 506.16,
+                "y0": 11.039982910156255,
+                "x1": 589.6800000000001,
+                "y1": 39.83998291015621
+              },
+              "new_bbox": {
+                "page": 6,
+                "x0": 506.16,
+                "y0": 11.039982910156255,
+                "x1": 589.6800000000001,
+                "y1": 39.83998291015621
+              },
+              "old_value": "Version: 2026.02; Control No: OP-2602-0081",
+              "new_value": "Version: 2026.05; Control No: 2605-OP-0029",
+              "context": "Page 6 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": true,
+            "image_metadata_prefilter_pages": 12,
+            "image_full_page_skipped_before_decode": 12,
+            "pixel_result_complete": true,
+            "pixel_pages_scanned": 6,
+            "pixel_general_ocr_enabled": true,
+            "pixel_ocr_pair_parallel": true,
+            "pixel_pages_with_diffs": 2,
+            "pixel_raw_regions": 7,
+            "pixel_component_scan_strategy": "vectorized-v1",
+            "pixel_component_scan_seconds": 0.0317,
+            "pixel_region_categories": {
+              "small": 4,
+              "text_band": 1
+            },
+            "pixel_pre_ocr_candidates": 5,
+            "pixel_ocr_calls_total": 16,
+            "pixel_numeric_fallback_ocr_calls": 4,
+            "pixel_priority_ocr_attempts": 1,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": false,
+            "pixel_cache_tier": "miss",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 1,
+            "mode": "image_pdf",
+            "pixel_diff_count": 6,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_non_material_visual": 1,
+            "suppressed_ocr_text": 1,
+            "final_diff_count": 2,
+            "suppressed_count": 1,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "cold-ciai_micro-1",
+          "case_id": "ciai_micro",
+          "pages": 4,
+          "input_pages": 8,
+          "timings": {
+            "parse_seconds": 0.0115,
+            "preliminary_diff_seconds": 4.655,
+            "initial_ready_seconds": 4.6665,
+            "enrichment_seconds": 16.1599,
+            "complete_seconds": 20.8264
+          },
+          "resources": {
+            "peak_memory_mb": 744.0,
+            "avg_cpu_percent": 294.3,
+            "peak_cpu_percent": 39303.6
+          },
+          "cache": {
+            "old_parser_hit": false,
+            "new_parser_hit": false,
+            "pixel_hit": false
+          },
+          "total_diffs": 3,
+          "preliminary_evaluation": {
+            "regions": [
+              {
+                "id": "p3_content_or_visual",
+                "passed": true,
+                "matched_item_id": "d020",
+                "hits": [
+                  "d020"
+                ]
+              },
+              {
+                "id": "p4_footer",
+                "passed": true,
+                "matched_item_id": "d038",
+                "hits": [
+                  "d038"
+                ]
+              }
+            ],
+            "passed": 2,
+            "total": 2,
+            "region_recall": 1.0
+          },
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p3_content_or_visual",
+                "passed": true,
+                "matched_item_id": "d001",
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p4_footer",
+                "passed": true,
+                "matched_item_id": "d003",
+                "hits": [
+                  "d003"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "(?:^|\\D)(?:2\\s*(?:->|→)\\s*3|3\\s*(?:->|→)\\s*5|9\\s*(?:->|→)\\s*1)(?:\\D|$)",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "prohibited_interpretations": [
+              {
+                "id": "partial_p1_4_to_24",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "id": "partial_p2_35_to_5",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "numeric_interpretation_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 2
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-2bbd357c43f233e4",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_bbox": {
+                "page": 3,
+                "x0": 38.16,
+                "y0": 63.839973144531314,
+                "x1": 551.16,
+                "y1": 725.8799731445313
+              },
+              "new_bbox": {
+                "page": 3,
+                "x0": 38.16,
+                "y0": 63.839973144531314,
+                "x1": 551.16,
+                "y1": 725.8799731445313
+              },
+              "old_value": "亡被保險人所得清單",
+              "new_value": "(家庭成員投保適用 )",
+              "context": "Page 3 表格/版面變更; OCR/text: Page 3 內容變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-7034e11b713683d8",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_bbox": {
+                "page": 3,
+                "x0": 38.879999999999995,
+                "y0": 28.91997314453124,
+                "x1": 385.56,
+                "y1": 59.87997314453128
+              },
+              "new_bbox": {
+                "page": 3,
+                "x0": 38.879999999999995,
+                "y0": 28.91997314453124,
+                "x1": 385.56,
+                "y1": 59.87997314453128
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 表格/版面變更"
+            },
+            {
+              "id": "d003",
+              "candidate_id": "c-568d66d677763d51",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 511.20000000000005,
+                "y0": 11.759982910156168,
+                "x1": 581.0400000000001,
+                "y1": 40.559982910156236
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 511.20000000000005,
+                "y0": 11.759982910156168,
+                "x1": 581.0400000000001,
+                "y1": 40.559982910156236
+              },
+              "old_value": "Version: 2025.09; Control No: 2508-OP-0067",
+              "new_value": "Version: 2025.10; Control No: 2509-OP-0077",
+              "context": "Page 4 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": true,
+            "image_metadata_prefilter_pages": 8,
+            "image_full_page_skipped_before_decode": 8,
+            "pixel_result_complete": true,
+            "pixel_pages_scanned": 4,
+            "pixel_general_ocr_enabled": true,
+            "pixel_ocr_pair_parallel": true,
+            "pixel_pages_with_diffs": 4,
+            "pixel_priority_ocr_attempts": 8,
+            "pixel_ocr_calls_total": 156,
+            "pixel_raw_regions": 1257,
+            "pixel_component_scan_strategy": "vectorized-v1",
+            "pixel_component_scan_seconds": 0.0864,
+            "pixel_region_categories": {
+              "small": 220,
+              "text_band": 12,
+              "large_visual": 3,
+              "mid_visual": 8
+            },
+            "pixel_pre_ocr_candidates": 55,
+            "pixel_numeric_fallback_ocr_calls": 30,
+            "pixel_large_visual_candidates": 5,
+            "pixel_numeric_fallback_skips": 8,
+            "pixel_ocr_budget_skips": 172,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": false,
+            "pixel_cache_tier": "miss",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "fused_visual": 1,
+            "retained_visual": 156,
+            "mode": "image_pdf",
+            "pixel_diff_count": 193,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_non_material_visual": 154,
+            "final_diff_count": 3,
+            "suppressed_count": 154,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "cold-xinfuaiai-1",
+          "case_id": "xinfuaiai",
+          "pages": 4,
+          "input_pages": 8,
+          "timings": {
+            "parse_seconds": 0.0128,
+            "preliminary_diff_seconds": 5.4322,
+            "initial_ready_seconds": 5.445,
+            "enrichment_seconds": 20.489,
+            "complete_seconds": 25.9341
+          },
+          "resources": {
+            "peak_memory_mb": 753.2,
+            "avg_cpu_percent": 73.6,
+            "peak_cpu_percent": 208.3
+          },
+          "cache": {
+            "old_parser_hit": false,
+            "new_parser_hit": false,
+            "pixel_hit": false
+          },
+          "total_diffs": 13,
+          "preliminary_evaluation": {
+            "regions": [
+              {
+                "id": "p1_table_or_layout",
+                "passed": true,
+                "matched_item_id": "d004",
+                "hits": [
+                  "d004"
+                ]
+              },
+              {
+                "id": "p2_table_or_layout",
+                "passed": true,
+                "matched_item_id": "d006",
+                "hits": [
+                  "d006"
+                ]
+              },
+              {
+                "id": "p3_table_or_layout",
+                "passed": true,
+                "matched_item_id": "d007",
+                "hits": [
+                  "d007"
+                ]
+              },
+              {
+                "id": "p4_table_or_layout",
+                "passed": true,
+                "matched_item_id": "d008",
+                "hits": [
+                  "d008"
+                ]
+              }
+            ],
+            "passed": 4,
+            "total": 4,
+            "region_recall": 1.0
+          },
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p1_table_or_layout",
+                "passed": true,
+                "matched_item_id": "d004",
+                "hits": [
+                  "d004"
+                ]
+              },
+              {
+                "id": "p2_table_or_layout",
+                "passed": true,
+                "matched_item_id": "d009",
+                "hits": [
+                  "d009"
+                ]
+              },
+              {
+                "id": "p3_table_or_layout",
+                "passed": true,
+                "matched_item_id": "d010",
+                "hits": [
+                  "d010"
+                ]
+              },
+              {
+                "id": "p4_table_or_layout",
+                "passed": true,
+                "matched_item_id": "d011",
+                "hits": [
+                  "d011"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "0800.*(?:->|→).*0800",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "40歲.*(?:->|→).*40歲",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "310元.*(?:->|→).*310元",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 4,
+            "must_detect_total": 4,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "prohibited_interpretations": [],
+            "numeric_interpretation_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 11
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-bad511ce20baaa63",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 1,
+              "old_bbox": {
+                "page": 1,
+                "x0": 532.8,
+                "y0": 774.5999829101563,
+                "x1": 576.72,
+                "y1": 823.1999829101562
+              },
+              "new_bbox": {
+                "page": 1,
+                "x0": 532.8,
+                "y0": 774.5999829101563,
+                "x1": 576.72,
+                "y1": 823.1999829101562
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 1 表格/版面變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-46eaa1ff3e72d285",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 1,
+              "old_bbox": {
+                "page": 1,
+                "x0": 84.6,
+                "y0": 677.7599829101563,
+                "x1": 481.32,
+                "y1": 814.5599829101562
+              },
+              "new_bbox": {
+                "page": 1,
+                "x0": 84.6,
+                "y0": 677.7599829101563,
+                "x1": 481.32,
+                "y1": 814.5599829101562
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 1 表格/版面變更（8 區域）"
+            },
+            {
+              "id": "d003",
+              "candidate_id": "c-b75839c993095bec",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 1,
+              "old_bbox": {
+                "page": 1,
+                "x0": 131.4,
+                "y0": 587.7599829101563,
+                "x1": 487.79999999999995,
+                "y1": 602.1599829101563
+              },
+              "new_bbox": {
+                "page": 1,
+                "x0": 131.4,
+                "y0": 587.7599829101563,
+                "x1": 487.79999999999995,
+                "y1": 602.1599829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 1 表格/版面變更"
+            },
+            {
+              "id": "d004",
+              "candidate_id": "c-7ae6f559335855d2",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 1,
+              "old_bbox": {
+                "page": 1,
+                "x0": 14.399999999999999,
+                "y0": 247.55998291015624,
+                "x1": 558.36,
+                "y1": 526.5599829101562
+              },
+              "new_bbox": {
+                "page": 1,
+                "x0": 14.399999999999999,
+                "y0": 247.55998291015624,
+                "x1": 558.36,
+                "y1": 526.5599829101562
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 1 表格/版面變更"
+            },
+            {
+              "id": "d005",
+              "candidate_id": "c-5209d61cf6d791e4",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 1,
+              "old_bbox": {
+                "page": 1,
+                "x0": 33.48,
+                "y0": 142.79998291015625,
+                "x1": 554.4,
+                "y1": 212.9999829101563
+              },
+              "new_bbox": {
+                "page": 1,
+                "x0": 33.48,
+                "y0": 142.79998291015625,
+                "x1": 554.4,
+                "y1": 212.9999829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 1 表格/版面變更（5 區域）"
+            },
+            {
+              "id": "d006",
+              "candidate_id": "c-2adbc5a56594fb6e",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 1,
+              "old_bbox": {
+                "page": 1,
+                "x0": 394.91999999999996,
+                "y0": 198.5999829101563,
+                "x1": 532.4399999999999,
+                "y1": 212.9999829101563
+              },
+              "new_bbox": {
+                "page": 1,
+                "x0": 394.91999999999996,
+                "y0": 198.5999829101563,
+                "x1": 532.4399999999999,
+                "y1": 212.9999829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 1 表格/版面變更"
+            },
+            {
+              "id": "d007",
+              "candidate_id": "c-c34719728a85f42b",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "medium",
+              "page": 2,
+              "old_bbox": {
+                "page": 2,
+                "x0": 41.76,
+                "y0": 763.0799829101562,
+                "x1": 198.35999999999999,
+                "y1": 803.3999829101563
+              },
+              "new_bbox": {
+                "page": 2,
+                "x0": 41.76,
+                "y0": 763.0799829101562,
+                "x1": 198.35999999999999,
+                "y1": 803.3999829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 待人工判讀數字區域"
+            },
+            {
+              "id": "d008",
+              "candidate_id": "c-7565df901f2a3e58",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 2,
+              "old_bbox": {
+                "page": 2,
+                "x0": 206.28,
+                "y0": 769.5599829101562,
+                "x1": 304.56,
+                "y1": 784.6799829101562
+              },
+              "new_bbox": {
+                "page": 2,
+                "x0": 206.28,
+                "y0": 769.5599829101562,
+                "x1": 304.56,
+                "y1": 784.6799829101562
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 表格/版面變更"
+            },
+            {
+              "id": "d009",
+              "candidate_id": "c-24517a124af47be5",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 2,
+              "old_bbox": {
+                "page": 2,
+                "x0": 39.96,
+                "y0": 31.559982910156236,
+                "x1": 562.68,
+                "y1": 714.8399829101562
+              },
+              "new_bbox": {
+                "page": 2,
+                "x0": 39.96,
+                "y0": 31.559982910156236,
+                "x1": 562.68,
+                "y1": 714.8399829101562
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 表格/版面變更（3 區域）"
+            },
+            {
+              "id": "d010",
+              "candidate_id": "c-8635d0f0a924232f",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_bbox": {
+                "page": 3,
+                "x0": 37.44,
+                "y0": 17.879982910156286,
+                "x1": 554.04,
+                "y1": 823.1999829101562
+              },
+              "new_bbox": {
+                "page": 3,
+                "x0": 37.44,
+                "y0": 17.879982910156286,
+                "x1": 554.04,
+                "y1": 823.1999829101562
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 表格/版面變更"
+            },
+            {
+              "id": "d011",
+              "candidate_id": "c-04f0f067de160f49",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 41.76,
+                "y0": 671.6399829101563,
+                "x1": 554.76,
+                "y1": 829.6799829101562
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 41.76,
+                "y0": 671.6399829101563,
+                "x1": 554.76,
+                "y1": 829.6799829101562
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 4 表格/版面變更"
+            },
+            {
+              "id": "d012",
+              "candidate_id": "c-28f374fc2c155a7b",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 41.76,
+                "y0": 203.27998291015626,
+                "x1": 554.76,
+                "y1": 642.8399829101563
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 41.76,
+                "y0": 203.27998291015626,
+                "x1": 554.76,
+                "y1": 642.8399829101563
+              },
+              "old_value": "3.本商品為保險商品受『財團法人保險安定基金』之『人身保險安定基金專戶』 / 故不受存款保險之保障。",
+              "new_value": "1. 消費者投保前應審慎瞭解本商品之承保範圍、除外不保事項及商品風險。 / 被保險人累計投保微型傷害保險之保險金額",
+              "context": "Page 4 表格/版面變更; OCR/text: Page 4 內容變更"
+            },
+            {
+              "id": "d013",
+              "candidate_id": "c-289969bf55bee045",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 432.72,
+                "y0": 11.759982910156168,
+                "x1": 583.5600000000001,
+                "y1": 40.559982910156236
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 432.72,
+                "y0": 11.759982910156168,
+                "x1": 583.5600000000001,
+                "y1": 40.559982910156236
+              },
+              "old_value": "Version: 2024.10; Control No: 2409-2609-OP-0086",
+              "new_value": "Version: 2025.10; Control No: 2509-OP-0078",
+              "context": "Page 4 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": true,
+            "image_metadata_prefilter_pages": 8,
+            "image_full_page_skipped_before_decode": 8,
+            "pixel_result_complete": true,
+            "pixel_pages_scanned": 4,
+            "pixel_general_ocr_enabled": true,
+            "pixel_ocr_pair_parallel": true,
+            "pixel_pages_with_diffs": 4,
+            "pixel_priority_ocr_attempts": 7,
+            "pixel_ocr_calls_total": 152,
+            "pixel_raw_regions": 292,
+            "pixel_component_scan_strategy": "vectorized-v1",
+            "pixel_component_scan_seconds": 0.0938,
+            "pixel_region_categories": {
+              "large_visual": 18,
+              "text_band": 70,
+              "small": 57,
+              "mid_visual": 25
+            },
+            "pixel_large_visual_candidates": 41,
+            "pixel_pre_ocr_candidates": 52,
+            "pixel_numeric_fallback_ocr_calls": 34,
+            "pixel_numeric_fallback_skips": 5,
+            "pixel_ocr_budget_skips": 71,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": false,
+            "pixel_cache_tier": "miss",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "fused_visual": 1,
+            "retained_visual": 35,
+            "mode": "image_pdf",
+            "pixel_diff_count": 106,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_ocr_text": 8,
+            "suppressed_non_material_visual": 12,
+            "demoted_unreliable_ocr_to_visual": 1,
+            "coalesced_visual_regions": 13,
+            "final_diff_count": 13,
+            "suppressed_count": 12,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "cold-meibaofa-1",
+          "case_id": "meibaofa",
+          "pages": 4,
+          "input_pages": 8,
+          "timings": {
+            "parse_seconds": 0.0113,
+            "preliminary_diff_seconds": 2.2301,
+            "initial_ready_seconds": 2.2415,
+            "enrichment_seconds": 6.2627,
+            "complete_seconds": 8.5042
+          },
+          "resources": {
+            "peak_memory_mb": 771.8,
+            "avg_cpu_percent": 88.2,
+            "peak_cpu_percent": 218.4
+          },
+          "cache": {
+            "old_parser_hit": false,
+            "new_parser_hit": false,
+            "pixel_hit": false
+          },
+          "total_diffs": 3,
+          "preliminary_evaluation": {
+            "regions": [
+              {
+                "id": "p2_content_or_visual",
+                "passed": true,
+                "matched_item_id": "d002",
+                "hits": [
+                  "d002"
+                ]
+              },
+              {
+                "id": "p4_footer",
+                "passed": true,
+                "matched_item_id": "d010",
+                "hits": [
+                  "d010"
+                ]
+              }
+            ],
+            "passed": 2,
+            "total": 2,
+            "region_recall": 1.0
+          },
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p2_content_or_visual",
+                "passed": true,
+                "matched_item_id": "d001",
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p4_footer",
+                "passed": true,
+                "matched_item_id": "d003",
+                "hits": [
+                  "d003"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "\\[PAYV",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "prohibited_interpretations": [],
+            "numeric_interpretation_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 2
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-20892c80f1e9ccd6",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 2,
+              "old_bbox": {
+                "page": 2,
+                "x0": 120.24,
+                "y0": 436.5599829101563,
+                "x1": 563.04,
+                "y1": 700.0799829101562
+              },
+              "new_bbox": {
+                "page": 2,
+                "x0": 120.24,
+                "y0": 436.5599829101563,
+                "x1": 563.04,
+                "y1": 700.0799829101562
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 表格/版面變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-16d217baba7d9eb6",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 2,
+              "old_bbox": {
+                "page": 2,
+                "x0": 53.28,
+                "y0": 333.95998291015627,
+                "x1": 562.68,
+                "y1": 354.83998291015627
+              },
+              "new_bbox": {
+                "page": 2,
+                "x0": 53.28,
+                "y0": 333.95998291015627,
+                "x1": 562.68,
+                "y1": 354.83998291015627
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 表格/版面變更"
+            },
+            {
+              "id": "d003",
+              "candidate_id": "c-4dd28010e3e0160c",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 432.36,
+                "y0": 11.759982910156168,
+                "x1": 583.5600000000001,
+                "y1": 40.559982910156236
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 432.36,
+                "y0": 11.759982910156168,
+                "x1": 583.5600000000001,
+                "y1": 40.559982910156236
+              },
+              "old_value": "Version: 2024.01; Control No: 2312-2512-OP2-0300",
+              "new_value": "Version: 2024.04; Control No: OP-2404-2604-0238",
+              "context": "Page 4 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": true,
+            "image_metadata_prefilter_pages": 8,
+            "image_full_page_skipped_before_decode": 8,
+            "pixel_result_complete": true,
+            "pixel_pages_scanned": 4,
+            "pixel_general_ocr_enabled": true,
+            "pixel_ocr_pair_parallel": true,
+            "pixel_pages_with_diffs": 2,
+            "pixel_priority_ocr_attempts": 3,
+            "pixel_ocr_calls_total": 46,
+            "pixel_raw_regions": 158,
+            "pixel_component_scan_strategy": "vectorized-v1",
+            "pixel_component_scan_seconds": 0.0378,
+            "pixel_region_categories": {
+              "small": 34,
+              "large_visual": 1,
+              "text_band": 1
+            },
+            "pixel_pre_ocr_candidates": 16,
+            "pixel_numeric_fallback_ocr_calls": 8,
+            "pixel_large_visual_candidates": 2,
+            "pixel_numeric_fallback_skips": 6,
+            "pixel_ocr_budget_skips": 17,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": false,
+            "pixel_cache_tier": "miss",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 7,
+            "mode": "image_pdf",
+            "pixel_diff_count": 31,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_non_material_visual": 5,
+            "final_diff_count": 3,
+            "suppressed_count": 5,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "cold-meilbao-1",
+          "case_id": "meilbao",
+          "pages": 6,
+          "input_pages": 12,
+          "timings": {
+            "parse_seconds": 0.0183,
+            "preliminary_diff_seconds": 4.9958,
+            "initial_ready_seconds": 5.0141,
+            "enrichment_seconds": 24.3546,
+            "complete_seconds": 29.3687
+          },
+          "resources": {
+            "peak_memory_mb": 776.5,
+            "avg_cpu_percent": 65.9,
+            "peak_cpu_percent": 218.0
+          },
+          "cache": {
+            "old_parser_hit": false,
+            "new_parser_hit": false,
+            "pixel_hit": false
+          },
+          "total_diffs": 6,
+          "preliminary_evaluation": {
+            "regions": [
+              {
+                "id": "p3_main_table",
+                "passed": true,
+                "matched_item_id": "d015",
+                "hits": [
+                  "d015"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "matched_item_id": "d034",
+                "hits": [
+                  "d034"
+                ]
+              }
+            ],
+            "passed": 2,
+            "total": 2,
+            "region_recall": 1.0
+          },
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p3_main_table",
+                "passed": true,
+                "matched_item_id": "d003",
+                "hits": [
+                  "d003"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "matched_item_id": "d006",
+                "hits": [
+                  "d006"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "447,6[iIl]12",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "Version:\\s*975\\.18",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "prohibited_interpretations": [
+              {
+                "id": "partial_p3_95_to_00",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "id": "partial_p4_64_to_06",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "numeric_interpretation_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 4
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-b3615a0282a2df04",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 1,
+              "old_bbox": {
+                "page": 1,
+                "x0": 426.59999999999997,
+                "y0": 25.799982910156245,
+                "x1": 469.44,
+                "y1": 57.83998291015632
+              },
+              "new_bbox": {
+                "page": 1,
+                "x0": 426.59999999999997,
+                "y0": 25.799982910156245,
+                "x1": 469.44,
+                "y1": 57.83998291015632
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 1 表格/版面變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-097672411cc6ea14",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 3,
+              "old_bbox": {
+                "page": 3,
+                "x0": 281.15999999999997,
+                "y0": 630.8399731445313,
+                "x1": 336.59999999999997,
+                "y1": 679.4399731445312
+              },
+              "new_bbox": {
+                "page": 3,
+                "x0": 281.15999999999997,
+                "y0": 630.8399731445313,
+                "x1": 336.59999999999997,
+                "y1": 679.4399731445312
+              },
+              "old_value": "395",
+              "new_value": "400",
+              "context": "Page 3 圖片數字變更"
+            },
+            {
+              "id": "d003",
+              "candidate_id": "c-ff356773db3b0c94",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_bbox": {
+                "page": 3,
+                "x0": 116.28,
+                "y0": 231.95997314453132,
+                "x1": 512.28,
+                "y1": 589.4399731445312
+              },
+              "new_bbox": {
+                "page": 3,
+                "x0": 116.28,
+                "y0": 231.95997314453132,
+                "x1": 512.28,
+                "y1": 589.4399731445312
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 表格/版面變更（2 區域）"
+            },
+            {
+              "id": "d004",
+              "candidate_id": "c-1eb04321df8287e2",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 488.88,
+                "y0": 347.51997314453126,
+                "x1": 548.28,
+                "y1": 375.95997314453126
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 488.88,
+                "y0": 347.51997314453126,
+                "x1": 548.28,
+                "y1": 375.95997314453126
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 4 表格/版面變更"
+            },
+            {
+              "id": "d005",
+              "candidate_id": "c-a4cdd3ac630d4c05",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 398.52,
+                "y0": 186.2399731445313,
+                "x1": 544.3199999999999,
+                "y1": 265.0799731445313
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 398.52,
+                "y0": 186.2399731445313,
+                "x1": 544.3199999999999,
+                "y1": 265.0799731445313
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 4 表格/版面變更（2 區域）"
+            },
+            {
+              "id": "d006",
+              "candidate_id": "c-5cd9de46503c5681",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 6,
+              "old_bbox": {
+                "page": 6,
+                "x0": 479.52000000000004,
+                "y0": 11.759982910156168,
+                "x1": 583.5600000000001,
+                "y1": 40.19998291015622
+              },
+              "new_bbox": {
+                "page": 6,
+                "x0": 479.52000000000004,
+                "y0": 11.759982910156168,
+                "x1": 583.5600000000001,
+                "y1": 40.19998291015622
+              },
+              "old_value": "Version: 2024.05; Control No: OP-2405-2605-0342",
+              "new_value": "Version: 2024.07; Control No: 2406-2606-OP-0046",
+              "context": "Page 6 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": true,
+            "image_metadata_prefilter_pages": 12,
+            "image_full_page_skipped_before_decode": 12,
+            "pixel_result_complete": true,
+            "pixel_pages_scanned": 6,
+            "pixel_general_ocr_enabled": true,
+            "pixel_ocr_pair_parallel": true,
+            "pixel_pages_with_diffs": 6,
+            "pixel_priority_ocr_attempts": 11,
+            "pixel_ocr_calls_total": 198,
+            "pixel_raw_regions": 2493,
+            "pixel_component_scan_strategy": "vectorized-v1",
+            "pixel_component_scan_seconds": 0.1368,
+            "pixel_region_categories": {
+              "small": 287,
+              "text_band": 3,
+              "large_visual": 6
+            },
+            "pixel_pre_ocr_candidates": 71,
+            "pixel_numeric_fallback_ocr_calls": 34,
+            "pixel_ocr_budget_skips": 219,
+            "pixel_large_visual_candidates": 7,
+            "pixel_numeric_fallback_skips": 10,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": false,
+            "pixel_cache_tier": "miss",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 152,
+            "mode": "image_pdf",
+            "pixel_diff_count": 261,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_ocr_text": 10,
+            "suppressed_non_material_visual": 146,
+            "coalesced_visual_regions": 2,
+            "final_diff_count": 6,
+            "suppressed_count": 146,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "cold-zhenmeili-1",
+          "case_id": "zhenmeili",
+          "pages": 6,
+          "input_pages": 12,
+          "timings": {
+            "parse_seconds": 0.0184,
+            "preliminary_diff_seconds": 4.8899,
+            "initial_ready_seconds": 4.9083,
+            "enrichment_seconds": 14.5074,
+            "complete_seconds": 19.4157
+          },
+          "resources": {
+            "peak_memory_mb": 793.8,
+            "avg_cpu_percent": 106.1,
+            "peak_cpu_percent": 218.4
+          },
+          "cache": {
+            "old_parser_hit": false,
+            "new_parser_hit": false,
+            "pixel_hit": false
+          },
+          "total_diffs": 7,
+          "preliminary_evaluation": {
+            "regions": [
+              {
+                "id": "p2_note_or_visual",
+                "passed": true,
+                "matched_item_id": "d001",
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p3_note_or_visual",
+                "passed": true,
+                "matched_item_id": "d002",
+                "hits": [
+                  "d002"
+                ]
+              },
+              {
+                "id": "p4_note_or_visual",
+                "passed": true,
+                "matched_item_id": "d003",
+                "hits": [
+                  "d003"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "matched_item_id": "d004",
+                "hits": [
+                  "d004"
+                ]
+              }
+            ],
+            "passed": 4,
+            "total": 4,
+            "region_recall": 1.0
+          },
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p2_note_or_visual",
+                "passed": true,
+                "matched_item_id": "d002",
+                "hits": [
+                  "d002"
+                ]
+              },
+              {
+                "id": "p3_note_or_visual",
+                "passed": true,
+                "matched_item_id": "d004",
+                "hits": [
+                  "d004"
+                ]
+              },
+              {
+                "id": "p4_note_or_visual",
+                "passed": true,
+                "matched_item_id": "d006",
+                "hits": [
+                  "d006"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "matched_item_id": "d007",
+                "hits": [
+                  "d007"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "Version:\\s*975\\.18",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "\\[PAYV",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 4,
+            "must_detect_total": 4,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "prohibited_interpretations": [
+              {
+                "id": "partial_p3_71_to_7",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "id": "partial_p4_71_to_7",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "numeric_interpretation_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 6
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-fcac1a73d5596215",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 2,
+              "old_bbox": {
+                "page": 2,
+                "x0": 39.6,
+                "y0": 79.79998291015625,
+                "x1": 567.72,
+                "y1": 367.0799829101563
+              },
+              "new_bbox": {
+                "page": 2,
+                "x0": 39.6,
+                "y0": 79.79998291015625,
+                "x1": 567.72,
+                "y1": 367.0799829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 表格/版面變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-eb240ff15b718e2e",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "medium",
+              "page": 2,
+              "old_bbox": {
+                "page": 2,
+                "x0": 39.96,
+                "y0": 25.799982910156245,
+                "x1": 582.48,
+                "y1": 78.3599829101563
+              },
+              "new_bbox": {
+                "page": 2,
+                "x0": 39.96,
+                "y0": 25.799982910156245,
+                "x1": 582.48,
+                "y1": 78.3599829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 待人工判讀數字區域"
+            },
+            {
+              "id": "d003",
+              "candidate_id": "c-c1c11d87465e5332",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_bbox": {
+                "page": 3,
+                "x0": 33.12,
+                "y0": 79.79998291015625,
+                "x1": 561.24,
+                "y1": 367.0799829101563
+              },
+              "new_bbox": {
+                "page": 3,
+                "x0": 33.12,
+                "y0": 79.79998291015625,
+                "x1": 561.24,
+                "y1": 367.0799829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 表格/版面變更"
+            },
+            {
+              "id": "d004",
+              "candidate_id": "c-44343dd6c1a2065b",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "medium",
+              "page": 3,
+              "old_bbox": {
+                "page": 3,
+                "x0": 34.199999999999996,
+                "y0": 25.799982910156245,
+                "x1": 576.36,
+                "y1": 78.3599829101563
+              },
+              "new_bbox": {
+                "page": 3,
+                "x0": 34.199999999999996,
+                "y0": 25.799982910156245,
+                "x1": 576.36,
+                "y1": 78.3599829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 待人工判讀數字區域"
+            },
+            {
+              "id": "d005",
+              "candidate_id": "c-d87db1b842f55345",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 25.919999999999998,
+                "y0": 79.79998291015625,
+                "x1": 553.68,
+                "y1": 367.0799829101563
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 25.919999999999998,
+                "y0": 79.79998291015625,
+                "x1": 553.68,
+                "y1": 367.0799829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 4 表格/版面變更"
+            },
+            {
+              "id": "d006",
+              "candidate_id": "c-eff076e353a9dc16",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "medium",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 26.279999999999998,
+                "y0": 25.799982910156245,
+                "x1": 568.4399999999999,
+                "y1": 78.3599829101563
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 26.279999999999998,
+                "y0": 25.799982910156245,
+                "x1": 568.4399999999999,
+                "y1": 78.3599829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 4 待人工判讀數字區域"
+            },
+            {
+              "id": "d007",
+              "candidate_id": "c-0f99310cea5434cf",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 6,
+              "old_bbox": {
+                "page": 6,
+                "x0": 428.76,
+                "y0": 11.759982910156168,
+                "x1": 579.24,
+                "y1": 40.559982910156236
+              },
+              "new_bbox": {
+                "page": 6,
+                "x0": 428.76,
+                "y0": 11.759982910156168,
+                "x1": 579.24,
+                "y1": 40.559982910156236
+              },
+              "old_value": "Version: 2024.01; Control No: 2312-2512-OP2-0274",
+              "new_value": "Version: 2024.04; Control No: OP-2404-2604-0234",
+              "context": "Page 6 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": true,
+            "image_metadata_prefilter_pages": 12,
+            "image_full_page_skipped_before_decode": 12,
+            "pixel_result_complete": true,
+            "pixel_pages_scanned": 6,
+            "pixel_general_ocr_enabled": true,
+            "pixel_ocr_pair_parallel": true,
+            "pixel_pages_with_diffs": 4,
+            "pixel_priority_ocr_attempts": 4,
+            "pixel_ocr_calls_total": 62,
+            "pixel_raw_regions": 32,
+            "pixel_component_scan_strategy": "vectorized-v1",
+            "pixel_component_scan_seconds": 0.1041,
+            "pixel_region_categories": {
+              "large_visual": 3,
+              "small": 18,
+              "text_band": 5
+            },
+            "pixel_large_visual_candidates": 3,
+            "pixel_pre_ocr_candidates": 23,
+            "pixel_numeric_fallback_ocr_calls": 8,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": false,
+            "pixel_cache_tier": "miss",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 3,
+            "mode": "image_pdf",
+            "pixel_diff_count": 17,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_ocr_text": 3,
+            "demoted_unreliable_ocr_to_visual": 3,
+            "final_diff_count": 7,
+            "suppressed_count": 0,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        }
+      ]
+    },
+    "warm": {
+      "summary": {
+        "runs": 6,
+        "page_pairs": 30,
+        "input_pages": 60,
+        "initial_ready_p50_seconds": 0.0166,
+        "initial_ready_p95_seconds": 0.0229,
+        "complete_p50_seconds": 0.0314,
+        "complete_p95_seconds": 0.0476,
+        "complete_mean_seconds": 0.0322,
+        "peak_memory_mb": 0.0,
+        "peak_cpu_percent": 0.0,
+        "must_detect_recall": 1.0,
+        "preliminary_region_recall": 1.0,
+        "prohibited_false_positives": 0,
+        "numeric_interpretation_false_positives": 0,
+        "material_visual_suppressed": 0,
+        "sla": {
+          "initial_ready_p95_le_15s": true,
+          "complete_p95_le_90s": true,
+          "known_critical_recall_100pct": true,
+          "preliminary_region_recall_100pct": true,
+          "numeric_interpretation_false_positives_zero": true
+        }
+      },
+      "runs": [
+        {
+          "run_id": "warm-fengshouai-1",
+          "case_id": "fengshouai",
+          "pages": 6,
+          "input_pages": 12,
+          "timings": {
+            "parse_seconds": 0.0099,
+            "preliminary_diff_seconds": 0.0073,
+            "initial_ready_seconds": 0.0173,
+            "enrichment_seconds": 0.0127,
+            "complete_seconds": 0.03
+          },
+          "resources": {
+            "peak_memory_mb": 0.0,
+            "avg_cpu_percent": 0.0,
+            "peak_cpu_percent": 0.0
+          },
+          "cache": {
+            "old_parser_hit": true,
+            "new_parser_hit": true,
+            "pixel_hit": true
+          },
+          "total_diffs": 2,
+          "preliminary_evaluation": {
+            "regions": [
+              {
+                "id": "p2_24_to_28",
+                "passed": true,
+                "matched_item_id": "d001",
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "matched_item_id": "d003",
+                "hits": [
+                  "d003"
+                ]
+              }
+            ],
+            "passed": 2,
+            "total": 2,
+            "region_recall": 1.0
+          },
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p2_24_to_28",
+                "passed": true,
+                "matched_item_id": "d001",
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "matched_item_id": "d002",
+                "hits": [
+                  "d002"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "\\[PAYV",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "Version:\\s*975\\.18",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "prohibited_interpretations": [],
+            "numeric_interpretation_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 0
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-a5395b2209ef7721",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 2,
+              "old_bbox": {
+                "page": 2,
+                "x0": 97.19999999999999,
+                "y0": 646.4399829101562,
+                "x1": 142.2,
+                "y1": 693.9599829101562
+              },
+              "new_bbox": {
+                "page": 2,
+                "x0": 97.19999999999999,
+                "y0": 646.4399829101562,
+                "x1": 142.2,
+                "y1": 693.9599829101562
+              },
+              "old_value": "24",
+              "new_value": "28",
+              "context": "Page 2 圖片數字變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-6285aca69d35d681",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 6,
+              "old_bbox": {
+                "page": 6,
+                "x0": 506.16,
+                "y0": 11.039982910156255,
+                "x1": 589.6800000000001,
+                "y1": 39.83998291015621
+              },
+              "new_bbox": {
+                "page": 6,
+                "x0": 506.16,
+                "y0": 11.039982910156255,
+                "x1": 589.6800000000001,
+                "y1": 39.83998291015621
+              },
+              "old_value": "Version: 2026.02; Control No: OP-2602-0081",
+              "new_value": "Version: 2026.05; Control No: 2605-OP-0029",
+              "context": "Page 6 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": true,
+            "image_metadata_prefilter_pages": 12,
+            "image_full_page_skipped_before_decode": 12,
+            "pixel_result_complete": true,
+            "pixel_pages_scanned": 6,
+            "pixel_general_ocr_enabled": true,
+            "pixel_ocr_pair_parallel": true,
+            "pixel_pages_with_diffs": 2,
+            "pixel_raw_regions": 7,
+            "pixel_component_scan_strategy": "vectorized-v1",
+            "pixel_component_scan_seconds": 0.0412,
+            "pixel_region_categories": {
+              "small": 4,
+              "text_band": 1
+            },
+            "pixel_pre_ocr_candidates": 5,
+            "pixel_ocr_calls_total": 16,
+            "pixel_numeric_fallback_ocr_calls": 4,
+            "pixel_priority_ocr_attempts": 1,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": true,
+            "pixel_cache_tier": "memory",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 1,
+            "mode": "image_pdf",
+            "pixel_diff_count": 6,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_non_material_visual": 1,
+            "suppressed_ocr_text": 1,
+            "final_diff_count": 2,
+            "suppressed_count": 1,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "warm-ciai_micro-1",
+          "case_id": "ciai_micro",
+          "pages": 4,
+          "input_pages": 8,
+          "timings": {
+            "parse_seconds": 0.0051,
+            "preliminary_diff_seconds": 0.0143,
+            "initial_ready_seconds": 0.0194,
+            "enrichment_seconds": 0.018,
+            "complete_seconds": 0.0374
+          },
+          "resources": {
+            "peak_memory_mb": 0.0,
+            "avg_cpu_percent": 0.0,
+            "peak_cpu_percent": 0.0
+          },
+          "cache": {
+            "old_parser_hit": true,
+            "new_parser_hit": true,
+            "pixel_hit": true
+          },
+          "total_diffs": 3,
+          "preliminary_evaluation": {
+            "regions": [
+              {
+                "id": "p3_content_or_visual",
+                "passed": true,
+                "matched_item_id": "d020",
+                "hits": [
+                  "d020"
+                ]
+              },
+              {
+                "id": "p4_footer",
+                "passed": true,
+                "matched_item_id": "d038",
+                "hits": [
+                  "d038"
+                ]
+              }
+            ],
+            "passed": 2,
+            "total": 2,
+            "region_recall": 1.0
+          },
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p3_content_or_visual",
+                "passed": true,
+                "matched_item_id": "d001",
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p4_footer",
+                "passed": true,
+                "matched_item_id": "d003",
+                "hits": [
+                  "d003"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "(?:^|\\D)(?:2\\s*(?:->|→)\\s*3|3\\s*(?:->|→)\\s*5|9\\s*(?:->|→)\\s*1)(?:\\D|$)",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "prohibited_interpretations": [
+              {
+                "id": "partial_p1_4_to_24",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "id": "partial_p2_35_to_5",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "numeric_interpretation_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 2
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-2bbd357c43f233e4",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_bbox": {
+                "page": 3,
+                "x0": 38.16,
+                "y0": 63.839973144531314,
+                "x1": 551.16,
+                "y1": 725.8799731445313
+              },
+              "new_bbox": {
+                "page": 3,
+                "x0": 38.16,
+                "y0": 63.839973144531314,
+                "x1": 551.16,
+                "y1": 725.8799731445313
+              },
+              "old_value": "亡被保險人所得清單",
+              "new_value": "(家庭成員投保適用 )",
+              "context": "Page 3 表格/版面變更; OCR/text: Page 3 內容變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-7034e11b713683d8",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_bbox": {
+                "page": 3,
+                "x0": 38.879999999999995,
+                "y0": 28.91997314453124,
+                "x1": 385.56,
+                "y1": 59.87997314453128
+              },
+              "new_bbox": {
+                "page": 3,
+                "x0": 38.879999999999995,
+                "y0": 28.91997314453124,
+                "x1": 385.56,
+                "y1": 59.87997314453128
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 表格/版面變更"
+            },
+            {
+              "id": "d003",
+              "candidate_id": "c-568d66d677763d51",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 511.20000000000005,
+                "y0": 11.759982910156168,
+                "x1": 581.0400000000001,
+                "y1": 40.559982910156236
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 511.20000000000005,
+                "y0": 11.759982910156168,
+                "x1": 581.0400000000001,
+                "y1": 40.559982910156236
+              },
+              "old_value": "Version: 2025.09; Control No: 2508-OP-0067",
+              "new_value": "Version: 2025.10; Control No: 2509-OP-0077",
+              "context": "Page 4 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": true,
+            "image_metadata_prefilter_pages": 8,
+            "image_full_page_skipped_before_decode": 8,
+            "pixel_result_complete": true,
+            "pixel_pages_scanned": 4,
+            "pixel_general_ocr_enabled": true,
+            "pixel_ocr_pair_parallel": true,
+            "pixel_pages_with_diffs": 4,
+            "pixel_priority_ocr_attempts": 8,
+            "pixel_ocr_calls_total": 156,
+            "pixel_raw_regions": 1257,
+            "pixel_component_scan_strategy": "vectorized-v1",
+            "pixel_component_scan_seconds": 0.0973,
+            "pixel_region_categories": {
+              "small": 220,
+              "text_band": 12,
+              "large_visual": 3,
+              "mid_visual": 8
+            },
+            "pixel_pre_ocr_candidates": 55,
+            "pixel_numeric_fallback_ocr_calls": 30,
+            "pixel_large_visual_candidates": 5,
+            "pixel_numeric_fallback_skips": 8,
+            "pixel_ocr_budget_skips": 172,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": true,
+            "pixel_cache_tier": "memory",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "fused_visual": 1,
+            "retained_visual": 156,
+            "mode": "image_pdf",
+            "pixel_diff_count": 193,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_non_material_visual": 154,
+            "final_diff_count": 3,
+            "suppressed_count": 154,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "warm-xinfuaiai-1",
+          "case_id": "xinfuaiai",
+          "pages": 4,
+          "input_pages": 8,
+          "timings": {
+            "parse_seconds": 0.0048,
+            "preliminary_diff_seconds": 0.0058,
+            "initial_ready_seconds": 0.0106,
+            "enrichment_seconds": 0.0131,
+            "complete_seconds": 0.0237
+          },
+          "resources": {
+            "peak_memory_mb": 0.0,
+            "avg_cpu_percent": 0.0,
+            "peak_cpu_percent": 0.0
+          },
+          "cache": {
+            "old_parser_hit": true,
+            "new_parser_hit": true,
+            "pixel_hit": true
+          },
+          "total_diffs": 13,
+          "preliminary_evaluation": {
+            "regions": [
+              {
+                "id": "p1_table_or_layout",
+                "passed": true,
+                "matched_item_id": "d004",
+                "hits": [
+                  "d004"
+                ]
+              },
+              {
+                "id": "p2_table_or_layout",
+                "passed": true,
+                "matched_item_id": "d006",
+                "hits": [
+                  "d006"
+                ]
+              },
+              {
+                "id": "p3_table_or_layout",
+                "passed": true,
+                "matched_item_id": "d007",
+                "hits": [
+                  "d007"
+                ]
+              },
+              {
+                "id": "p4_table_or_layout",
+                "passed": true,
+                "matched_item_id": "d008",
+                "hits": [
+                  "d008"
+                ]
+              }
+            ],
+            "passed": 4,
+            "total": 4,
+            "region_recall": 1.0
+          },
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p1_table_or_layout",
+                "passed": true,
+                "matched_item_id": "d004",
+                "hits": [
+                  "d004"
+                ]
+              },
+              {
+                "id": "p2_table_or_layout",
+                "passed": true,
+                "matched_item_id": "d009",
+                "hits": [
+                  "d009"
+                ]
+              },
+              {
+                "id": "p3_table_or_layout",
+                "passed": true,
+                "matched_item_id": "d010",
+                "hits": [
+                  "d010"
+                ]
+              },
+              {
+                "id": "p4_table_or_layout",
+                "passed": true,
+                "matched_item_id": "d011",
+                "hits": [
+                  "d011"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "0800.*(?:->|→).*0800",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "40歲.*(?:->|→).*40歲",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "310元.*(?:->|→).*310元",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 4,
+            "must_detect_total": 4,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "prohibited_interpretations": [],
+            "numeric_interpretation_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 11
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-bad511ce20baaa63",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 1,
+              "old_bbox": {
+                "page": 1,
+                "x0": 532.8,
+                "y0": 774.5999829101563,
+                "x1": 576.72,
+                "y1": 823.1999829101562
+              },
+              "new_bbox": {
+                "page": 1,
+                "x0": 532.8,
+                "y0": 774.5999829101563,
+                "x1": 576.72,
+                "y1": 823.1999829101562
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 1 表格/版面變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-46eaa1ff3e72d285",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 1,
+              "old_bbox": {
+                "page": 1,
+                "x0": 84.6,
+                "y0": 677.7599829101563,
+                "x1": 481.32,
+                "y1": 814.5599829101562
+              },
+              "new_bbox": {
+                "page": 1,
+                "x0": 84.6,
+                "y0": 677.7599829101563,
+                "x1": 481.32,
+                "y1": 814.5599829101562
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 1 表格/版面變更（8 區域）"
+            },
+            {
+              "id": "d003",
+              "candidate_id": "c-b75839c993095bec",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 1,
+              "old_bbox": {
+                "page": 1,
+                "x0": 131.4,
+                "y0": 587.7599829101563,
+                "x1": 487.79999999999995,
+                "y1": 602.1599829101563
+              },
+              "new_bbox": {
+                "page": 1,
+                "x0": 131.4,
+                "y0": 587.7599829101563,
+                "x1": 487.79999999999995,
+                "y1": 602.1599829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 1 表格/版面變更"
+            },
+            {
+              "id": "d004",
+              "candidate_id": "c-7ae6f559335855d2",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 1,
+              "old_bbox": {
+                "page": 1,
+                "x0": 14.399999999999999,
+                "y0": 247.55998291015624,
+                "x1": 558.36,
+                "y1": 526.5599829101562
+              },
+              "new_bbox": {
+                "page": 1,
+                "x0": 14.399999999999999,
+                "y0": 247.55998291015624,
+                "x1": 558.36,
+                "y1": 526.5599829101562
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 1 表格/版面變更"
+            },
+            {
+              "id": "d005",
+              "candidate_id": "c-5209d61cf6d791e4",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 1,
+              "old_bbox": {
+                "page": 1,
+                "x0": 33.48,
+                "y0": 142.79998291015625,
+                "x1": 554.4,
+                "y1": 212.9999829101563
+              },
+              "new_bbox": {
+                "page": 1,
+                "x0": 33.48,
+                "y0": 142.79998291015625,
+                "x1": 554.4,
+                "y1": 212.9999829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 1 表格/版面變更（5 區域）"
+            },
+            {
+              "id": "d006",
+              "candidate_id": "c-2adbc5a56594fb6e",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 1,
+              "old_bbox": {
+                "page": 1,
+                "x0": 394.91999999999996,
+                "y0": 198.5999829101563,
+                "x1": 532.4399999999999,
+                "y1": 212.9999829101563
+              },
+              "new_bbox": {
+                "page": 1,
+                "x0": 394.91999999999996,
+                "y0": 198.5999829101563,
+                "x1": 532.4399999999999,
+                "y1": 212.9999829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 1 表格/版面變更"
+            },
+            {
+              "id": "d007",
+              "candidate_id": "c-c34719728a85f42b",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "medium",
+              "page": 2,
+              "old_bbox": {
+                "page": 2,
+                "x0": 41.76,
+                "y0": 763.0799829101562,
+                "x1": 198.35999999999999,
+                "y1": 803.3999829101563
+              },
+              "new_bbox": {
+                "page": 2,
+                "x0": 41.76,
+                "y0": 763.0799829101562,
+                "x1": 198.35999999999999,
+                "y1": 803.3999829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 待人工判讀數字區域"
+            },
+            {
+              "id": "d008",
+              "candidate_id": "c-7565df901f2a3e58",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 2,
+              "old_bbox": {
+                "page": 2,
+                "x0": 206.28,
+                "y0": 769.5599829101562,
+                "x1": 304.56,
+                "y1": 784.6799829101562
+              },
+              "new_bbox": {
+                "page": 2,
+                "x0": 206.28,
+                "y0": 769.5599829101562,
+                "x1": 304.56,
+                "y1": 784.6799829101562
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 表格/版面變更"
+            },
+            {
+              "id": "d009",
+              "candidate_id": "c-24517a124af47be5",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 2,
+              "old_bbox": {
+                "page": 2,
+                "x0": 39.96,
+                "y0": 31.559982910156236,
+                "x1": 562.68,
+                "y1": 714.8399829101562
+              },
+              "new_bbox": {
+                "page": 2,
+                "x0": 39.96,
+                "y0": 31.559982910156236,
+                "x1": 562.68,
+                "y1": 714.8399829101562
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 表格/版面變更（3 區域）"
+            },
+            {
+              "id": "d010",
+              "candidate_id": "c-8635d0f0a924232f",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_bbox": {
+                "page": 3,
+                "x0": 37.44,
+                "y0": 17.879982910156286,
+                "x1": 554.04,
+                "y1": 823.1999829101562
+              },
+              "new_bbox": {
+                "page": 3,
+                "x0": 37.44,
+                "y0": 17.879982910156286,
+                "x1": 554.04,
+                "y1": 823.1999829101562
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 表格/版面變更"
+            },
+            {
+              "id": "d011",
+              "candidate_id": "c-04f0f067de160f49",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 41.76,
+                "y0": 671.6399829101563,
+                "x1": 554.76,
+                "y1": 829.6799829101562
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 41.76,
+                "y0": 671.6399829101563,
+                "x1": 554.76,
+                "y1": 829.6799829101562
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 4 表格/版面變更"
+            },
+            {
+              "id": "d012",
+              "candidate_id": "c-28f374fc2c155a7b",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 41.76,
+                "y0": 203.27998291015626,
+                "x1": 554.76,
+                "y1": 642.8399829101563
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 41.76,
+                "y0": 203.27998291015626,
+                "x1": 554.76,
+                "y1": 642.8399829101563
+              },
+              "old_value": "3.本商品為保險商品受『財團法人保險安定基金』之『人身保險安定基金專戶』 / 故不受存款保險之保障。",
+              "new_value": "1. 消費者投保前應審慎瞭解本商品之承保範圍、除外不保事項及商品風險。 / 被保險人累計投保微型傷害保險之保險金額",
+              "context": "Page 4 表格/版面變更; OCR/text: Page 4 內容變更"
+            },
+            {
+              "id": "d013",
+              "candidate_id": "c-289969bf55bee045",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 432.72,
+                "y0": 11.759982910156168,
+                "x1": 583.5600000000001,
+                "y1": 40.559982910156236
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 432.72,
+                "y0": 11.759982910156168,
+                "x1": 583.5600000000001,
+                "y1": 40.559982910156236
+              },
+              "old_value": "Version: 2024.10; Control No: 2409-2609-OP-0086",
+              "new_value": "Version: 2025.10; Control No: 2509-OP-0078",
+              "context": "Page 4 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": true,
+            "image_metadata_prefilter_pages": 8,
+            "image_full_page_skipped_before_decode": 8,
+            "pixel_result_complete": true,
+            "pixel_pages_scanned": 4,
+            "pixel_general_ocr_enabled": true,
+            "pixel_ocr_pair_parallel": true,
+            "pixel_pages_with_diffs": 4,
+            "pixel_priority_ocr_attempts": 7,
+            "pixel_ocr_calls_total": 152,
+            "pixel_raw_regions": 292,
+            "pixel_component_scan_strategy": "vectorized-v1",
+            "pixel_component_scan_seconds": 0.0947,
+            "pixel_region_categories": {
+              "large_visual": 18,
+              "text_band": 70,
+              "small": 57,
+              "mid_visual": 25
+            },
+            "pixel_large_visual_candidates": 41,
+            "pixel_pre_ocr_candidates": 52,
+            "pixel_numeric_fallback_ocr_calls": 34,
+            "pixel_numeric_fallback_skips": 5,
+            "pixel_ocr_budget_skips": 71,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": true,
+            "pixel_cache_tier": "memory",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "fused_visual": 1,
+            "retained_visual": 35,
+            "mode": "image_pdf",
+            "pixel_diff_count": 106,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_ocr_text": 8,
+            "suppressed_non_material_visual": 12,
+            "demoted_unreliable_ocr_to_visual": 1,
+            "coalesced_visual_regions": 13,
+            "final_diff_count": 13,
+            "suppressed_count": 12,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "warm-meibaofa-1",
+          "case_id": "meibaofa",
+          "pages": 4,
+          "input_pages": 8,
+          "timings": {
+            "parse_seconds": 0.0043,
+            "preliminary_diff_seconds": 0.0053,
+            "initial_ready_seconds": 0.0097,
+            "enrichment_seconds": 0.0088,
+            "complete_seconds": 0.0184
+          },
+          "resources": {
+            "peak_memory_mb": 0.0,
+            "avg_cpu_percent": 0.0,
+            "peak_cpu_percent": 0.0
+          },
+          "cache": {
+            "old_parser_hit": true,
+            "new_parser_hit": true,
+            "pixel_hit": true
+          },
+          "total_diffs": 3,
+          "preliminary_evaluation": {
+            "regions": [
+              {
+                "id": "p2_content_or_visual",
+                "passed": true,
+                "matched_item_id": "d002",
+                "hits": [
+                  "d002"
+                ]
+              },
+              {
+                "id": "p4_footer",
+                "passed": true,
+                "matched_item_id": "d010",
+                "hits": [
+                  "d010"
+                ]
+              }
+            ],
+            "passed": 2,
+            "total": 2,
+            "region_recall": 1.0
+          },
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p2_content_or_visual",
+                "passed": true,
+                "matched_item_id": "d001",
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p4_footer",
+                "passed": true,
+                "matched_item_id": "d003",
+                "hits": [
+                  "d003"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "\\[PAYV",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "prohibited_interpretations": [],
+            "numeric_interpretation_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 2
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-20892c80f1e9ccd6",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 2,
+              "old_bbox": {
+                "page": 2,
+                "x0": 120.24,
+                "y0": 436.5599829101563,
+                "x1": 563.04,
+                "y1": 700.0799829101562
+              },
+              "new_bbox": {
+                "page": 2,
+                "x0": 120.24,
+                "y0": 436.5599829101563,
+                "x1": 563.04,
+                "y1": 700.0799829101562
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 表格/版面變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-16d217baba7d9eb6",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 2,
+              "old_bbox": {
+                "page": 2,
+                "x0": 53.28,
+                "y0": 333.95998291015627,
+                "x1": 562.68,
+                "y1": 354.83998291015627
+              },
+              "new_bbox": {
+                "page": 2,
+                "x0": 53.28,
+                "y0": 333.95998291015627,
+                "x1": 562.68,
+                "y1": 354.83998291015627
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 表格/版面變更"
+            },
+            {
+              "id": "d003",
+              "candidate_id": "c-4dd28010e3e0160c",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 432.36,
+                "y0": 11.759982910156168,
+                "x1": 583.5600000000001,
+                "y1": 40.559982910156236
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 432.36,
+                "y0": 11.759982910156168,
+                "x1": 583.5600000000001,
+                "y1": 40.559982910156236
+              },
+              "old_value": "Version: 2024.01; Control No: 2312-2512-OP2-0300",
+              "new_value": "Version: 2024.04; Control No: OP-2404-2604-0238",
+              "context": "Page 4 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": true,
+            "image_metadata_prefilter_pages": 8,
+            "image_full_page_skipped_before_decode": 8,
+            "pixel_result_complete": true,
+            "pixel_pages_scanned": 4,
+            "pixel_general_ocr_enabled": true,
+            "pixel_ocr_pair_parallel": true,
+            "pixel_pages_with_diffs": 2,
+            "pixel_priority_ocr_attempts": 3,
+            "pixel_ocr_calls_total": 46,
+            "pixel_raw_regions": 158,
+            "pixel_component_scan_strategy": "vectorized-v1",
+            "pixel_component_scan_seconds": 0.0365,
+            "pixel_region_categories": {
+              "small": 34,
+              "large_visual": 1,
+              "text_band": 1
+            },
+            "pixel_pre_ocr_candidates": 16,
+            "pixel_numeric_fallback_ocr_calls": 8,
+            "pixel_large_visual_candidates": 2,
+            "pixel_numeric_fallback_skips": 6,
+            "pixel_ocr_budget_skips": 17,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": true,
+            "pixel_cache_tier": "memory",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 7,
+            "mode": "image_pdf",
+            "pixel_diff_count": 31,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_non_material_visual": 5,
+            "final_diff_count": 3,
+            "suppressed_count": 5,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "warm-meilbao-1",
+          "case_id": "meilbao",
+          "pages": 6,
+          "input_pages": 12,
+          "timings": {
+            "parse_seconds": 0.008,
+            "preliminary_diff_seconds": 0.0161,
+            "initial_ready_seconds": 0.0241,
+            "enrichment_seconds": 0.0269,
+            "complete_seconds": 0.051
+          },
+          "resources": {
+            "peak_memory_mb": 0.0,
+            "avg_cpu_percent": 0.0,
+            "peak_cpu_percent": 0.0
+          },
+          "cache": {
+            "old_parser_hit": true,
+            "new_parser_hit": true,
+            "pixel_hit": true
+          },
+          "total_diffs": 6,
+          "preliminary_evaluation": {
+            "regions": [
+              {
+                "id": "p3_main_table",
+                "passed": true,
+                "matched_item_id": "d015",
+                "hits": [
+                  "d015"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "matched_item_id": "d034",
+                "hits": [
+                  "d034"
+                ]
+              }
+            ],
+            "passed": 2,
+            "total": 2,
+            "region_recall": 1.0
+          },
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p3_main_table",
+                "passed": true,
+                "matched_item_id": "d003",
+                "hits": [
+                  "d003"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "matched_item_id": "d006",
+                "hits": [
+                  "d006"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "447,6[iIl]12",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "Version:\\s*975\\.18",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 2,
+            "must_detect_total": 2,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "prohibited_interpretations": [
+              {
+                "id": "partial_p3_95_to_00",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "id": "partial_p4_64_to_06",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "numeric_interpretation_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 4
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-b3615a0282a2df04",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 1,
+              "old_bbox": {
+                "page": 1,
+                "x0": 426.59999999999997,
+                "y0": 25.799982910156245,
+                "x1": 469.44,
+                "y1": 57.83998291015632
+              },
+              "new_bbox": {
+                "page": 1,
+                "x0": 426.59999999999997,
+                "y0": 25.799982910156245,
+                "x1": 469.44,
+                "y1": 57.83998291015632
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 1 表格/版面變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-097672411cc6ea14",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 3,
+              "old_bbox": {
+                "page": 3,
+                "x0": 281.15999999999997,
+                "y0": 630.8399731445313,
+                "x1": 336.59999999999997,
+                "y1": 679.4399731445312
+              },
+              "new_bbox": {
+                "page": 3,
+                "x0": 281.15999999999997,
+                "y0": 630.8399731445313,
+                "x1": 336.59999999999997,
+                "y1": 679.4399731445312
+              },
+              "old_value": "395",
+              "new_value": "400",
+              "context": "Page 3 圖片數字變更"
+            },
+            {
+              "id": "d003",
+              "candidate_id": "c-ff356773db3b0c94",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_bbox": {
+                "page": 3,
+                "x0": 116.28,
+                "y0": 231.95997314453132,
+                "x1": 512.28,
+                "y1": 589.4399731445312
+              },
+              "new_bbox": {
+                "page": 3,
+                "x0": 116.28,
+                "y0": 231.95997314453132,
+                "x1": 512.28,
+                "y1": 589.4399731445312
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 表格/版面變更（2 區域）"
+            },
+            {
+              "id": "d004",
+              "candidate_id": "c-1eb04321df8287e2",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 488.88,
+                "y0": 347.51997314453126,
+                "x1": 548.28,
+                "y1": 375.95997314453126
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 488.88,
+                "y0": 347.51997314453126,
+                "x1": 548.28,
+                "y1": 375.95997314453126
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 4 表格/版面變更"
+            },
+            {
+              "id": "d005",
+              "candidate_id": "c-a4cdd3ac630d4c05",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 398.52,
+                "y0": 186.2399731445313,
+                "x1": 544.3199999999999,
+                "y1": 265.0799731445313
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 398.52,
+                "y0": 186.2399731445313,
+                "x1": 544.3199999999999,
+                "y1": 265.0799731445313
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 4 表格/版面變更（2 區域）"
+            },
+            {
+              "id": "d006",
+              "candidate_id": "c-5cd9de46503c5681",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 6,
+              "old_bbox": {
+                "page": 6,
+                "x0": 479.52000000000004,
+                "y0": 11.759982910156168,
+                "x1": 583.5600000000001,
+                "y1": 40.19998291015622
+              },
+              "new_bbox": {
+                "page": 6,
+                "x0": 479.52000000000004,
+                "y0": 11.759982910156168,
+                "x1": 583.5600000000001,
+                "y1": 40.19998291015622
+              },
+              "old_value": "Version: 2024.05; Control No: OP-2405-2605-0342",
+              "new_value": "Version: 2024.07; Control No: 2406-2606-OP-0046",
+              "context": "Page 6 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": true,
+            "image_metadata_prefilter_pages": 12,
+            "image_full_page_skipped_before_decode": 12,
+            "pixel_result_complete": true,
+            "pixel_pages_scanned": 6,
+            "pixel_general_ocr_enabled": true,
+            "pixel_ocr_pair_parallel": true,
+            "pixel_pages_with_diffs": 6,
+            "pixel_priority_ocr_attempts": 11,
+            "pixel_ocr_calls_total": 198,
+            "pixel_raw_regions": 2493,
+            "pixel_component_scan_strategy": "vectorized-v1",
+            "pixel_component_scan_seconds": 0.1257,
+            "pixel_region_categories": {
+              "small": 287,
+              "text_band": 3,
+              "large_visual": 6
+            },
+            "pixel_pre_ocr_candidates": 71,
+            "pixel_numeric_fallback_ocr_calls": 34,
+            "pixel_ocr_budget_skips": 219,
+            "pixel_large_visual_candidates": 7,
+            "pixel_numeric_fallback_skips": 10,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": true,
+            "pixel_cache_tier": "memory",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 152,
+            "mode": "image_pdf",
+            "pixel_diff_count": 261,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_ocr_text": 10,
+            "suppressed_non_material_visual": 146,
+            "coalesced_visual_regions": 2,
+            "final_diff_count": 6,
+            "suppressed_count": 146,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        },
+        {
+          "run_id": "warm-zhenmeili-1",
+          "case_id": "zhenmeili",
+          "pages": 6,
+          "input_pages": 12,
+          "timings": {
+            "parse_seconds": 0.0079,
+            "preliminary_diff_seconds": 0.0081,
+            "initial_ready_seconds": 0.016,
+            "enrichment_seconds": 0.0167,
+            "complete_seconds": 0.0327
+          },
+          "resources": {
+            "peak_memory_mb": 0.0,
+            "avg_cpu_percent": 0.0,
+            "peak_cpu_percent": 0.0
+          },
+          "cache": {
+            "old_parser_hit": true,
+            "new_parser_hit": true,
+            "pixel_hit": true
+          },
+          "total_diffs": 7,
+          "preliminary_evaluation": {
+            "regions": [
+              {
+                "id": "p2_note_or_visual",
+                "passed": true,
+                "matched_item_id": "d001",
+                "hits": [
+                  "d001"
+                ]
+              },
+              {
+                "id": "p3_note_or_visual",
+                "passed": true,
+                "matched_item_id": "d002",
+                "hits": [
+                  "d002"
+                ]
+              },
+              {
+                "id": "p4_note_or_visual",
+                "passed": true,
+                "matched_item_id": "d003",
+                "hits": [
+                  "d003"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "matched_item_id": "d004",
+                "hits": [
+                  "d004"
+                ]
+              }
+            ],
+            "passed": 4,
+            "total": 4,
+            "region_recall": 1.0
+          },
+          "evaluation": {
+            "must_detect": [
+              {
+                "id": "p2_note_or_visual",
+                "passed": true,
+                "matched_item_id": "d002",
+                "hits": [
+                  "d002"
+                ]
+              },
+              {
+                "id": "p3_note_or_visual",
+                "passed": true,
+                "matched_item_id": "d004",
+                "hits": [
+                  "d004"
+                ]
+              },
+              {
+                "id": "p4_note_or_visual",
+                "passed": true,
+                "matched_item_id": "d006",
+                "hits": [
+                  "d006"
+                ]
+              },
+              {
+                "id": "p6_footer",
+                "passed": true,
+                "matched_item_id": "d007",
+                "hits": [
+                  "d007"
+                ]
+              }
+            ],
+            "must_not_detect": [
+              {
+                "pattern": "Version:\\s*975\\.18",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "pattern": "\\[PAYV",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "must_detect_passed": 4,
+            "must_detect_total": 4,
+            "must_detect_recall": 1.0,
+            "prohibited_false_positives": 0,
+            "prohibited_interpretations": [
+              {
+                "id": "partial_p3_71_to_7",
+                "passed": true,
+                "hits": []
+              },
+              {
+                "id": "partial_p4_71_to_7",
+                "passed": true,
+                "hits": []
+              }
+            ],
+            "numeric_interpretation_false_positives": 0,
+            "material_visual_suppressed": 0,
+            "unresolved_region_count": 6
+          },
+          "items": [
+            {
+              "id": "d001",
+              "candidate_id": "c-fcac1a73d5596215",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 2,
+              "old_bbox": {
+                "page": 2,
+                "x0": 39.6,
+                "y0": 79.79998291015625,
+                "x1": 567.72,
+                "y1": 367.0799829101563
+              },
+              "new_bbox": {
+                "page": 2,
+                "x0": 39.6,
+                "y0": 79.79998291015625,
+                "x1": 567.72,
+                "y1": 367.0799829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 表格/版面變更"
+            },
+            {
+              "id": "d002",
+              "candidate_id": "c-eb240ff15b718e2e",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "medium",
+              "page": 2,
+              "old_bbox": {
+                "page": 2,
+                "x0": 39.96,
+                "y0": 25.799982910156245,
+                "x1": 582.48,
+                "y1": 78.3599829101563
+              },
+              "new_bbox": {
+                "page": 2,
+                "x0": 39.96,
+                "y0": 25.799982910156245,
+                "x1": 582.48,
+                "y1": 78.3599829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 2 待人工判讀數字區域"
+            },
+            {
+              "id": "d003",
+              "candidate_id": "c-c1c11d87465e5332",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 3,
+              "old_bbox": {
+                "page": 3,
+                "x0": 33.12,
+                "y0": 79.79998291015625,
+                "x1": 561.24,
+                "y1": 367.0799829101563
+              },
+              "new_bbox": {
+                "page": 3,
+                "x0": 33.12,
+                "y0": 79.79998291015625,
+                "x1": 561.24,
+                "y1": 367.0799829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 表格/版面變更"
+            },
+            {
+              "id": "d004",
+              "candidate_id": "c-44343dd6c1a2065b",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "medium",
+              "page": 3,
+              "old_bbox": {
+                "page": 3,
+                "x0": 34.199999999999996,
+                "y0": 25.799982910156245,
+                "x1": 576.36,
+                "y1": 78.3599829101563
+              },
+              "new_bbox": {
+                "page": 3,
+                "x0": 34.199999999999996,
+                "y0": 25.799982910156245,
+                "x1": 576.36,
+                "y1": 78.3599829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 3 待人工判讀數字區域"
+            },
+            {
+              "id": "d005",
+              "candidate_id": "c-d87db1b842f55345",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "high",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 25.919999999999998,
+                "y0": 79.79998291015625,
+                "x1": 553.68,
+                "y1": 367.0799829101563
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 25.919999999999998,
+                "y0": 79.79998291015625,
+                "x1": 553.68,
+                "y1": 367.0799829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 4 表格/版面變更"
+            },
+            {
+              "id": "d006",
+              "candidate_id": "c-eff076e353a9dc16",
+              "type": "image_diff",
+              "lane": "needs_visual_review",
+              "risk": "medium",
+              "page": 4,
+              "old_bbox": {
+                "page": 4,
+                "x0": 26.279999999999998,
+                "y0": 25.799982910156245,
+                "x1": 568.4399999999999,
+                "y1": 78.3599829101563
+              },
+              "new_bbox": {
+                "page": 4,
+                "x0": 26.279999999999998,
+                "y0": 25.799982910156245,
+                "x1": 568.4399999999999,
+                "y1": 78.3599829101563
+              },
+              "old_value": null,
+              "new_value": null,
+              "context": "Page 4 待人工判讀數字區域"
+            },
+            {
+              "id": "d007",
+              "candidate_id": "c-0f99310cea5434cf",
+              "type": "number_modified",
+              "lane": "content",
+              "risk": "critical",
+              "page": 6,
+              "old_bbox": {
+                "page": 6,
+                "x0": 428.76,
+                "y0": 11.759982910156168,
+                "x1": 579.24,
+                "y1": 40.559982910156236
+              },
+              "new_bbox": {
+                "page": 6,
+                "x0": 428.76,
+                "y0": 11.759982910156168,
+                "x1": 579.24,
+                "y1": 40.559982910156236
+              },
+              "old_value": "Version: 2024.01; Control No: 2312-2512-OP2-0274",
+              "new_value": "Version: 2024.04; Control No: OP-2404-2604-0234",
+              "context": "Page 6 footer control/version"
+            }
+          ],
+          "engine_stats": {
+            "old_is_image_pdf": true,
+            "new_is_image_pdf": true,
+            "include_enrichment": true,
+            "image_metadata_prefilter_pages": 12,
+            "image_full_page_skipped_before_decode": 12,
+            "pixel_result_complete": true,
+            "pixel_pages_scanned": 6,
+            "pixel_general_ocr_enabled": true,
+            "pixel_ocr_pair_parallel": true,
+            "pixel_pages_with_diffs": 4,
+            "pixel_priority_ocr_attempts": 4,
+            "pixel_ocr_calls_total": 62,
+            "pixel_raw_regions": 32,
+            "pixel_component_scan_strategy": "vectorized-v1",
+            "pixel_component_scan_seconds": 0.1041,
+            "pixel_region_categories": {
+              "large_visual": 3,
+              "small": 18,
+              "text_band": 5
+            },
+            "pixel_large_visual_candidates": 3,
+            "pixel_pre_ocr_candidates": 23,
+            "pixel_numeric_fallback_ocr_calls": 8,
+            "pixel_priority_ocr_regions": 1,
+            "pixel_cache_hit": true,
+            "pixel_cache_tier": "memory",
+            "recall_enabled": false,
+            "paddle_ocr": {
+              "enabled": false
+            },
+            "retained_visual": 3,
+            "mode": "image_pdf",
+            "pixel_diff_count": 17,
+            "image_diff_count": 0,
+            "recall_diff_count": 0,
+            "suppressed_ocr_text": 3,
+            "demoted_unreliable_ocr_to_visual": 3,
+            "final_diff_count": 7,
+            "suppressed_count": 0,
+            "material_visual_suppressed": 0
+          },
+          "engine_warnings": []
+        }
+      ]
+    }
+  }
+}

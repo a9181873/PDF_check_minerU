@@ -52,9 +52,9 @@ docker save $TaggedImage -o $TarFile
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: backend save 失敗" -ForegroundColor Red; exit 1 }
 
 # 4b. 匯出 MinerU 映像（離線機無法重新下載模型，必須一併打包，否則 compose 會嘗試 build 而失敗）
-$MineruImage = "mineru-api:pipeline"
-$MineruTar   = Join-Path $OutDir "mineru-api_pipeline.tar"
-Write-Host "[5/7] 匯出 MinerU 映像 → $MineruTar （約 5 GB，需數分鐘）..." -ForegroundColor Yellow
+$MineruImage = "mineru-api:basic-v4"
+$MineruTar   = Join-Path $OutDir "mineru-api_basic-v4.tar"
+Write-Host "[5/7] 匯出 MinerU 映像 → $MineruTar （含 basic ONNX 模型，需數分鐘）..." -ForegroundColor Yellow
 docker image inspect $MineruImage *> $null
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: 找不到 $MineruImage，請先 'docker compose build'" -ForegroundColor Red; exit 1 }
 docker save $MineruImage -o $MineruTar
@@ -64,7 +64,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: MinerU save 失敗" -ForegroundCol
 # 一併放入離線交付包；plugin 不存在時明確警告，但不讓既有打包流程失敗。
 Write-Host "[6/7] 產生 SPDX SBOM..." -ForegroundColor Yellow
 $BackendSbom = Join-Path $OutDir "${ImageName}_${Version}.spdx.json"
-$MineruSbom = Join-Path $OutDir "mineru-api_pipeline.spdx.json"
+$MineruSbom = Join-Path $OutDir "mineru-api_basic-v4.spdx.json"
 docker sbom $TaggedImage --format spdx-json 2>$null | Set-Content $BackendSbom -Encoding UTF8
 if ($LASTEXITCODE -eq 0) {
     docker sbom $MineruImage --format spdx-json 2>$null | Set-Content $MineruSbom -Encoding UTF8
@@ -103,13 +103,13 @@ Write-Host "zip 檔:      $ZipFile ($ZipSize MB)"
 Write-Host ""
 Write-Host "交付清單（zip 內）：" -ForegroundColor Cyan
 Write-Host "  - ${ImageName}_${Version}.tar   （backend 映像）"
-Write-Host "  - mineru-api_pipeline.tar        （MinerU 映像，含模型）"
+Write-Host "  - mineru-api_basic-v4.tar        （MinerU 映像，含模型）"
 Write-Host "  - docker-compose.yml            （啟動配置）"
 Write-Host "  - README.md                     （部署說明）"
 Write-Host "  - *.spdx.json                   （供應鏈 SBOM；plugin 可用時）"
 Write-Host ""
 Write-Host "對方電腦執行：" -ForegroundColor Cyan
 Write-Host "  docker load -i ${ImageName}_${Version}.tar"
-Write-Host "  docker load -i mineru-api_pipeline.tar"
+Write-Host "  docker load -i mineru-api_basic-v4.tar"
 Write-Host "  docker compose up -d"
 Write-Host "  瀏覽器開 http://localhost:8001"

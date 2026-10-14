@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     # MinerU REST API endpoint (empty = disabled, falls back to Docling)
     # Example: "http://mineru-api:18080" (docker-compose internal) or "http://localhost:18080"
     mineru_api_url: str = ""
+    # V1 is the MinerU 4.x contract; legacy is only for a staged 3.x rollback.
+    mineru_api_version: str = "v1"
+    mineru_engine_version: str = "4.0.12"
     # Legacy A/B controls retained for compatibility with older deployments.
     # Production routing is controlled by table_parser_strategy below.
     enable_docling_parallel: bool = True
@@ -157,6 +160,14 @@ class Settings(BaseSettings):
         if strategy not in {"alignment", "heuristic", "hybrid"}:
             raise ValueError("image_text_recall_strategy must be 'alignment', 'heuristic', or 'hybrid'")
         return strategy
+
+    @field_validator("mineru_api_version", mode="before")
+    @classmethod
+    def normalize_mineru_api_version(cls, value):
+        version = str(value).strip().lower()
+        if version not in {"v1", "legacy"}:
+            raise ValueError("mineru_api_version must be 'v1' or 'legacy'")
+        return version
 
     @field_validator("table_parser_strategy", mode="before")
     @classmethod

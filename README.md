@@ -120,7 +120,7 @@ http://localhost:8001
 docker compose down
 ```
 
-第一次建置 MinerU image 時通常會下載 pipeline 模型，檔案較大，可能需要一段時間。模型會寫入 image layer；建置及 healthcheck 都會驗證 `mineru.json` 與 7 組必要模型。若 OCI／內網無法穩定連 ModelScope，可使用 `mineru/Dockerfile.cpu-offline` 從既有 image 搬移模型，只重建 CPU-only runtime，避免重複下載。Compose 不再把 ModelScope volume 掛到同一路徑，避免既有 volume 遮蔽新版映像模型。
+MinerU 目前鎖定 `4.0.12`，以 `basic` 層級及 ONNX CPU 執行；後端 Docling 鎖定 `2.138.0`。首次建置會下載 4.x basic ONNX 模型並寫入 image layer，建置及 healthcheck 都驗證官方模型清單與 `/v1/health`。`mineru/Dockerfile.cpu-offline` 可從既有 **4.x** image 搬移 `/opt/mineru/models`；3.x pipeline 模型無法直接沿用。
 
 ## 初次登入
 
@@ -155,6 +155,8 @@ docker compose down
 
 | 變數 | 預設值 | 白話說明 |
 |------|--------|----------|
+| `MINERU_API_VERSION` | `v1` | MinerU 4.x API；`legacy` 僅供配合舊 3.x 映像回復 |
+| `MINERU_ENGINE_VERSION` | `4.0.12` | 快取與執行期指紋使用的核心版本；需與服務映像一致 |
 | `MINERU_API_URL` | 空值（Host） / `http://mineru-api-minerU:18080`（Docker） | MinerU 解析服務位置；空值時會略過 MinerU、走備援解析路徑 |
 | `DATA_DIR` | `<repo>/runtime`（Host） / `/app/runtime`（Docker） | 上傳檔案、資料庫、匯出檔案存放位置 |
 | `ENABLE_PADDLE_OCR_EXPERIMENT` | `false` | 實驗性本機 PaddleOCR 第二引擎；預設關閉，只寫入 `engine_stats` / `engine_warnings` 做 A/B 評估 |
@@ -366,7 +368,7 @@ npm run build
 | Pydantic | `>=2.6` | 資料驗證與型別模型 | 可在資料進出 API 時先檢查格式，降低錯誤資料寫入審核紀錄的風險 | https://docs.pydantic.dev |
 | pydantic-settings | `>=2.2` | 從環境變數讀取設定 | 讓本機、Docker、OCI 可以用同一份程式搭配不同設定部署 | https://docs.pydantic.dev/latest/concepts/pydantic_settings |
 | python-multipart | `>=0.0.9` | 接收 PDF 上傳表單 | FastAPI 接收 PDF 檔案上傳時需要它解析 multipart form data | https://github.com/Kludex/python-multipart |
-| Docling | `>=2.0` | 預設重型表格解析器 | 只在輕量快篩發現表格跡象時啟動，優先取得 cell-level bbox | https://github.com/docling-project/docling |
+| Docling | `2.138.0` | 預設重型表格解析器 | 只在輕量快篩發現表格跡象時啟動，優先取得 cell-level bbox | https://github.com/docling-project/docling |
 | pandas | `>=2.0` | 表格資料處理 | 表格差異需要逐列逐欄比較，pandas 適合處理這類結構化資料 | https://pandas.pydata.org |
 | openpyxl | `>=3.1` | Excel 匯入與匯出 | 審核人員常用 Excel 檢視報表，也支援匯入核對清單 | https://openpyxl.readthedocs.io |
 | PyMuPDF | `>=1.23` | PDF 讀取、渲染、標註匯出 | 可直接處理 PDF 頁面、座標與標註，是產生標註 PDF 的核心工具 | https://pymupdf.readthedocs.io |

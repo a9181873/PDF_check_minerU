@@ -1,20 +1,22 @@
 services:
   mineru-api-minerU:
-    image: mineru-api:pipeline
+    image: mineru-api:basic-v4
     build:
       context: .
       dockerfile: mineru/Dockerfile
     container_name: mineru-api-minerU
     environment:
       MINERU_MODEL_SOURCE: local
-      MINERU_API_MAX_CONCURRENT_REQUESTS: '1'
+      MINERU_HOME: /opt/mineru
+      MINERU_MODEL_SMALL_BACKEND: onnx
+      MINERU_DEVICE_MODE: cpu
     networks:
       - internal
     expose:
       - '18080'
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "python /app/verify_models.py >/dev/null && curl -sf http://localhost:18080/health >/dev/null"]
+      test: ["CMD-SHELL", "python /app/verify_models.py >/dev/null && curl -sf http://localhost:18080/v1/health >/dev/null"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -32,6 +34,8 @@ services:
       OCR_LANGS: chi_tra+chi_sim+eng
       DEBUG: 'false'
       MINERU_API_URL: 'http://mineru-api-minerU:18080'
+      MINERU_API_VERSION: 'v1'
+      MINERU_ENGINE_VERSION: '4.0.12'
       # Optimized default: Docling first (cell bboxes), MinerU only when Docling
       # yields no table. Avoids running two heavy engines and discarding one.
       TABLE_PARSER_STRATEGY: 'docling_first'

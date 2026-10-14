@@ -69,14 +69,14 @@ docker version
 收到的 zip 解壓後，在該資料夾執行：
 ```powershell
 docker load -i pdf-check-backend_1.0.tar
-docker load -i mineru-api_pipeline.tar
+docker load -i mineru-api_basic-v4.tar
 ```
 實際檔名依交付版本可能不同，重點是必須載入：
 
 - `pdf-check-backend:latest` 或指定版號的 backend image
-- `mineru-api:pipeline` MinerU image
+- `mineru-api:basic-v4` MinerU image
 
-看到 `Loaded image: ...` 即成功。若只載入 backend、沒有 `mineru-api:pipeline`，離線機會嘗試 build MinerU image，通常會因無法下載模型而失敗。
+看到 `Loaded image: ...` 即成功。若只載入 backend、沒有 `mineru-api:basic-v4`，離線機會嘗試 build MinerU image，通常會因無法下載模型而失敗。
 
 ### 3. 啟動服務
 ```powershell
@@ -195,14 +195,14 @@ docker compose up -d
 
 # 3. 匯出兩個 Docker image（缺 MinerU 離線機會嘗試 build 而失敗）
 docker save pdf-check-backend:latest -o pdf-check-offline.tar
-docker save mineru-api:pipeline      -o mineru-api_pipeline.tar
+docker save mineru-api:basic-v4      -o mineru-api_basic-v4.tar
 
 # 4. 匯出模型快取 volume
 docker run --rm -v backend_hf_cache_minerU:/data -v ${PWD}:/backup alpine tar czf /backup/hf_cache_backup.tgz -C /data .
 ```
 
-> MinerU pipeline 模型已在 build 時烤進 `mineru-api:pipeline` image（見 `mineru/Dockerfile`），
-> 因此 `mineru-api_pipeline.tar` 已自帶模型，離線機不需再下載。
+> MinerU 4.x basic ONNX 模型已在 build 時烤進 `mineru-api:basic-v4` image（見 `mineru/Dockerfile`），
+> 因此 `mineru-api_basic-v4.tar` 已自帶模型，離線機不需再下載。MinerU 3.x 模型不可直接用於 4.x；首次升級必須取得新版模型。
 
 若要在離線環境測 PaddleOCR 實驗版，請另行準備含 PaddleOCR / PaddlePaddle / 模型快取的 backend image 或離線模型包。不要讓正式環境在 runtime 連外下載模型；建議用獨立 Docker profile 測試，確認資源用量與準確率後再決定是否納入正式 image。
 
@@ -210,14 +210,14 @@ docker run --rm -v backend_hf_cache_minerU:/data -v ${PWD}:/backup alpine tar cz
 
 將以下檔案帶到離線環境：
 - `pdf-check-offline.tar` — backend image
-- `mineru-api_pipeline.tar` — MinerU image（含 pipeline 模型）
+- `mineru-api_basic-v4.tar` — MinerU image（含 basic ONNX 模型）
 - `hf_cache_backup.tgz` — Docling 模型快取
 - `docker-compose.yml` — 啟動設定
 
 ```powershell
 # 1. 載入兩個 image
 docker load -i pdf-check-offline.tar
-docker load -i mineru-api_pipeline.tar
+docker load -i mineru-api_basic-v4.tar
 
 # 2. 啟動
 docker compose up -d

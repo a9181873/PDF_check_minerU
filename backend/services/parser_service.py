@@ -12,6 +12,7 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
+from io import StringIO
 from pathlib import Path
 
 import pandas as pd
@@ -74,7 +75,9 @@ def _parser_cache_key(pdf_path: Path) -> str:
 
     fingerprint = "|".join(
         [
-            "parser-v2",
+            "parser-v3-mineru-v1",
+            settings.mineru_api_version,
+            settings.mineru_engine_version,
             settings.table_parser_strategy,
             str(bool(settings.enable_docling_parallel)),
             str(bool(settings.enable_lightweight_table_probe)),
@@ -186,7 +189,7 @@ def _get_docling_converter():
     from docling.document_converter import DocumentConverter, PdfFormatOption
 
     lang_env = os.getenv("OCR_LANGS", "chi_tra+chi_sim+eng")
-    langs = [lang.strip() for lang in lang_env.split(",") if lang.strip()]
+    langs = [lang.strip() for lang in re.split(r"[+,]", lang_env) if lang.strip()]
 
     options = PdfPipelineOptions()
     # do_ocr=True but force_full_page_ocr=False: only OCR truly image-based pages.
@@ -253,18 +256,122 @@ def _html_table_to_dataframe(html: str) -> pd.DataFrame:
     if not html.strip():
         return pd.DataFrame()
     try:
-        dfs = pd.read_html(html, flavor="lxml")
+        dfs = pd.read_html(StringIO(html), flavor="lxml")
         if dfs:
             return dfs[0].fillna("").astype(str)
     except Exception:
         pass
     try:
-        dfs = pd.read_html(html)
+        dfs = pd.read_html(StringIO(html))
         if dfs:
             return dfs[0].fillna("").astype(str)
     except Exception:
         pass
     return pd.DataFrame()
+
+
+def _mineru_v4_content_list(middle: dict) -> list[dict]:
+    """Adapt the V4 MiddleJson tree and 0–1 bboxes to our flat parser contract."""
+    if middle.get("schema") != "docvortex.middle" or middle.get("schema_version") != "2.0":
+        raise RuntimeError("Unsupported MinerU MiddleJson schema")
+    if middle.get("is_full_document") is False:
+        raise RuntimeError("MinerU returned an incomplete document")
+    if not isinstance(middle.get("pages"), list):
+        raise RuntimeError("MinerU result has no pages")
+
+    def text_content(content) -> str:
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return "".join(text_content(span.get("content", "")) for span in content if isinstance(span, dict))
+        return ""
+
+    result: list[dict] = []
+    text_types = {
+        "text", "doc_title", "paragraph_title", "header", "footer",
+        "page_footnote", "page_number", "aside_text", "ref_text",
+    }
+
+    def visit(block: dict, page_idx: int) -> None:
+        kind = block.get("type")
+        raw_bbox = block.get("bbox")
+        bbox = None
+        if isinstance(raw_bbox, (list, tuple)) and len(raw_bbox) == 4:
+            if all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and 0 <= v <= 1 for v in raw_bbox):
+                if raw_bbox[2] > raw_bbox[0] and raw_bbox[3] > raw_bbox[1]:
+                    bbox = [float(v) * 1000 for v in raw_bbox]
+        if kind in text_types:
+            result.append({"type": "text", "text": text_content(block.get("content")), "bbox": bbox, "page_idx": page_idx})
+        elif kind == "table":
+            children = block.get("content") or []
+            body = next((b for b in children if isinstance(b, dict) and b.get("type") == "table_body"), {})
+            captions = [text_content(b.get("content")) for b in children if isinstance(b, dict) and b.get("type") == "table_caption"]
+            result.append({"type": "table", "table_body": text_content(body.get("content")), "table_caption": captions,
+                           "bbox": bbox, "page_idx": page_idx})
+        elif kind in {"list", "index"}:
+            for child in block.get("content") or []:
+                if isinstance(child, dict):
+                    visit(child, page_idx)
+
+    for page in middle["pages"]:
+        for block in page.get("blocks") or []:
+            if isinstance(block, dict):
+                visit(block, int(page["page_idx"]))
+    return result
+
+
+def _request_mineru_v4(url: str, pdf_path: Path, parse_method: str, timeout: float) -> tuple[str, list[dict], str]:
+    """Submit once, poll HTTP 202 within one budget, and reject partial results."""
+    import requests
+    from urllib.parse import quote
+
+    deadline = time.monotonic() + timeout
+
+    def remaining() -> float:
+        budget = deadline - time.monotonic()
+        if budget <= 0:
+            raise TimeoutError("MinerU parsing exceeded its timeout budget")
+        return budget
+
+    with requests.Session() as client:
+        with pdf_path.open("rb") as source:
+            response = client.post(
+                f"{url}/v1/file_parse",
+                files={"files": (pdf_path.name, source, "application/pdf")},
+                params=[("tier", "basic"), ("ocr_mode", parse_method), ("page_range", "all"),
+                        ("output_formats", "markdown"), ("output_formats", "middle_json"),
+                        ("wait_timeout", min(30, max(1, int(timeout)))), ("response_format", "json")],
+                timeout=remaining(),
+            )
+        response.raise_for_status()
+        task = response.json()
+        task_id = task.get("task_id")
+        try:
+            while response.status_code == 202:
+                if not isinstance(task_id, str) or not task_id:
+                    raise RuntimeError("MinerU pending response has no task_id")
+                time.sleep(min(0.5, remaining()))
+                response = client.get(f"{url}/v1/tasks/{quote(task_id, safe='')}/result", timeout=remaining())
+                response.raise_for_status()
+                task = response.json()
+        except (TimeoutError, requests.Timeout):
+            # A timed-out synchronous wrapper leaves the upstream job running.
+            # Cancel only this request's job, so retries cannot exhaust CPU slots.
+            if task_id:
+                try:
+                    client.delete(f"{url}/v1/tasks/{quote(task_id, safe='')}", timeout=5)
+                except requests.RequestException:
+                    pass
+            raise
+        files = task.get("files") or []
+        if task.get("status") != "completed" or len(files) != 1 or files[0].get("status") != "completed":
+            raise RuntimeError(f"MinerU task did not complete: {task.get('status')}")
+        content = files[0].get("content") or {}
+        middle = content.get("middle_json")
+        if not isinstance(middle, dict):
+            raise RuntimeError("MinerU result has no MiddleJson output")
+        producer = (middle.get("metadata") or {}).get("producer") or {}
+        return content.get("markdown") or "", _mineru_v4_content_list(middle), str(producer.get("version") or "unknown")
 
 
 def _parse_via_mineru(
@@ -274,8 +381,8 @@ def _parse_via_mineru(
 ) -> ParsedDocument:
     """Call MinerU REST API to extract tables and text.
 
-    Uses pipeline backend with chinese_cht language to minimise
-    Traditional/Simplified Chinese mixing in OCR output. ``parse_method`` is
+    Uses the MinerU 4.x basic CPU tier (or the explicit legacy 3.x adapter).
+    ``parse_method`` is
     "auto" for text-layer PDFs and "ocr" to force OCR on image-only PDFs (the
     recall layer). Falls back gracefully if the service is unavailable.
     """
@@ -287,30 +394,36 @@ def _parse_via_mineru(
     if not url:
         raise RuntimeError("MINERU_API_URL not configured")
 
-    with open(pdf_path, "rb") as f:
-        resp = _requests.post(
-            f"{url}/file_parse",
-            files={"files": (pdf_path.name, f, "application/pdf")},
-            data={
-                "backend": "pipeline",
-                "lang_list": "chinese_cht",
-                "parse_method": parse_method,
-                "return_md": "true",
-                "return_content_list": "true",
-            },
-            timeout=max(1.0, float(settings.mineru_timeout_seconds)),
+    engine_version = settings.mineru_engine_version
+    if settings.mineru_api_version == "v1":
+        md, cl, engine_version = _request_mineru_v4(
+            url, pdf_path, parse_method, max(1.0, float(settings.mineru_timeout_seconds))
         )
-    resp.raise_for_status()
+    else:
+        with open(pdf_path, "rb") as f:
+            resp = _requests.post(
+                f"{url}/file_parse",
+                files={"files": (pdf_path.name, f, "application/pdf")},
+                data={
+                    "backend": "pipeline",
+                    "lang_list": "chinese_cht",
+                    "parse_method": parse_method,
+                    "return_md": "true",
+                    "return_content_list": "true",
+                },
+                timeout=max(1.0, float(settings.mineru_timeout_seconds)),
+            )
+        resp.raise_for_status()
 
-    data = resp.json()
-    results = data.get("results", {})
-    # Key is the file stem (filename without .pdf)
-    stem = pdf_path.stem
-    item = results.get(stem) or (next(iter(results.values()), {}) if results else {})
+        data = resp.json()
+        results = data.get("results", {})
+        # Key is the file stem (filename without .pdf)
+        stem = pdf_path.stem
+        item = results.get(stem) or (next(iter(results.values()), {}) if results else {})
 
-    md = item.get("md_content", "") or ""
-    cl_raw = item.get("content_list", [])
-    cl: list = json.loads(cl_raw) if isinstance(cl_raw, str) else (cl_raw or [])
+        md = item.get("md_content", "") or ""
+        cl_raw = item.get("content_list", [])
+        cl: list = json.loads(cl_raw) if isinstance(cl_raw, str) else (cl_raw or [])
 
     paragraphs: list[ParsedParagraph] = []
     tables: list[ParsedTable] = []
@@ -363,6 +476,8 @@ def _parse_via_mineru(
         tables=tables,
         raw_json={
             "engine": "mineru",
+            "engine_version": engine_version,
+            "api_version": settings.mineru_api_version,
             "raw_preview": md[:3000],
             "paragraph_count": len(paragraphs),
             "table_count": len(tables),
@@ -445,11 +560,17 @@ def _parse_via_docling(pdf_path: Path) -> ParsedDocument:
         data = getattr(table_item, "data", None)
         cells = getattr(data, "table_cells", []) if data else []
         for cell in cells:
-            c_text = str(getattr(cell, "text", "")).strip()
-            # Docling uses 0-based row/col for some, but let's check attributes
-            row_idx = getattr(cell, "row_index", None)
-            col_idx = getattr(cell, "col_index", None)
+            row_idx = getattr(cell, "start_row_offset_idx", getattr(cell, "row_index", None))
+            col_idx = getattr(cell, "start_col_offset_idx", getattr(cell, "col_index", None))
             if row_idx is not None and col_idx is not None:
+                # Current Docling TableCell stores bbox directly; its page and
+                # coordinate system are inherited from the table provenance.
+                direct_bbox = getattr(cell, "bbox", None)
+                if direct_bbox is not None:
+                    cell_bboxes[(row_idx, col_idx)] = _bbox_from_docling(
+                        page_no=page_no, bbox_obj=direct_bbox, page_height=page_height
+                    )
+                    continue
                 c_prov = getattr(cell, "prov", None)
                 if c_prov:
                     c_bbox_obj = getattr(c_prov[0], "bbox", None)

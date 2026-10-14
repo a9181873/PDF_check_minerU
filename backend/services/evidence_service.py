@@ -104,7 +104,11 @@ def runtime_model_manifest() -> dict[str, str]:
         "platform": platform.machine(),
         "ocr_langs": os.getenv("OCR_LANGS", "chi_tra+chi_sim+eng"),
     }
-    for package in ("PyMuPDF", "docling", "paddleocr"):
+    from config import settings
+
+    manifest["mineru"] = settings.mineru_engine_version
+    manifest["mineru_api_version"] = settings.mineru_api_version
+    for package in ("PyMuPDF", "docling", "docling-core", "docling-parse", "docling-ibm-models", "paddleocr"):
         try:
             manifest[package.lower()] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
