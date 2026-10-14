@@ -87,7 +87,7 @@ docker compose up -d
 docker compose ps
 docker compose logs -f backend-minerU
 ```
-看到 `Uvicorn running on http://0.0.0.0:8000` 即 ready。
+Backend 的 `/health` 與 MinerU 的 `/v1/health` 均有容器健康檢查；兩者都顯示 `healthy` 後才算 ready。可使用 `docker compose up -d --wait --wait-timeout 180` 等待 HTTP 就緒。
 
 ### 4. 開啟瀏覽器
 <http://localhost:8001>
@@ -129,7 +129,7 @@ curl -X POST http://localhost:8001/api/compare/recompare/{task_id}
 所有上傳 PDF、比對結果、快照會存在 Docker 命名卷：
 - `backend_runtime_minerU` — 上傳檔案、比對報告、封存 PDF、快照 PNG、SQLite
 - `backend_hf_cache_minerU` — OCR / Docling 相關快取
-- `mineru_model_cache_minerU` — MinerU 模型快取
+- MinerU 4.x basic ONNX 模型已烘入 `mineru-api:basic-v4` 映像，沒有另掛模型資料卷
 
 留存功能支援案號：上傳時可填 `case_number`，存檔與下載檔名會帶案號前綴；封存去重鍵為 `old_hash + new_hash + case_number`，同一組 PDF 可依不同案號分開留存。
 

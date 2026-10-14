@@ -30,7 +30,11 @@ MinerU 更新至 **4.0.12**（basic／ONNX CPU），Docling 更新至 **2.138.0*
 
 本機 163 tests、Mac ARM64 與 Docker ARM64 六組 cold／warm 各一輪全部通過；固定錨點召回 100%、禁止誤報與數字語意誤報為 0。MinerU 原生／掃描 PDF 和 Docling 12-cell bbox 真實 smoke 通過。完整依賴及 Golden 原始資料見 `benchmarks/results/core_upgrade_*_20261014.*`。
 
-**部署狀態：OCI 預驗證中。** 已保留舊映像、Compose、Git revision 與一致性 SQLite 備份於 `/home/ubuntu/backups/pdfcheck-core-20261014`；尚未切換正式服務。下節為 2026-07-19 的歷史快照，以本節及實際部署稽核為準。
+**部署狀態：OCI 已部署 `c9290a0`，解析實作為 `eb1ba70`。** MinerU `4.0.12`、Docling `2.138.0`，兩容器 healthy、restart 0／OOM false；正式 HTTPS `/health` 與首頁 HTTP 200，部署後原生／掃描 PDF、表格及 Docling 12-cell bbox smoke 全過。SQLite integrity_check=ok，31 筆原比對紀錄保留。舊映像、Compose、Git revision 與一致性 SQLite 備份位於 `/home/ubuntu/backups/pdfcheck-core-20261014`，OCI 的 external network 與動態 host port 均保留。
+
+OCI 六組 cold／warm 各一輪守門值全過：cold 初步／完整 P95 為 13.12／61.00 秒，固定必抓召回 100%、禁止誤報及數字語意誤報 0。這是固定六對回歸，尚非五輪正式效能認證；Docker／OCI CPU 百分比採樣有超出實體上限的峰值，原始值保留稽核，未用來做容量或升級決策。
+
+首次切換因 backend「容器 running、HTTP 尚未就緒」而驗證連線重設，部署腳本已自動回復舊版。`c9290a0` 補上 backend HTTP healthcheck 與有界重試後，第二次切換及所有正式檢查通過。完整部署稽核見 `benchmarks/results/core_upgrade_deployment_20261014.json`。下節為 2026-07-19 的歷史快照，以本節及實際部署稽核為準。
 
 ## 2. 2026-07-19 基線快照
 

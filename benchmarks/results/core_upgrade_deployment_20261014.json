@@ -1,0 +1,91 @@
+{
+  "date": "2026-10-14",
+  "status": "deployed",
+  "application_revision": "c9290a0",
+  "parser_implementation_revision": "eb1ba70",
+  "images": {
+    "backend": "sha256:05914cea7abe91dd5194003fb720e97583b48bb9a72442fa41a46b16818f81e6",
+    "mineru": "sha256:883c338b2c9b364fb30498c55990721f749976f51c4f7c550a14624348ff32d3"
+  },
+  "versions": {
+    "mineru": "4.0.12",
+    "docling": "2.138.0",
+    "torch_backend": "2.12.1+cpu"
+  },
+  "mineru_runtime": "basic / ONNX CPU; no Torch or CUDA packages",
+  "parser_source_sha256": "a4f6b3e39f454a5527ff5cc9c8a1a6d78381fad13b2a65bf06e6ca219fe72cc2",
+  "archive_sha256": "26929e61c47942544b4d994e847342167994b31f67621a8f79125fb3ca1a0189",
+  "health": {
+    "backend": "healthy",
+    "mineru": "healthy",
+    "public_https": 200,
+    "restart_count": 0,
+    "oom_killed": false
+  },
+  "database": {
+    "integrity_check": "ok",
+    "comparisons": 31
+  },
+  "backup_directory": "/home/ubuntu/backups/pdfcheck-core-20261014",
+  "post_deploy_smoke": {
+    "mineru_native": {
+      "seconds": 6.34,
+      "paragraphs": 2,
+      "tables": 1,
+      "cells": 0,
+      "raw": {
+        "engine": "mineru",
+        "engine_version": "4.0.12",
+        "api_version": "v1",
+        "raw_preview": "## Core upgrade table and Traditional Chinese\n\n## 保費測試:保障內容與版本核對\n\n| Age | Premium | Coverage |\n| --- | --- | --- |\n| 20 | 100 | 10000 |\n| 30 | 200 | 20000 |\n| 40 | 300 | 30000 |",
+        "paragraph_count": 2,
+        "table_count": 1
+      },
+      "text_preview": [
+        "Core upgrade table and Traditional Chinese",
+        "保費測試:保障內容與版本核對"
+      ]
+    },
+    "mineru_scan": {
+      "seconds": 3.7,
+      "paragraphs": 1,
+      "tables": 1,
+      "cells": 0,
+      "raw": {
+        "engine": "mineru",
+        "engine_version": "4.0.12",
+        "api_version": "v1",
+        "raw_preview": "## 保費測試:保障內容與版本核對\n\n| Age | Premium | Coverage |\n| --- | --- | --- |\n| 20 | 100 | 10000 |\n| 30 | 200 | 20000 |\n| 40 | 300 | 30000 |",
+        "paragraph_count": 1,
+        "table_count": 1
+      },
+      "text_preview": [
+        "保費測試:保障內容與版本核對"
+      ]
+    },
+    "docling": {
+      "seconds": 11.77,
+      "paragraphs": 2,
+      "tables": 1,
+      "cells": 12,
+      "raw": {
+        "engine": "docling",
+        "raw_preview": "Core upgrade table and Traditional Chinese\n\n## 保費測試：保障內容與版本核對\n\n|   Age |   Premium |   Coverage |\n|-------|-----------|------------|\n|    20 |       100 |      10000 |\n|    30 |       200 |      20000 |\n|    40 |       300 |      30000 |",
+        "paragraph_count": 2,
+        "table_count": 1
+      },
+      "text_preview": [
+        "Core upgrade table and Traditional Chinese",
+        "保費測試：保障內容與版本核對"
+      ]
+    }
+  },
+  "first_attempt": {
+    "status": "automatically_rolled_back",
+    "reason": "Backend container started before its HTTP listener was ready; corrected with HTTP healthcheck and bounded curl retries."
+  },
+  "measurement_notes": [
+    "Golden cold/warm each has one run per six fixed PDF pairs; not a five-repeat formal performance certification.",
+    "CPU percentage peaks exceed host capacity in the raw Docker/OCI samples; preserved for audit but not used in deployment decisions."
+  ]
+}
