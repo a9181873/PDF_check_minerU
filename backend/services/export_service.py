@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from models.diff_models import CheckStatus, ChecklistItem, DiffItem, DiffReport, DiffType
+from models.diff_models import CheckStatus, ChecklistItem, DiffItem, DiffReport, DiffType, ReviewLane
 from services.pymupdf_guard import pymupdf_serialized
 
 _DIFF_COLORS = {
@@ -14,6 +14,10 @@ _DIFF_COLORS = {
     DiffType.ADDED: (0.0, 0.7, 0.0),
     DiffType.DELETED: (0.8, 0.0, 0.0),
 }
+
+
+def _is_content(item: DiffItem) -> bool:
+    return item.diff_type != DiffType.IMAGE_DIFF and item.review_lane != ReviewLane.NEEDS_VISUAL_REVIEW
 
 
 @pymupdf_serialized
@@ -39,8 +43,10 @@ def export_annotated_pdf(new_pdf_path: str, diff_items: list[DiffItem], output_p
 
     with fitz.open(new_pdf_path) as doc:
         for item in diff_items:
+            if not _is_content(item):
+                continue
             bbox = item.new_bbox or item.old_bbox
-            if not bbox:
+            if not bbox or bbox.page > len(doc):
                 continue
             page = doc[bbox.page - 1]
             rect = _pdf_rect_from_bbox(page, bbox)
@@ -77,6 +83,7 @@ def export_review_excel(
                 "new_value": item.new_value,
                 "page": bbox.page if bbox else None,
                 "context": item.context,
+                "review_lane": "content" if _is_content(item) else "needs_visual_review",
                 "reviewed": item.reviewed,
                 "reviewed_by": item.reviewed_by,
                 "reviewed_at": item.reviewed_at,
@@ -108,6 +115,8 @@ def export_review_excel(
             {
                 "comparison_id": comparison_id,
                 "total": total,
+                "content_diffs": sum(_is_content(item) for item in diff_report.items),
+                "uncertain_regions": sum(not _is_content(item) for item in diff_report.items),
                 "confirmed": confirmed,
                 "flagged": flagged,
                 "pending": max(total - reviewed, 0),
@@ -119,7 +128,8 @@ def export_review_excel(
     )
 
     with pd.ExcelWriter(output) as writer:
-        pd.DataFrame(diff_rows).to_excel(writer, index=False, sheet_name="diffs")
+        pd.DataFrame([row for row in diff_rows if row["review_lane"] == "content"]).to_excel(writer, index=False, sheet_name="diffs")
+        pd.DataFrame([row for row in diff_rows if row["review_lane"] != "content"]).to_excel(writer, index=False, sheet_name="uncertain_regions")
         pd.DataFrame(checklist_rows).to_excel(writer, index=False, sheet_name="checklist")
         summary_df.to_excel(writer, index=False, sheet_name="summary")
 
@@ -159,7 +169,9 @@ def export_review_report_pdf(
         f"Created at: {diff_report.created_at}",
         "",
         "Diff Summary",
-        f"- Total diffs: {total}",
+        f"- Total review items (including uncertain): {total}",
+        f"- Content diffs: {sum(_is_content(item) for item in diff_report.items)}",
+        f"- Uncertain regions: {sum(not _is_content(item) for item in diff_report.items)}",
         f"- Confirmed diffs: {confirmed}",
         f"- Flagged diffs: {flagged}",
         f"- Reviewed diffs: {reviewed}",
@@ -246,6 +258,8 @@ def export_review_log_json(
         "summary": diff_report.summary,
         "diff_summary": {
             "total": total,
+            "content_diffs": sum(_is_content(item) for item in diff_report.items),
+            "uncertain_regions": sum(not _is_content(item) for item in diff_report.items),
             "confirmed": confirmed,
             "flagged": flagged,
             "pending": max(total - reviewed, 0),

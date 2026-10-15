@@ -62,6 +62,7 @@ interface CompareState {
     added: number;
     deleted: number;
     modified: number;
+    textModified: number;
     flagged: number;
     visual: number;
   };
@@ -88,16 +89,20 @@ function filterDiffItems(items: DiffItem[], searchQuery: string, reviewedOnly: b
 export function calculateDiffStats(items: DiffItem[]) {
   const stats = items.reduce(
     (result, item) => {
+      if (item.diff_type === 'image_diff' || item.review_lane === 'needs_visual_review') {
+        result.visual += 1;
+        return result;
+      }
       result.total += 1;
       if (item.reviewed) result.reviewed += 1;
       if (item.diff_type === 'added') result.added += 1;
       if (item.diff_type === 'deleted') result.deleted += 1;
-      if (item.diff_type === 'text_modified' || item.diff_type === 'number_modified') result.modified += 1;
+      if (item.diff_type === 'number_modified') result.modified += 1;
+      if (item.diff_type === 'text_modified') result.textModified += 1;
       if (item.flagged) result.flagged += 1;
-      if (item.diff_type === 'image_diff') result.visual += 1;
       return result;
     },
-    { total: 0, reviewed: 0, added: 0, deleted: 0, modified: 0, flagged: 0, visual: 0 }
+    { total: 0, reviewed: 0, added: 0, deleted: 0, modified: 0, textModified: 0, flagged: 0, visual: 0 }
   );
   return { ...stats, pending: stats.total - stats.reviewed };
 }
@@ -155,7 +160,7 @@ export const useCompareStore = create<CompareState>()(
         set({
           report,
           filteredItems: filterDiffItems(items, searchQuery, reviewedOnly),
-          selectedDiffId: selectionStillValid ? selectedDiffId : (items.length > 0 ? items[0].id : null),
+          selectedDiffId: selectionStillValid ? selectedDiffId : (items.find((item) => item.diff_type !== 'image_diff' && item.review_lane !== 'needs_visual_review')?.id ?? null),
         });
       },
 

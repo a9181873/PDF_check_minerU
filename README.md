@@ -4,6 +4,10 @@ PDF Check MinerU 是一套用來比對「舊版 PDF」與「新版 PDF」差異�
 
 這個專案特別適合保險 DM、條款、費率表、簡章、公告等需要反覆改版與人工審核的 PDF。
 
+主要審核清單以**文字、數字及表格內容的實際修改**為準。相同內容重排、LOGO 畫質及壓縮雜訊不算內容修改；尚無可靠文字／數字解釋的影像候選另列「辨識待確認」，可展開檢查，未計入主要內容差異數。
+
+2026-10-15 內容優先修正：177 項測試與八組 PDF 固定錨點驗收通過；同機單輪冷快取差異引擎總耗時約減少 22%。範圍、個別案例數據與仍待解決的 OCR 限制見 [`docs/content_review_update_2026-10-15.md`](docs/content_review_update_2026-10-15.md)。
+
 ## 目前技術狀態（2026-07-19）
 
 | 項目 | 正式使用狀況 |
@@ -24,7 +28,7 @@ PDF Check MinerU 是一套用來比對「舊版 PDF」與「新版 PDF」差異�
 比對結果已改成兩條明確的審核軌道：
 
 - `content`：有可靠新舊值的文字、數字、條款與表格內容差異。
-- `needs_visual_review`：像素證明區域有變，但 OCR 無法可靠解讀；仍會保留 bbox 與裁切圖，不再只縮成一個 `suppressed_count`。
+- `needs_visual_review`：僅確認影像有差異，尚未確認文字／數字是否修改；保留 bbox 與裁切圖，與主要內容差異分開。
 
 每筆差異現在帶有穩定 `candidate_id`、`risk_level`、`decision_reason`、`evidence[]` 與模型版本資訊。API/WebSocket 會先送 `preliminary_result`，有啟用 OCR 召回或第二引擎時再送 `result_updated`，最後送 `complete`。分析未完成、關鍵差異或待人工區域未審完時不得封存。
 

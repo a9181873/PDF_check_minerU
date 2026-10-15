@@ -67,7 +67,7 @@ const ComparePage: React.FC = () => {
   const {
     status,
     report,
-    filteredItems,
+    filteredItems: allFilteredItems,
     searchQuery,
     selectedDiffId,
     reviewedOnly,
@@ -98,6 +98,10 @@ const ComparePage: React.FC = () => {
     flagDiff: storeFlagDiff,
   } = useCompareStore();
 
+  const [showUncertain, setShowUncertain] = useState(false);
+  const filteredItems = useMemo(() => allFilteredItems.filter((item) => showUncertain || (
+    item.diff_type !== 'image_diff' && item.review_lane !== 'needs_visual_review'
+  )), [allFilteredItems, showUncertain]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showChecklistUpload, setShowChecklistUpload] = useState(false);
@@ -158,6 +162,7 @@ const ComparePage: React.FC = () => {
   useEffect(() => {
     if (taskId) {
       setTaskId(taskId);
+      setShowUncertain(false);
     }
   }, [taskId, setTaskId]);
 
@@ -826,7 +831,7 @@ const ComparePage: React.FC = () => {
 
             <div className="grid grid-cols-4 gap-1.5 mb-2">
               <div className="rounded-lg border border-primary-100 bg-primary-50 p-2">
-                <div className="text-[11px] text-primary-700">總數</div>
+                <div className="whitespace-nowrap text-[10px] text-primary-700">內容差異</div>
                 <div className="text-lg font-bold leading-tight text-primary-900">{stats.total}</div>
               </div>
               <div className="rounded-lg border border-[#dcefe5] bg-[#eef7f1] p-2">
@@ -839,9 +844,9 @@ const ComparePage: React.FC = () => {
               </div>
               <div
                 className="rounded-lg border border-red-100 bg-red-50 p-2"
-                title="審核人員按「標記問題」的差異筆數"
+                title="審核人員標記問題的文字／數字差異筆數"
               >
-                <div className="text-[11px] text-red-700">問題</div>
+                <div className="whitespace-nowrap text-[10px] text-red-700">內容問題</div>
                 <div className="text-lg font-bold leading-tight text-red-900">{stats.flagged}</div>
               </div>
             </div>
@@ -859,7 +864,11 @@ const ComparePage: React.FC = () => {
               <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-800">
                 <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
                 <span className="text-xs">
-                  有 {report.unresolved_region_count} 處待人工判讀區域，均已列入清單，請核對新舊裁切圖。
+                  另有 {report.unresolved_region_count} 處尚未確認內容，未計入內容差異。
+                  <button type="button" className="ml-1 font-medium underline" onClick={() => {
+                    setShowUncertain(!showUncertain);
+                    if (showUncertain) setSelectedDiffId(null);
+                  }}>{showUncertain ? '收合待確認區域' : '查看待確認區域'}</button>
                 </span>
               </div>
             ) : null}
@@ -895,8 +904,8 @@ const ComparePage: React.FC = () => {
                 <span className="font-medium text-gray-900">{stats.modified}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-600">版面/區域</span>
-                <span className="font-medium text-gray-900">{stats.visual}</span>
+                <span className="text-gray-600">文字修改</span>
+                <span className="font-medium text-gray-900">{stats.textModified}</span>
               </div>
             </div>
           </div>

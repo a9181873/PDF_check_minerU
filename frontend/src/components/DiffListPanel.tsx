@@ -25,7 +25,7 @@ const getDiffLabel = (type: DiffType) => {
     case DiffType.TEXT_MODIFIED:
       return '文字修改';
     case DiffType.IMAGE_DIFF:
-      return '表格/版面';
+      return '內容待確認';
     default:
       return '修改';
   }
@@ -40,7 +40,7 @@ const DiffListPanel: React.FC<DiffListPanelProps> = ({
   if (diffItems.length === 0) {
     return (
       <div className={`flex flex-col items-center justify-center h-full text-gray-500 space-y-2 p-6 ${className}`}>
-        <p>目前沒有差異項目</p>
+        <p>目前沒有已確認的文字或數字差異</p>
       </div>
     );
   }
@@ -65,21 +65,21 @@ const DiffListPanel: React.FC<DiffListPanelProps> = ({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
               <span className="text-sm font-medium text-gray-900">{getDiffLabel(item.diff_type)}</span>
-              {item.risk_level && (
+              {item.risk_level && !isVisualReview(item) && (
                 <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
                   item.risk_level === 'critical' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
                 }`}>
                   {item.risk_level === 'critical' ? '關鍵' : item.risk_level === 'high' ? '高風險' : '一般'}
                 </span>
               )}
-              <span className="text-xs text-gray-500">{item.context}</span>
+              <span className="text-xs text-gray-500">{item.context.replace('表格/版面變更', '內容待確認')}</span>
               {item.reviewed && <CheckCircle className="text-green-500" size={14} />}
             </div>
             <div className="mb-2">
               <div className="text-xs text-gray-500 mb-1">差異摘要</div>
               <p className="text-sm text-gray-800 line-clamp-2">
                 {item.review_lane === 'needs_visual_review' || item.diff_type === DiffType.IMAGE_DIFF
-                  ? '模型無法可靠解讀，但此區域確有變更，請人工核對新舊畫面'
+                  ? '影像有差異，但尚未確認文字或數字是否修改。'
                   : item.old_value && item.new_value
                   ? getTrimmedDiffText(item.old_value, item.new_value)
                   : item.new_value ?? item.old_value ?? item.context}
@@ -100,7 +100,7 @@ const DiffListPanel: React.FC<DiffListPanelProps> = ({
       <div className="flex-1 overflow-auto">
         {contentItems.length > 0 && <div className="sticky top-0 z-10 bg-white px-3 py-2 text-xs font-semibold text-gray-600 border-b">正式內容差異（{contentItems.length}）</div>}
         <div className="divide-y divide-gray-100">{contentItems.map(renderItem)}</div>
-        {visualReviewItems.length > 0 && <div className="sticky top-0 z-10 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 border-y border-amber-200">待人工判讀區域（{visualReviewItems.length}）</div>}
+        {visualReviewItems.length > 0 && <div className="sticky top-0 z-10 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 border-y border-amber-200">辨識待確認（{visualReviewItems.length}）</div>}
         <div className="divide-y divide-gray-100">{visualReviewItems.map(renderItem)}</div>
       </div>
     </div>

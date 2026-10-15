@@ -20,3 +20,6 @@ lxml==6.1.1
 numpy==2.4.6
 scipy==1.17.1
 Pillow==12.2.0
+
+# Compiled local correlation and glyph-contour comparison (existing runtime version).
+opencv-python-headless==5.0.0.93

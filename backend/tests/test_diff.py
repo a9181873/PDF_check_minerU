@@ -768,7 +768,7 @@ def test_content_filter_suppresses_small_visual_noise_even_in_image_mode():
     assert stats["suppressed_non_material_visual"] == 1
 
 
-def test_coalesce_reviewable_visual_items_groups_same_page_regions():
+def test_coalesce_reviewable_visual_items_does_not_join_different_sections():
     first = DiffItem(
         id="",
         diff_type=DiffType.IMAGE_DIFF,
@@ -804,11 +804,10 @@ def test_coalesce_reviewable_visual_items_groups_same_page_regions():
     merged = _coalesce_reviewable_visual_items([first, second, footer], stats=stats)
 
     visual_items = [item for item in merged if item.diff_type == DiffType.IMAGE_DIFF]
-    assert len(visual_items) == 1
-    assert visual_items[0].new_bbox == BBox(page=1, x0=20, y0=80, x1=560, y1=420)
-    assert "2 區域" in visual_items[0].context
+    assert len(visual_items) == 2
+    assert {item.new_bbox.y1 for item in visual_items} == {220, 420}
     assert any(item.diff_type == DiffType.NUMBER_MODIFIED for item in merged)
-    assert stats["coalesced_visual_regions"] == 1
+    assert stats.get("coalesced_visual_regions", 0) == 0
 
 
 def test_coalesce_reviewable_visual_items_keeps_distant_regions_separate():
@@ -893,6 +892,8 @@ def test_tesseract_subprocess_is_limited_to_one_openmp_thread(monkeypatch):
 
 
 def test_tesseract_nonzero_exit_is_observable_and_incomplete(monkeypatch):
+    with diff_service._OCR_ROI_CACHE_LOCK:
+        diff_service._OCR_ROI_CACHE.clear()
     outcomes = []
 
     monkeypatch.setattr(
@@ -1225,7 +1226,7 @@ def test_generate_diff_report_keeps_table_visual_fallback_for_image_pdf(monkeypa
 
     assert report.total_diffs == 1
     assert report.items[0].diff_type == DiffType.IMAGE_DIFF
-    assert report.items[0].context == "Page 1 表格/版面變更"
+    assert report.items[0].context == "Page 1 內容待確認"
     assert report.suppressed_count == 0
     assert "visual_retained=1" in (report.summary or "")
 
@@ -1301,7 +1302,7 @@ def test_generate_diff_report_suppresses_small_visual_noise_for_image_pdf(monkey
     assert "visual_noise_suppressed_final=1" in (report.summary or "")
 
 
-def test_generate_diff_report_fuses_visual_region_with_alignment_recall(monkeypatch):
+def test_generate_diff_report_keeps_content_location_separate_from_uncertain_region(monkeypatch):
     visual_region = DiffItem(
         id="",
         diff_type=DiffType.IMAGE_DIFF,
@@ -1344,11 +1345,13 @@ def test_generate_diff_report_fuses_visual_region_with_alignment_recall(monkeypa
         new_pdf_path="/tmp/new.pdf",
     )
 
-    assert report.total_diffs == 1
-    assert report.items[0].diff_type == DiffType.NUMBER_MODIFIED
-    assert "3.90" in (report.items[0].old_value or "")
-    assert "4.00" in (report.items[0].new_value or "")
-    assert "visual_fused=1" in (report.summary or "")
+    assert report.total_diffs == 2
+    content = next(item for item in report.items if item.diff_type == DiffType.NUMBER_MODIFIED)
+    assert "3.90" in (content.old_value or "")
+    assert "4.00" in (content.new_value or "")
+    assert content.new_bbox.y0 >= 400
+    assert report.unresolved_region_count == 1
+    assert "visual_fused=" not in (report.summary or "")
 
 
 def test_generate_diff_report_can_use_alignment_recall_strategy(monkeypatch):

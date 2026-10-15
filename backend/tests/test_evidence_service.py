@@ -45,7 +45,9 @@ def test_visual_evidence_enters_review_lane_and_numeric_is_critical():
     annotate_diff_items([visual, numeric], stage=AnalysisStage.PRELIMINARY)
 
     assert visual.review_lane == ReviewLane.NEEDS_VISUAL_REVIEW
-    assert visual.risk_level == RiskLevel.HIGH
+    assert visual.risk_level == RiskLevel.MEDIUM
+    assert visual.confidence == 0.0
+    assert visual.context == "Page 1 內容待確認"
     assert visual.evidence[0].kind == "image_diff"
     assert numeric.review_lane == ReviewLane.CONTENT
     assert numeric.risk_level == RiskLevel.CRITICAL

@@ -42,7 +42,7 @@ const getDiffLabel = (type: DiffType) => {
     case DiffType.TEXT_MODIFIED:
       return '文字修改';
     case DiffType.IMAGE_DIFF:
-      return '表格/版面';
+      return '內容待確認';
     default:
       return '修改';
   }

@@ -1,0 +1,1882 @@
+{
+  "date": "2026-10-15",
+  "environment": "MacBook Air M4 / Docker Linux ARM64",
+  "baseline_git": "9ae6f1a",
+  "baseline_image": "pdf-check-backend:core-update",
+  "baseline_image_id": "sha256:05914cea7abe91dd5194003fb720e97583b48bb9a72442fa41a46b16818f81e6",
+  "candidate": {
+    "label": "candidate-v2",
+    "runs": [
+      {
+        "case": "fengshouai",
+        "mode": "cold",
+        "preliminary_seconds": 0.9843,
+        "complete_seconds": 3.2481,
+        "total": 2,
+        "content": 2,
+        "uncertain": 0,
+        "ocr_process_calls": 16,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_24_to_28",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d002",
+              "hits": [
+                "d002"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 0
+        },
+        "warnings": []
+      },
+      {
+        "case": "fengshouai",
+        "mode": "warm",
+        "preliminary_seconds": 0.0047,
+        "complete_seconds": 0.0139,
+        "total": 2,
+        "content": 2,
+        "uncertain": 0,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_24_to_28",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d002",
+              "hits": [
+                "d002"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 0
+        },
+        "warnings": []
+      },
+      {
+        "case": "ciai_micro",
+        "mode": "cold",
+        "preliminary_seconds": 3.5885,
+        "complete_seconds": 14.6951,
+        "total": 4,
+        "content": 2,
+        "uncertain": 2,
+        "ocr_process_calls": 105,
+        "ocr_cache_hits": 1,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p3_content_or_visual",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p4_footer",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "(?:^|\\D)(?:2\\s*(?:->|→)\\s*3|3\\s*(?:->|→)\\s*5|9\\s*(?:->|→)\\s*1)(?:\\D|$)",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p1_4_to_24",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p2_35_to_5",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 2
+        },
+        "warnings": []
+      },
+      {
+        "case": "ciai_micro",
+        "mode": "warm",
+        "preliminary_seconds": 0.0069,
+        "complete_seconds": 0.0182,
+        "total": 4,
+        "content": 2,
+        "uncertain": 2,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 1,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p3_content_or_visual",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p4_footer",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "(?:^|\\D)(?:2\\s*(?:->|→)\\s*3|3\\s*(?:->|→)\\s*5|9\\s*(?:->|→)\\s*1)(?:\\D|$)",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p1_4_to_24",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p2_35_to_5",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 2
+        },
+        "warnings": []
+      },
+      {
+        "case": "xinfuaiai",
+        "mode": "cold",
+        "preliminary_seconds": 3.2296,
+        "complete_seconds": 19.2159,
+        "total": 22,
+        "content": 3,
+        "uncertain": 19,
+        "ocr_process_calls": 150,
+        "ocr_cache_hits": 2,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p1_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d007",
+              "hits": [
+                "d007"
+              ]
+            },
+            {
+              "id": "p2_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d016",
+              "hits": [
+                "d016"
+              ]
+            },
+            {
+              "id": "p3_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d017",
+              "hits": [
+                "d017"
+              ]
+            },
+            {
+              "id": "p4_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d018",
+              "hits": [
+                "d018"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "0800.*(?:->|→).*0800",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "40歲.*(?:->|→).*40歲",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "310元.*(?:->|→).*310元",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 4,
+          "must_detect_total": 4,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 19
+        },
+        "warnings": []
+      },
+      {
+        "case": "xinfuaiai",
+        "mode": "warm",
+        "preliminary_seconds": 0.0063,
+        "complete_seconds": 0.0201,
+        "total": 22,
+        "content": 3,
+        "uncertain": 19,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 2,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p1_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d007",
+              "hits": [
+                "d007"
+              ]
+            },
+            {
+              "id": "p2_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d016",
+              "hits": [
+                "d016"
+              ]
+            },
+            {
+              "id": "p3_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d017",
+              "hits": [
+                "d017"
+              ]
+            },
+            {
+              "id": "p4_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d018",
+              "hits": [
+                "d018"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "0800.*(?:->|→).*0800",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "40歲.*(?:->|→).*40歲",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "310元.*(?:->|→).*310元",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 4,
+          "must_detect_total": 4,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 19
+        },
+        "warnings": []
+      },
+      {
+        "case": "meibaofa",
+        "mode": "cold",
+        "preliminary_seconds": 1.6423,
+        "complete_seconds": 6.9607,
+        "total": 4,
+        "content": 2,
+        "uncertain": 2,
+        "ocr_process_calls": 46,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_content_or_visual",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p4_footer",
+              "passed": true,
+              "matched_item_id": "d003",
+              "hits": [
+                "d003"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 2
+        },
+        "warnings": []
+      },
+      {
+        "case": "meibaofa",
+        "mode": "warm",
+        "preliminary_seconds": 0.005,
+        "complete_seconds": 0.0134,
+        "total": 4,
+        "content": 2,
+        "uncertain": 2,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_content_or_visual",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p4_footer",
+              "passed": true,
+              "matched_item_id": "d003",
+              "hits": [
+                "d003"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 2
+        },
+        "warnings": []
+      },
+      {
+        "case": "meilbao",
+        "mode": "cold",
+        "preliminary_seconds": 4.363,
+        "complete_seconds": 22.8133,
+        "total": 6,
+        "content": 3,
+        "uncertain": 3,
+        "ocr_process_calls": 166,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p3_main_table",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d006",
+              "hits": [
+                "d006"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "447,6[iIl]12",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p3_95_to_00",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p4_64_to_06",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 3
+        },
+        "warnings": []
+      },
+      {
+        "case": "meilbao",
+        "mode": "warm",
+        "preliminary_seconds": 0.0225,
+        "complete_seconds": 0.0416,
+        "total": 6,
+        "content": 3,
+        "uncertain": 3,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p3_main_table",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d006",
+              "hits": [
+                "d006"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "447,6[iIl]12",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p3_95_to_00",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p4_64_to_06",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 3
+        },
+        "warnings": []
+      },
+      {
+        "case": "zhenmeili",
+        "mode": "cold",
+        "preliminary_seconds": 3.4651,
+        "complete_seconds": 10.407,
+        "total": 7,
+        "content": 1,
+        "uncertain": 6,
+        "ocr_process_calls": 30,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d002",
+              "hits": [
+                "d002"
+              ]
+            },
+            {
+              "id": "p3_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            },
+            {
+              "id": "p4_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d006",
+              "hits": [
+                "d006"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d007",
+              "hits": [
+                "d007"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 4,
+          "must_detect_total": 4,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p3_71_to_7",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p4_71_to_7",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 6
+        },
+        "warnings": []
+      },
+      {
+        "case": "zhenmeili",
+        "mode": "warm",
+        "preliminary_seconds": 0.0082,
+        "complete_seconds": 0.0251,
+        "total": 7,
+        "content": 1,
+        "uncertain": 6,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d002",
+              "hits": [
+                "d002"
+              ]
+            },
+            {
+              "id": "p3_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            },
+            {
+              "id": "p4_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d006",
+              "hits": [
+                "d006"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d007",
+              "hits": [
+                "d007"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 4,
+          "must_detect_total": 4,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p3_71_to_7",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p4_71_to_7",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 6
+        },
+        "warnings": []
+      },
+      {
+        "case": "heart",
+        "mode": "cold",
+        "preliminary_seconds": 4.3397,
+        "complete_seconds": 15.2596,
+        "total": 6,
+        "content": 1,
+        "uncertain": 5,
+        "ocr_process_calls": 86,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "complete_footer",
+              "passed": true,
+              "matched_item_id": "d006",
+              "hits": [
+                "d006"
+              ]
+            }
+          ],
+          "must_not_detect": [],
+          "must_detect_passed": 1,
+          "must_detect_total": 1,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "unchanged_logo",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 5
+        },
+        "warnings": []
+      },
+      {
+        "case": "heart",
+        "mode": "warm",
+        "preliminary_seconds": 0.0092,
+        "complete_seconds": 0.0213,
+        "total": 6,
+        "content": 1,
+        "uncertain": 5,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "complete_footer",
+              "passed": true,
+              "matched_item_id": "d006",
+              "hits": [
+                "d006"
+              ]
+            }
+          ],
+          "must_not_detect": [],
+          "must_detect_passed": 1,
+          "must_detect_total": 1,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "unchanged_logo",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 5
+        },
+        "warnings": []
+      },
+      {
+        "case": "jinfang",
+        "mode": "cold",
+        "preliminary_seconds": 4.8638,
+        "complete_seconds": 24.6063,
+        "total": 9,
+        "content": 1,
+        "uncertain": 8,
+        "ocr_process_calls": 173,
+        "ocr_cache_hits": 3,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "complete_footer",
+              "passed": true,
+              "matched_item_id": "d009",
+              "hits": [
+                "d009"
+              ]
+            }
+          ],
+          "must_not_detect": [],
+          "must_detect_passed": 1,
+          "must_detect_total": 1,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "same_approval_text",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "same_annual_premium_label",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 8
+        },
+        "warnings": []
+      },
+      {
+        "case": "jinfang",
+        "mode": "warm",
+        "preliminary_seconds": 0.0091,
+        "complete_seconds": 0.0293,
+        "total": 9,
+        "content": 1,
+        "uncertain": 8,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 3,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "complete_footer",
+              "passed": true,
+              "matched_item_id": "d009",
+              "hits": [
+                "d009"
+              ]
+            }
+          ],
+          "must_not_detect": [],
+          "must_detect_passed": 1,
+          "must_detect_total": 1,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "same_approval_text",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "same_annual_premium_label",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 8
+        },
+        "warnings": []
+      }
+    ]
+  },
+  "timing_scope": "單輪冷／熱快取；計時含初步與完整diff，未含解析、上傳、裁切與快照；不代表母體準確率或正式SLA",
+  "baseline": {
+    "label": "baseline",
+    "runs": [
+      {
+        "case": "fengshouai",
+        "mode": "cold",
+        "preliminary_seconds": 0.9694,
+        "complete_seconds": 3.1341,
+        "total": 2,
+        "content": 2,
+        "uncertain": 0,
+        "ocr_process_calls": 16,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_24_to_28",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d002",
+              "hits": [
+                "d002"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 0
+        },
+        "warnings": []
+      },
+      {
+        "case": "fengshouai",
+        "mode": "warm",
+        "preliminary_seconds": 0.0049,
+        "complete_seconds": 0.014,
+        "total": 2,
+        "content": 2,
+        "uncertain": 0,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_24_to_28",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d002",
+              "hits": [
+                "d002"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 0
+        },
+        "warnings": []
+      },
+      {
+        "case": "ciai_micro",
+        "mode": "cold",
+        "preliminary_seconds": 4.4709,
+        "complete_seconds": 20.0428,
+        "total": 3,
+        "content": 1,
+        "uncertain": 2,
+        "ocr_process_calls": 156,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p3_content_or_visual",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p4_footer",
+              "passed": true,
+              "matched_item_id": "d003",
+              "hits": [
+                "d003"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "(?:^|\\D)(?:2\\s*(?:->|→)\\s*3|3\\s*(?:->|→)\\s*5|9\\s*(?:->|→)\\s*1)(?:\\D|$)",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p1_4_to_24",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p2_35_to_5",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 2
+        },
+        "warnings": []
+      },
+      {
+        "case": "ciai_micro",
+        "mode": "warm",
+        "preliminary_seconds": 0.0142,
+        "complete_seconds": 0.0317,
+        "total": 3,
+        "content": 1,
+        "uncertain": 2,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p3_content_or_visual",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p4_footer",
+              "passed": true,
+              "matched_item_id": "d003",
+              "hits": [
+                "d003"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "(?:^|\\D)(?:2\\s*(?:->|→)\\s*3|3\\s*(?:->|→)\\s*5|9\\s*(?:->|→)\\s*1)(?:\\D|$)",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p1_4_to_24",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p2_35_to_5",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 2
+        },
+        "warnings": []
+      },
+      {
+        "case": "xinfuaiai",
+        "mode": "cold",
+        "preliminary_seconds": 5.3299,
+        "complete_seconds": 25.5071,
+        "total": 13,
+        "content": 2,
+        "uncertain": 11,
+        "ocr_process_calls": 152,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p1_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            },
+            {
+              "id": "p2_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d009",
+              "hits": [
+                "d009"
+              ]
+            },
+            {
+              "id": "p3_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d010",
+              "hits": [
+                "d010"
+              ]
+            },
+            {
+              "id": "p4_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d011",
+              "hits": [
+                "d011"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "0800.*(?:->|→).*0800",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "40歲.*(?:->|→).*40歲",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "310元.*(?:->|→).*310元",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 4,
+          "must_detect_total": 4,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 11
+        },
+        "warnings": []
+      },
+      {
+        "case": "xinfuaiai",
+        "mode": "warm",
+        "preliminary_seconds": 0.0061,
+        "complete_seconds": 0.0195,
+        "total": 13,
+        "content": 2,
+        "uncertain": 11,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p1_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            },
+            {
+              "id": "p2_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d009",
+              "hits": [
+                "d009"
+              ]
+            },
+            {
+              "id": "p3_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d010",
+              "hits": [
+                "d010"
+              ]
+            },
+            {
+              "id": "p4_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d011",
+              "hits": [
+                "d011"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "0800.*(?:->|→).*0800",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "40歲.*(?:->|→).*40歲",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "310元.*(?:->|→).*310元",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 4,
+          "must_detect_total": 4,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 11
+        },
+        "warnings": []
+      },
+      {
+        "case": "meibaofa",
+        "mode": "cold",
+        "preliminary_seconds": 1.9025,
+        "complete_seconds": 7.3835,
+        "total": 3,
+        "content": 1,
+        "uncertain": 2,
+        "ocr_process_calls": 46,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_content_or_visual",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p4_footer",
+              "passed": true,
+              "matched_item_id": "d003",
+              "hits": [
+                "d003"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 2
+        },
+        "warnings": []
+      },
+      {
+        "case": "meibaofa",
+        "mode": "warm",
+        "preliminary_seconds": 0.0056,
+        "complete_seconds": 0.0153,
+        "total": 3,
+        "content": 1,
+        "uncertain": 2,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_content_or_visual",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p4_footer",
+              "passed": true,
+              "matched_item_id": "d003",
+              "hits": [
+                "d003"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 2
+        },
+        "warnings": []
+      },
+      {
+        "case": "meilbao",
+        "mode": "cold",
+        "preliminary_seconds": 4.6697,
+        "complete_seconds": 27.2808,
+        "total": 6,
+        "content": 2,
+        "uncertain": 4,
+        "ocr_process_calls": 198,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p3_main_table",
+              "passed": true,
+              "matched_item_id": "d003",
+              "hits": [
+                "d003"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d006",
+              "hits": [
+                "d006"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "447,6[iIl]12",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p3_95_to_00",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p4_64_to_06",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 4
+        },
+        "warnings": []
+      },
+      {
+        "case": "meilbao",
+        "mode": "warm",
+        "preliminary_seconds": 0.016,
+        "complete_seconds": 0.0534,
+        "total": 6,
+        "content": 2,
+        "uncertain": 4,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p3_main_table",
+              "passed": true,
+              "matched_item_id": "d003",
+              "hits": [
+                "d003"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d006",
+              "hits": [
+                "d006"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "447,6[iIl]12",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p3_95_to_00",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p4_64_to_06",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 4
+        },
+        "warnings": []
+      },
+      {
+        "case": "zhenmeili",
+        "mode": "cold",
+        "preliminary_seconds": 4.1441,
+        "complete_seconds": 14.9192,
+        "total": 7,
+        "content": 1,
+        "uncertain": 6,
+        "ocr_process_calls": 62,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d002",
+              "hits": [
+                "d002"
+              ]
+            },
+            {
+              "id": "p3_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            },
+            {
+              "id": "p4_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d006",
+              "hits": [
+                "d006"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d007",
+              "hits": [
+                "d007"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 4,
+          "must_detect_total": 4,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p3_71_to_7",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p4_71_to_7",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 6
+        },
+        "warnings": []
+      },
+      {
+        "case": "zhenmeili",
+        "mode": "warm",
+        "preliminary_seconds": 0.008,
+        "complete_seconds": 0.0249,
+        "total": 7,
+        "content": 1,
+        "uncertain": 6,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d002",
+              "hits": [
+                "d002"
+              ]
+            },
+            {
+              "id": "p3_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            },
+            {
+              "id": "p4_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d006",
+              "hits": [
+                "d006"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d007",
+              "hits": [
+                "d007"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 4,
+          "must_detect_total": 4,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p3_71_to_7",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p4_71_to_7",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 6
+        },
+        "warnings": []
+      },
+      {
+        "case": "heart",
+        "mode": "cold",
+        "preliminary_seconds": 5.8602,
+        "complete_seconds": 21.9705,
+        "total": 4,
+        "content": 1,
+        "uncertain": 3,
+        "ocr_process_calls": 142,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "complete_footer",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            }
+          ],
+          "must_not_detect": [],
+          "must_detect_passed": 1,
+          "must_detect_total": 1,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "unchanged_logo",
+              "passed": false,
+              "hits": [
+                "d002"
+              ]
+            }
+          ],
+          "numeric_interpretation_false_positives": 1,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 3
+        },
+        "warnings": []
+      },
+      {
+        "case": "heart",
+        "mode": "warm",
+        "preliminary_seconds": 0.0112,
+        "complete_seconds": 0.0241,
+        "total": 4,
+        "content": 1,
+        "uncertain": 3,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "complete_footer",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            }
+          ],
+          "must_not_detect": [],
+          "must_detect_passed": 1,
+          "must_detect_total": 1,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "unchanged_logo",
+              "passed": false,
+              "hits": [
+                "d002"
+              ]
+            }
+          ],
+          "numeric_interpretation_false_positives": 1,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 3
+        },
+        "warnings": []
+      },
+      {
+        "case": "jinfang",
+        "mode": "cold",
+        "preliminary_seconds": 5.702,
+        "complete_seconds": 30.6936,
+        "total": 11,
+        "content": 1,
+        "uncertain": 10,
+        "ocr_process_calls": 230,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "complete_footer",
+              "passed": true,
+              "matched_item_id": "d011",
+              "hits": [
+                "d011"
+              ]
+            }
+          ],
+          "must_not_detect": [],
+          "must_detect_passed": 1,
+          "must_detect_total": 1,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "same_approval_text",
+              "passed": false,
+              "hits": [
+                "d002"
+              ]
+            },
+            {
+              "id": "same_annual_premium_label",
+              "passed": false,
+              "hits": [
+                "d003"
+              ]
+            }
+          ],
+          "numeric_interpretation_false_positives": 2,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 10
+        },
+        "warnings": []
+      },
+      {
+        "case": "jinfang",
+        "mode": "warm",
+        "preliminary_seconds": 0.0243,
+        "complete_seconds": 0.0495,
+        "total": 11,
+        "content": 1,
+        "uncertain": 10,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "complete_footer",
+              "passed": true,
+              "matched_item_id": "d011",
+              "hits": [
+                "d011"
+              ]
+            }
+          ],
+          "must_not_detect": [],
+          "must_detect_passed": 1,
+          "must_detect_total": 1,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "same_approval_text",
+              "passed": false,
+              "hits": [
+                "d002"
+              ]
+            },
+            {
+              "id": "same_annual_premium_label",
+              "passed": false,
+              "hits": [
+                "d003"
+              ]
+            }
+          ],
+          "numeric_interpretation_false_positives": 2,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 10
+        },
+        "warnings": []
+      }
+    ]
+  },
+  "ui": {
+    "passed": true,
+    "stats": {
+      "total": 1,
+      "reviewed": 0,
+      "added": 0,
+      "deleted": 0,
+      "modified": 1,
+      "textModified": 0,
+      "flagged": 0,
+      "visual": 8,
+      "pending": 1
+    },
+    "uncertain_regions": 8,
+    "checks": [
+      "main_count_excludes_uncertainty",
+      "uncertain_collapsed_by_default",
+      "expand_and_collapse",
+      "uncertainty_not_high_risk",
+      "uncalibrated_confidence_hidden",
+      "actual_pdfs_rendered"
+    ],
+    "page_errors": []
+  },
+  "tests": {
+    "passed": 177
+  },
+  "known_limits": [
+    "影像PDF仍有未能可靠辨識的內容，另列待確認；未宣稱所有文字／數字已完整召回",
+    "既有六組中部分必抓錨點允許以待確認區域命中，不能當成已擷取文字內容",
+    "material_visual_suppressed 固定值不作漏報率量測"
+  ]
+}

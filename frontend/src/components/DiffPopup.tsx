@@ -33,7 +33,7 @@ const getDiffLabel = (type: DiffType) => {
     case DiffType.TEXT_MODIFIED:
       return '文字修改';
     case DiffType.IMAGE_DIFF:
-      return '表格/版面';
+      return '內容待確認';
     default:
       return '內容修改';
   }
@@ -252,23 +252,18 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
             }}
           >
             <p className="text-sm text-gray-900 whitespace-pre-wrap break-words">
-              {diff.old_value && diff.new_value
+              {isImageDiff
+                ? '此處尚未取得可靠的文字或數字差異，請對照裁切圖確認。'
+                : diff.old_value && diff.new_value
                 ? getTrimmedDiffText(diff.old_value, diff.new_value)
-                : diff.new_value ?? diff.old_value ?? (isImageDiff
-                  ? '偵測到表格或版面結構變更，請對照下方截圖確認差異。'
-                  : diff.context)}
+                : diff.new_value ?? diff.old_value ?? diff.context}
             </p>
           </div>
 
           <h4 className="text-sm font-medium text-gray-500 mb-2">位置</h4>
           <div className="flex items-center flex-wrap gap-2">
             <ExternalLink size={16} className="text-gray-400" />
-            <span className="text-gray-700">{diff.context}</span>
-            {diff.confidence ? (
-              <span className="text-xs px-2 py-1 bg-primary-50 text-primary-700 rounded">
-                信度: {(diff.confidence * 100).toFixed(1)}%
-              </span>
-            ) : null}
+            <span className="text-gray-700">{diff.context.replace('表格/版面變更', '內容待確認')}</span>
             {hasCropTarget ? (
               <button
                 type="button"
@@ -449,7 +444,7 @@ const DiffPopupInner: React.FC<DiffPopupInnerProps> = ({
             className="px-3 sm:px-4 py-2 sm:py-2.5 bg-diff-added text-white rounded-lg hover:bg-emerald-600 transition-colors flex items-center space-x-1 sm:space-x-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <CheckCircle size={16} />
-            <span>{isSubmitting ? '送出中...' : '確認此修改'}</span>
+            <span>{isSubmitting ? '送出中...' : isImageDiff ? '確認已核對' : '確認此修改'}</span>
           </button>
         </div>
       </div>

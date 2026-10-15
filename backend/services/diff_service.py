@@ -17,6 +17,8 @@ from services.pymupdf_guard import pymupdf_serialized
 _PIXEL_CACHE_LOCK = threading.RLock()
 _PIXEL_CACHE: OrderedDict[str, tuple[list[DiffItem], dict, list[str]]] = OrderedDict()
 _PIXEL_INFLIGHT: dict[str, threading.Event] = {}
+_OCR_ROI_CACHE: OrderedDict[str, str] = OrderedDict()
+_OCR_ROI_CACHE_LOCK = threading.RLock()
 
 NUMBER_PATTERN = re.compile(r"\d+(?:\.\d+)?%?")
 _ELLIPSIS = "..."
@@ -143,7 +145,9 @@ def is_meaningful_diff(old_val: str | None, new_val: str | None) -> bool:
 
 def _guess_diff_type(old_value: str | None, new_value: str | None) -> DiffType:
     if old_value and new_value:
-        if _contains_number(old_value) or _contains_number(new_value):
+        # A clause may contain unchanged ages/amounts while its wording changes.
+        # Merely containing a digit must not turn wording into a numeric edit.
+        if _extract_numbers(old_value) != _extract_numbers(new_value):
             return DiffType.NUMBER_MODIFIED
         return DiffType.TEXT_MODIFIED
     if old_value and not new_value:
@@ -505,6 +509,7 @@ class OcrRasterResult:
     text: str
     status: str
     error: str | None = None
+    cached: bool = False
 
     @property
     def complete(self) -> bool:
@@ -522,6 +527,44 @@ def _notify_ocr_result(result: OcrRasterResult, on_result) -> OcrRasterResult:
 
 
 def _ocr_raster_payload(
+    payload: tuple[int, int, bytes] | None,
+    *,
+    lang: str = "chi_tra+eng",
+    psm: str = "6",
+    on_result=None,
+) -> str:
+    """Reuse completed ROI reads between preliminary and final passes.
+
+    This bounded in-process cache shares the lifetime of the loaded OCR models;
+    failures/timeouts are always retried and never become successful cache hits.
+    """
+    if payload is None:
+        return _ocr_raster_payload_uncached(payload, lang=lang, psm=psm, on_result=on_result)
+    width, height, samples = payload
+    key = hashlib.sha256(f"{width}:{height}:{lang}:{psm}:binary-v1:".encode() + samples).hexdigest()
+    with _OCR_ROI_CACHE_LOCK:
+        if key in _OCR_ROI_CACHE:
+            text = _OCR_ROI_CACHE[key]
+            _OCR_ROI_CACHE.move_to_end(key)
+            return _notify_ocr_result(OcrRasterResult(text, "complete", cached=True), on_result).text
+
+    outcomes = []
+
+    def observe(result):
+        outcomes.append(result)
+        _notify_ocr_result(result, on_result)
+
+    text = _ocr_raster_payload_uncached(payload, lang=lang, psm=psm, on_result=observe)
+    if outcomes and all(result.complete for result in outcomes):
+        with _OCR_ROI_CACHE_LOCK:
+            _OCR_ROI_CACHE[key] = text
+            _OCR_ROI_CACHE.move_to_end(key)
+            while len(_OCR_ROI_CACHE) > 256:
+                _OCR_ROI_CACHE.popitem(last=False)
+    return text
+
+
+def _ocr_raster_payload_uncached(
     payload: tuple[int, int, bytes] | None,
     *,
     lang: str = "chi_tra+eng",
@@ -1410,9 +1453,9 @@ def _pixel_cache_key(
     return canonical_cache_key(
         "pixel-diff",
         {
-            # v9 adds structured OCR completion state and refuses to cache a
-            # timeout/non-zero exit as a reusable complete comparison.
-            "algorithm": "pixel-v9",
+            # v10 changes correlation/glyph-noise filtering; never reuse v9
+            # candidates. Incomplete OCR results remain non-cacheable.
+            "algorithm": "pixel-v10-content",
             "old_sha256": _pixel_cache_file_hash(old_pdf_path),
             "new_sha256": _pixel_cache_file_hash(new_pdf_path),
             "threshold": threshold,
@@ -1438,6 +1481,8 @@ def clear_pixel_diff_cache(*, include_disk: bool = False) -> None:
             event.set()
         _PIXEL_INFLIGHT.clear()
     if include_disk:
+        with _OCR_ROI_CACHE_LOCK:
+            _OCR_ROI_CACHE.clear()
         from services.persistent_cache import clear_namespace
 
         clear_namespace("pixel_diff")
@@ -1656,6 +1701,10 @@ def _diff_pixels_uncached(
     reported_ocr_failures: set[tuple[str, str | None]] = set()
 
     def _observe_ocr_result(result: OcrRasterResult) -> None:
+        if engine_stats is not None:
+            with ocr_result_lock:
+                key = "pixel_ocr_cache_hits" if result.cached else "pixel_ocr_process_calls"
+                engine_stats[key] = engine_stats.get(key, 0) + 1
         if result.complete:
             return
         failure_key = (result.status, result.error)
@@ -1971,9 +2020,8 @@ def _diff_pixels_uncached(
                 is_small_region = actual_px < 2000
                 ncc_threshold = 0.985 if is_small_region else 0.94
 
-                # Native text position changes are real review targets. Let
-                # them pass through the visual NCC noise filter so the later
-                # text+bbox comparison can report them.
+                # Review targets are content edits. Same native text that
+                # merely moves or rewraps is not a content modification.
                 fx0 = float(c0) * scale_to_pt
                 fx1 = float(c1 - 1) * scale_to_pt
                 fy0 = float(r0) * scale_to_pt
@@ -1981,64 +2029,22 @@ def _diff_pixels_uncached(
                 pre_search_rect = fitz.Rect(fx0, fy0, fx1, fy1) + (-3, -3, 3, 3)
                 pre_old_word_hits = _words_in_rect(old_words, pre_search_rect)
                 pre_new_word_hits = _words_in_rect(new_words, pre_search_rect)
-                preserve_native_position_change = False
                 if pre_old_word_hits and pre_new_word_hits:
                     pre_old_text = _deep_normalize(_word_text(pre_old_word_hits))
                     pre_new_text = _deep_normalize(_word_text(pre_new_word_hits))
-                    preserve_native_position_change = (
-                        bool(pre_old_text and pre_new_text and pre_old_text == pre_new_text)
-                        and not _same_native_text_is_rendering_noise(pre_old_word_hits, pre_new_word_hits)
-                    )
-
-                patch_old = arr_old[r0:r1, c0:c1].astype(np.float64)
-                patch_new = arr_new[r0:r1, c0:c1].astype(np.float64)
-                if patch_old.size >= 100:
-                    # Apply a light Gaussian blur to make the comparison robust against
-                    # tiny anti-aliasing shifts or sub-pixel kerning differences
-                    patch_old_b = ndimage.gaussian_filter(patch_old, sigma=1.0)
-                    patch_new_b = ndimage.gaussian_filter(patch_new, sigma=1.0)
-                    
-                    # Shift-Invariant NCC: search for the best alignment within +/- 5 pixels.
-                    # This suppresses identical text that was slightly moved by the designer
-                    # without needing to fall back to the error-prone OCR engine.
-                    h, w = patch_old_b.shape
-                    best_ncc = -1.0
-                    
-                    # Sort shifts by distance from center so we find exact matches immediately
-                    max_shift = 5
-                    shifts = [(dy, dx) for dy in range(-max_shift, max_shift+1) for dx in range(-max_shift, max_shift+1)]
-                    shifts.sort(key=lambda s: s[0]**2 + s[1]**2)
-                    
-                    for dy, dx in shifts:
-                        r_o_start, r_o_end = max(0, -dy), min(h, h - dy)
-                        c_o_start, c_o_end = max(0, -dx), min(w, w - dx)
-                        r_n_start, r_n_end = max(0, dy), min(h, h + dy)
-                        c_n_start, c_n_end = max(0, dx), min(w, w + dx)
-                        
-                        slice_o = patch_old_b[r_o_start:r_o_end, c_o_start:c_o_end]
-                        slice_n = patch_new_b[r_n_start:r_n_end, c_n_start:c_n_end]
-                        
-                        if slice_o.size < 50:
-                            continue
-                            
-                        std_o = float(slice_o.std())
-                        std_n = float(slice_n.std())
-                        if std_o < 1.0 or std_n < 1.0:
-                            continue
-                            
-                        ncc = float(
-                            ((slice_o - slice_o.mean()) * (slice_n - slice_n.mean())).mean()
-                            / (std_o * std_n)
-                        )
-                        if ncc > best_ncc:
-                            best_ncc = ncc
-                        
-                        # Threshold for "identical text just shifted"
-                        if best_ncc > ncc_threshold:
-                            break
-
-                    if best_ncc > ncc_threshold and not preserve_native_position_change:
+                    if pre_old_text and pre_old_text == pre_new_text:
                         continue
+
+                from services.visual_match_service import compare_patch
+
+                best_ncc, same_glyphs = compare_patch(
+                    arr_old[r0:r1, c0:c1], arr_new[r0:r1, c0:c1], dpi=dpi,
+                    ncc_threshold=ncc_threshold,
+                )
+                if best_ncc > ncc_threshold or same_glyphs:
+                    if engine_stats is not None:
+                        engine_stats["pixel_render_noise_skips"] = engine_stats.get("pixel_render_noise_skips", 0) + 1
+                    continue
 
                 # PDF points in fitz's top-left origin (Y grows down)
                 # BBox model stores bottom-left origin
@@ -2071,9 +2077,7 @@ def _diff_pixels_uncached(
                     on = _deep_normalize(ot)
                     nn = _deep_normalize(nt)
                     if on and nn and on == nn:
-                        if _same_native_text_is_rendering_noise(old_word_hits, new_word_hits):
-                            continue  # identical text/rendering noise, suppress
-                        same_text_moved = True
+                        continue  # same content, including movement/reflow
 
                 # Tier 2: local OCR fallback (outline-text PDFs)
                 # Triggered when NEITHER side has a native text layer in the
@@ -2697,7 +2701,7 @@ def diff_images(
                                 ))
                 else:
                     items.append(DiffItem(
-                        id="", diff_type=DiffType.DELETED,
+                        id="", diff_type=DiffType.IMAGE_DIFF,
                         old_value=f"Page {page_no} \u5d4c\u5165\u5716\u7247\u522a\u9664",
                         new_value=None,
                         old_bbox=oi["bbox"], new_bbox=None,
@@ -2708,7 +2712,7 @@ def diff_images(
             for j, ni in enumerate(new_imgs):
                 if j not in matched_new:
                     items.append(DiffItem(
-                        id="", diff_type=DiffType.ADDED,
+                        id="", diff_type=DiffType.IMAGE_DIFF,
                         old_value=None,
                         new_value=f"Page {page_no} \u5d4c\u5165\u5716\u7247\u65b0\u589e",
                         old_bbox=None, new_bbox=ni["bbox"],
@@ -2772,7 +2776,7 @@ def _coalesce_reviewable_visual_items(
     items: list[DiffItem],
     stats: dict | None = None,
     *,
-    gap_threshold: float = 18.0,
+    gap_threshold: float = 8.0,
 ) -> list[DiffItem]:
     """Collapse only spatially connected visual regions.
 
@@ -2782,6 +2786,36 @@ def _coalesce_reviewable_visual_items(
     distant changes stay independently reviewable.
     """
     from collections import defaultdict
+
+    # OCR gating can demote an inner text candidate after the earlier merge.
+    # Keep its pixel evidence on the containing uncertain region, rather than
+    # displaying several nested boxes for the same unrecognized content.
+    nested: set[int] = set()
+    for inner_index, inner in enumerate(items):
+        if inner.diff_type != DiffType.IMAGE_DIFF or inner.old_value or inner.new_value:
+            continue
+        ib = inner.new_bbox or inner.old_bbox
+        if ib is None:
+            continue
+        enclosing = []
+        for outer_index, outer in enumerate(items):
+            ob = outer.new_bbox or outer.old_bbox
+            if (outer_index == inner_index or outer.diff_type != DiffType.IMAGE_DIFF
+                    or outer.old_value or outer.new_value or ob is None or ob.page != ib.page):
+                continue
+            if (ob.x0 <= ib.x0+1 and ob.y0 <= ib.y0+1 and ob.x1 >= ib.x1-1 and ob.y1 >= ib.y1-1
+                    and _bbox_area(ob) > _bbox_area(ib)*1.2):
+                enclosing.append(outer_index)
+        if enclosing:
+            # Attach directly to the largest enclosing item so subsequent
+            # removal of an intermediate container cannot lose provenance.
+            outer_index = max(enclosing, key=lambda idx: _bbox_area(items[idx].new_bbox or items[idx].old_bbox))
+            items[outer_index].evidence.extend(e.model_copy(deep=True) for e in inner.evidence)
+            nested.add(inner_index)
+    if nested:
+        items = [item for idx, item in enumerate(items) if idx not in nested]
+        if stats is not None:
+            stats["nested_visual_regions"] = len(nested)
 
     grouped: dict[int, list[DiffItem]] = defaultdict(list)
     passthrough: list[DiffItem] = []
@@ -2821,6 +2855,18 @@ def _coalesce_reviewable_visual_items(
         def union(left: int, right: int) -> None:
             left_root, right_root = find(left), find(right)
             if left_root != right_root:
+                members = [group[index] for index in range(len(group))
+                           if find(index) in (left_root, right_root)]
+                boxes = [item.new_bbox or item.old_bbox for item in members]
+                bounds = _bbox_union(boxes)
+                # Do not let a chain of neighbouring rows swallow the page.
+                # Short rows can merge; an existing tall block cannot expand
+                # vertically into another semantic section.
+                max_height = max(80.0, *(box.y1-box.y0 for box in boxes))
+                if bounds.y1-bounds.y0 > max_height:
+                    return
+                if sum(_bbox_area(box) for box in boxes) < _bbox_area(bounds) * 0.65:
+                    return
                 parent[right_root] = left_root
 
         def close_enough(left: BBox, right: BBox) -> bool:
@@ -3195,6 +3241,7 @@ def merge_diff_results(
     image_diffs: list[DiffItem] | None = None,
     stats: dict | None = None,
     keep_image_diffs: bool = False,
+    content_first: bool = False,
 ) -> list[DiffItem]:
     merged = [*text_diffs, *table_diffs]
     if pixel_diffs:
@@ -3215,9 +3262,10 @@ def merge_diff_results(
     ]
 
     # ── Proximity merge: combine adjacent text/number diffs ──
-    merged = _merge_nearby_diffs(merged)
+    if not content_first:
+        merged = _merge_nearby_diffs(merged)
 
-    if keep_image_diffs:
+    if keep_image_diffs and not content_first:
         merged = _fuse_visual_explanations(merged, stats=stats)
 
     # ── Deduplication: remove smaller boxes contained within larger ones ──
@@ -3253,6 +3301,22 @@ def merge_diff_results(
                 bj = _get_bbox(merged[j])
                 if not bj:
                     continue
+                if content_first:
+                    # An uncertain table must not replace a known wording change;
+                    # one known cell also cannot explain away the entire table.
+                    if merged[i].diff_type != merged[j].diff_type:
+                        continue
+                    if (merged[i].diff_type != DiffType.IMAGE_DIFF
+                            and _extract_priority_ocr_text(merged[i].old_value)
+                            and _extract_priority_ocr_text(merged[i].new_value)
+                            and merged[j].old_value and merged[j].new_value
+                            and merged[j].old_value in (merged[i].old_value or "")
+                            and merged[j].new_value in (merged[i].new_value or "")
+                            and _contains(bi, bj)):
+                        to_remove.add(j)
+                        continue
+                    if (merged[i].old_value, merged[i].new_value) != (merged[j].old_value, merged[j].new_value):
+                        continue
                 # If j is fully inside i, keep the more reviewable/local marker
                 # when the outer marker is just a coarse visual/table region.
                 if _contains(bi, bj) and _area(bi) > _area(bj) * 1.2:
@@ -3600,6 +3664,7 @@ def generate_diff_report(
             img_diffs,
             stats=stats,
             keep_image_diffs=True,
+            content_first=True,
         )
         if paddle_diffs:
             stats["paddle_ocr"] = _summarize_paddle_ocr_experiment(

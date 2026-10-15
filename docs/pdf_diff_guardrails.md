@@ -2,6 +2,19 @@
 
 This file records decisions that must be preserved in future fixes. Read it before changing PDF parsing, OCR, visual diff grouping, or OCI deployment settings.
 
+## 2026-10-15 使用者確認：以文字、數字內容審核為核心
+
+本節優先於下方歷史決策中「同文移位算修改」「像素框即版面變更」等規則。
+
+- 主要審核項目是文字、數字、條款與表格儲存格內容的新增、刪除及修改；相同內容換行、移位、字型抗鋸齒、JPEG 壓縮或 LOGO 畫質不算內容修改。
+- 表格須保留數字與欄列標籤的對應；不能只比整頁數字集合，否則會漏掉數字放錯欄列的差異。
+- 像素差只作候選定位，不可直接宣稱文字／表格結構有修改。無法辨識的區域保留為獨立待確認項目，預設與主要內容統計及標註分開，仍須可展開檢查，不得靜默當成相同。
+- 內容的精確 bbox 不得被大面積視覺框取代；視覺合併須限制總跨度與填充率，不能連鎖合成整片黃框。
+- 不得以固定 `.95` 宣稱 95% 修改機率，亦不得以「表格」這個程式標籤直接判高風險。
+- 頁尾 Version／Control No 必須在字形降噪前獨立辨識；鳳守愛 `24 -> 28` 等小數字正例須保留。
+- 新增 `benchmarks/golden/v2/manifest.json`：六組原必抓樣本，加上心動溢生 LOGO、金放心兩個同文裁切的負例。項目變少不是驗收；同時檢查正例保留、負例消失與冷／熱快取耗時。
+- 大區塊 Tesseract TSV 實驗會因換行／裁切及錯讀製造假新增、假刪除，這次未納入正式流程。後續若替換辨識方式，須先在固定案例證明內容召回與誤報都改善。
+
 Start with `docs/pdf_diff_architecture_review_2026-06-15.md` and `docs/pdf_diff_recent_summary_2026-06-14.md` for the latest architecture review, image-PDF table/layout retention, OCR performance limits, golden samples, and OCI deployment cautions.
 
 ## 2026-05-20 Image PDF Footer/OCR Fix

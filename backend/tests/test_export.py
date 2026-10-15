@@ -3,7 +3,7 @@ from csv import DictReader
 from pathlib import Path
 
 from models.diff_models import BBox, CheckStatus, ChecklistItem, DiffItem, DiffReport, DiffType
-from services.export_service import export_review_log_csv, export_review_log_json
+from services.export_service import export_annotated_pdf, export_review_excel, export_review_log_csv, export_review_log_json
 
 
 def test_export_review_log_json_contains_diff_checklist_and_logs(tmp_path: Path):
@@ -138,3 +138,27 @@ def test_export_review_log_csv_contains_enriched_log_rows(tmp_path: Path):
     assert rows[0]["審核動作"] == "flagged"
     assert rows[0]["對應檢核項目"] == "C002"
     assert rows[0]["目前審核人員"] == "bob"
+
+
+def test_content_exports_separate_uncertain_regions(tmp_path):
+    import fitz
+    import pandas as pd
+
+    bbox = BBox(page=1, x0=20, y0=40, x1=100, y1=60)
+    content = DiffItem(id="d001", diff_type=DiffType.NUMBER_MODIFIED, old_value="24", new_value="28",
+                       new_bbox=bbox, context="數字修改", confidence=0.9)
+    uncertain = DiffItem(id="d002", diff_type=DiffType.IMAGE_DIFF, new_bbox=bbox,
+                         context="內容待確認", confidence=0)
+    report = DiffReport(project_id="test", old_filename="old.pdf", new_filename="new.pdf",
+                        created_at="2026-10-15", total_diffs=2, items=[content, uncertain])
+    original = tmp_path / "source.pdf"
+    with fitz.open() as doc:
+        doc.new_page()
+        doc.save(original)
+    result = export_annotated_pdf(str(original), report.items, str(tmp_path / "content.pdf"))
+    with fitz.open(result) as doc:
+        assert len(list(doc[0].annots())) == 1
+        assert "24 -> 28" in next(doc[0].annots()).info["content"]
+    excel = export_review_excel("test", report, [], {}, str(tmp_path / "review.xlsx"))
+    assert pd.read_excel(excel, sheet_name="diffs")["id"].tolist() == ["d001"]
+    assert pd.read_excel(excel, sheet_name="uncertain_regions")["id"].tolist() == ["d002"]

@@ -215,7 +215,7 @@ export default function VerificationHistoryModal({ comparisonId, isOpen, onClose
                         <th className="pb-2 pr-4 font-medium">驗證時間</th>
                         <th className="pb-2 pr-4 font-medium">案號</th>
                         <th className="pb-2 pr-4 font-medium">審核人員</th>
-                        <th className="pb-2 pr-4 font-medium text-center">總差異</th>
+                        <th className="pb-2 pr-4 font-medium text-center">審核項目（含待確認）</th>
                         <th className="pb-2 pr-4 font-medium text-center">已確認</th>
                         <th className="pb-2 pr-4 font-medium text-center">標記</th>
                         <th className="pb-2 font-medium">備註</th>

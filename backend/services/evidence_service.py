@@ -85,10 +85,11 @@ def candidate_region_for(item: DiffItem, candidate_id: str) -> CandidateRegion |
 
 def classify_risk(item: DiffItem) -> RiskLevel:
     joined = " ".join(filter(None, (item.context, item.old_value, item.new_value)))
+    if item.diff_type == DiffType.IMAGE_DIFF:
+        # A pixel candidate is uncertainty, not evidence of a high-risk edit.
+        return RiskLevel.MEDIUM
     if item.diff_type == DiffType.NUMBER_MODIFIED or _CRITICAL_FIELD_RE.search(joined):
         return RiskLevel.CRITICAL
-    if item.diff_type == DiffType.IMAGE_DIFF and _TABLE_RE.search(joined):
-        return RiskLevel.HIGH
     if item.diff_type in {DiffType.ADDED, DiffType.DELETED}:
         cjk_count = len(_CJK_RE.findall(joined))
         return RiskLevel.HIGH if cjk_count >= 6 else RiskLevel.MEDIUM
@@ -195,6 +196,13 @@ def annotate_diff_items(
             if item.diff_type == DiffType.IMAGE_DIFF
             else ReviewLane.CONTENT
         )
+        if item.diff_type == DiffType.IMAGE_DIFF:
+            item.confidence = 0.0
+            item.context = item.context.replace("表格/版面變更", "內容待確認")
+            for evidence in item.evidence:
+                if evidence.source == "pixel_diff":
+                    evidence.confidence = 0.0
+                    evidence.metadata["confidence_kind"] = "uncalibrated_visual_candidate"
         item.risk_level = classify_risk(item)
         item.analysis_stage = stage
         item.decision_reason = item.decision_reason or (
