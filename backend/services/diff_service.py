@@ -1453,9 +1453,10 @@ def _pixel_cache_key(
     return canonical_cache_key(
         "pixel-diff",
         {
-            # v10 changes correlation/glyph-noise filtering; never reuse v9
-            # candidates. Incomplete OCR results remain non-cacheable.
-            "algorithm": "pixel-v10-content",
+            # v11 protects sparse glyph candidates from contour tolerance.
+            # Earlier noise decisions must not be reused; incomplete OCR is
+            # still never persisted as a complete comparison.
+            "algorithm": "pixel-v11-glyph-protected",
             "old_sha256": _pixel_cache_file_hash(old_pdf_path),
             "new_sha256": _pixel_cache_file_hash(new_pdf_path),
             "threshold": threshold,

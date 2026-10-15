@@ -5,13 +5,30 @@
   "baseline_image": "pdf-check-backend:core-update",
   "baseline_image_id": "sha256:05914cea7abe91dd5194003fb720e97583b48bb9a72442fa41a46b16818f81e6",
   "candidate": {
-    "label": "candidate-v2",
+    "label": "glyph-protected",
+    "timing_scope": "diff_only_excludes_parse_and_artifacts",
+    "runtime": {
+      "python": "3.11.15",
+      "platform": "aarch64",
+      "ocr_langs": "chi_tra+chi_sim+eng",
+      "mineru": "4.0.12",
+      "mineru_api_version": "v1",
+      "pymupdf": "1.27.2.3",
+      "docling": "2.138.0",
+      "docling-core": "2.101.1",
+      "docling-parse": "7.22.3",
+      "docling-ibm-models": "4.0.3",
+      "tesseract": "tesseract 5.5.0",
+      "poppler": "pdftoppm version 25.03.0",
+      "pixel_ocr_model_langs": "chi_sim+chi_tra+eng",
+      "tessdata_sha256": "chi_sim:a5fcb6f0db1e1d6d,chi_tra:529c5b5797d64b12,eng:7d4322bd2a774972"
+    },
     "runs": [
       {
         "case": "fengshouai",
         "mode": "cold",
-        "preliminary_seconds": 0.9843,
-        "complete_seconds": 3.2481,
+        "preliminary_seconds": 1.0087,
+        "complete_seconds": 3.3112,
         "total": 2,
         "content": 2,
         "uncertain": 0,
@@ -62,8 +79,8 @@
       {
         "case": "fengshouai",
         "mode": "warm",
-        "preliminary_seconds": 0.0047,
-        "complete_seconds": 0.0139,
+        "preliminary_seconds": 0.0049,
+        "complete_seconds": 0.0148,
         "total": 2,
         "content": 2,
         "uncertain": 0,
@@ -114,12 +131,12 @@
       {
         "case": "ciai_micro",
         "mode": "cold",
-        "preliminary_seconds": 3.5885,
-        "complete_seconds": 14.6951,
+        "preliminary_seconds": 3.5783,
+        "complete_seconds": 16.7748,
         "total": 4,
         "content": 2,
         "uncertain": 2,
-        "ocr_process_calls": 105,
+        "ocr_process_calls": 131,
         "ocr_cache_hits": 1,
         "evaluation": {
           "must_detect": [
@@ -172,8 +189,8 @@
       {
         "case": "ciai_micro",
         "mode": "warm",
-        "preliminary_seconds": 0.0069,
-        "complete_seconds": 0.0182,
+        "preliminary_seconds": 0.0139,
+        "complete_seconds": 0.0299,
         "total": 4,
         "content": 2,
         "uncertain": 2,
@@ -230,8 +247,8 @@
       {
         "case": "xinfuaiai",
         "mode": "cold",
-        "preliminary_seconds": 3.2296,
-        "complete_seconds": 19.2159,
+        "preliminary_seconds": 3.2256,
+        "complete_seconds": 19.0088,
         "total": 22,
         "content": 3,
         "uncertain": 19,
@@ -303,8 +320,8 @@
       {
         "case": "xinfuaiai",
         "mode": "warm",
-        "preliminary_seconds": 0.0063,
-        "complete_seconds": 0.0201,
+        "preliminary_seconds": 0.0066,
+        "complete_seconds": 0.0207,
         "total": 22,
         "content": 3,
         "uncertain": 19,
@@ -376,8 +393,8 @@
       {
         "case": "meibaofa",
         "mode": "cold",
-        "preliminary_seconds": 1.6423,
-        "complete_seconds": 6.9607,
+        "preliminary_seconds": 1.6576,
+        "complete_seconds": 6.7266,
         "total": 4,
         "content": 2,
         "uncertain": 2,
@@ -423,8 +440,8 @@
       {
         "case": "meibaofa",
         "mode": "warm",
-        "preliminary_seconds": 0.005,
-        "complete_seconds": 0.0134,
+        "preliminary_seconds": 0.0053,
+        "complete_seconds": 0.0146,
         "total": 4,
         "content": 2,
         "uncertain": 2,
@@ -470,12 +487,12 @@
       {
         "case": "meilbao",
         "mode": "cold",
-        "preliminary_seconds": 4.363,
-        "complete_seconds": 22.8133,
+        "preliminary_seconds": 4.3478,
+        "complete_seconds": 24.0462,
         "total": 6,
         "content": 3,
         "uncertain": 3,
-        "ocr_process_calls": 166,
+        "ocr_process_calls": 182,
         "ocr_cache_hits": 0,
         "evaluation": {
           "must_detect": [
@@ -533,8 +550,8 @@
       {
         "case": "meilbao",
         "mode": "warm",
-        "preliminary_seconds": 0.0225,
-        "complete_seconds": 0.0416,
+        "preliminary_seconds": 0.0226,
+        "complete_seconds": 0.0423,
         "total": 6,
         "content": 3,
         "uncertain": 3,
@@ -596,12 +613,12 @@
       {
         "case": "zhenmeili",
         "mode": "cold",
-        "preliminary_seconds": 3.4651,
-        "complete_seconds": 10.407,
+        "preliminary_seconds": 3.4257,
+        "complete_seconds": 11.755,
         "total": 7,
         "content": 1,
         "uncertain": 6,
-        "ocr_process_calls": 30,
+        "ocr_process_calls": 48,
         "ocr_cache_hits": 0,
         "evaluation": {
           "must_detect": [
@@ -675,8 +692,8 @@
       {
         "case": "zhenmeili",
         "mode": "warm",
-        "preliminary_seconds": 0.0082,
-        "complete_seconds": 0.0251,
+        "preliminary_seconds": 0.0086,
+        "complete_seconds": 0.0294,
         "total": 7,
         "content": 1,
         "uncertain": 6,
@@ -754,12 +771,12 @@
       {
         "case": "heart",
         "mode": "cold",
-        "preliminary_seconds": 4.3397,
-        "complete_seconds": 15.2596,
+        "preliminary_seconds": 4.3474,
+        "complete_seconds": 17.8259,
         "total": 6,
         "content": 1,
         "uncertain": 5,
-        "ocr_process_calls": 86,
+        "ocr_process_calls": 120,
         "ocr_cache_hits": 0,
         "evaluation": {
           "must_detect": [
@@ -793,8 +810,8 @@
       {
         "case": "heart",
         "mode": "warm",
-        "preliminary_seconds": 0.0092,
-        "complete_seconds": 0.0213,
+        "preliminary_seconds": 0.0121,
+        "complete_seconds": 0.0234,
         "total": 6,
         "content": 1,
         "uncertain": 5,
@@ -832,21 +849,21 @@
       {
         "case": "jinfang",
         "mode": "cold",
-        "preliminary_seconds": 4.8638,
-        "complete_seconds": 24.6063,
-        "total": 9,
+        "preliminary_seconds": 4.8522,
+        "complete_seconds": 25.8235,
+        "total": 10,
         "content": 1,
-        "uncertain": 8,
-        "ocr_process_calls": 173,
+        "uncertain": 9,
+        "ocr_process_calls": 203,
         "ocr_cache_hits": 3,
         "evaluation": {
           "must_detect": [
             {
               "id": "complete_footer",
               "passed": true,
-              "matched_item_id": "d009",
+              "matched_item_id": "d010",
               "hits": [
-                "d009"
+                "d010"
               ]
             }
           ],
@@ -869,18 +886,18 @@
           ],
           "numeric_interpretation_false_positives": 0,
           "material_visual_suppressed": 0,
-          "unresolved_region_count": 8
+          "unresolved_region_count": 9
         },
         "warnings": []
       },
       {
         "case": "jinfang",
         "mode": "warm",
-        "preliminary_seconds": 0.0091,
-        "complete_seconds": 0.0293,
-        "total": 9,
+        "preliminary_seconds": 0.0177,
+        "complete_seconds": 0.044,
+        "total": 10,
         "content": 1,
-        "uncertain": 8,
+        "uncertain": 9,
         "ocr_process_calls": 0,
         "ocr_cache_hits": 3,
         "evaluation": {
@@ -888,9 +905,9 @@
             {
               "id": "complete_footer",
               "passed": true,
-              "matched_item_id": "d009",
+              "matched_item_id": "d010",
               "hits": [
-                "d009"
+                "d010"
               ]
             }
           ],
@@ -913,11 +930,15 @@
           ],
           "numeric_interpretation_false_positives": 0,
           "material_visual_suppressed": 0,
-          "unresolved_region_count": 8
+          "unresolved_region_count": 9
         },
         "warnings": []
       }
-    ]
+    ],
+    "source_sha256": {
+      "services/diff_service.py": "73bf5718684bc7784341eebd5e441163212f9c270f6ef2269351bd4ee811d42b",
+      "services/evidence_service.py": "cece58dc4b413f2f19f012b703f4c895a0bd0a179d0aab126687dc139ff07642"
+    }
   },
   "timing_scope": "單輪冷／熱快取；計時含初步與完整diff，未含解析、上傳、裁切與快照；不代表母體準確率或正式SLA",
   "baseline": {
@@ -1872,11 +1893,13 @@
     "page_errors": []
   },
   "tests": {
-    "passed": 177
+    "passed": 182,
+    "cjk_candidate_protection_cases": 5
   },
   "known_limits": [
     "影像PDF仍有未能可靠辨識的內容，另列待確認；未宣稱所有文字／數字已完整召回",
     "既有六組中部分必抓錨點允許以待確認區域命中，不能當成已擷取文字內容",
     "material_visual_suppressed 固定值不作漏報率量測"
-  ]
+  ],
+  "candidate_revision_note": "v11: sparse/single-glyph contours require OCR; v10 prototype measured earlier is superseded"
 }

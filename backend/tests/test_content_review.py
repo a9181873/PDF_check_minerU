@@ -32,6 +32,28 @@ def test_reencoded_identical_digits_are_rendering_noise():
     assert score > 0.985 or noise
 
 
+@pytest.mark.parametrize("old,new", [("未滿65歲", "已滿65歲"), ("未", "末"), ("日", "曰"), ("不得給付", "得給付"), ("保證續保", "不保證續保")])
+def test_similar_cjk_and_negation_edits_reach_ocr(old, new):
+    import fitz
+
+    images = []
+    for text in (old, new):
+        with fitz.open() as doc:
+            page = doc.new_page(width=160, height=35)
+            page.insert_text((5, 23), text, fontname="china-t", fontsize=12)
+            pix = page.get_pixmap(matrix=fitz.Matrix(200/72, 200/72), colorspace=fitz.csGRAY)
+            images.append(np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width).copy())
+    a, b = images
+    changed = np.abs(a.astype(float)-b.astype(float)) > 30
+    y, x = np.where(changed)
+    r0, r1 = max(0, y.min()-4), min(a.shape[0], y.max()+5)
+    c0, c1 = max(0, x.min()-4), min(a.shape[1], x.max()+5)
+    threshold = .985 if changed.sum() < 2000 else .94
+    score, noise = compare_patch(a[r0:r1, c0:c1], b[r0:r1, c0:c1], ncc_threshold=threshold)
+    assert not noise
+    assert score < threshold
+
+
 def test_completed_roi_reads_are_reused_but_failure_is_retried(monkeypatch):
     calls = []
     payload = (1, 1, b"\xff")

@@ -47,7 +47,10 @@ def compare_patch(old, new, *, dpi: int = 200, ncc_threshold: float = 0.985) -> 
     eo = cv2.Canny(cv2.GaussianBlur(a8, (0, 0), sigma), 35, 100) > 0
     en = cv2.Canny(cv2.GaussianBlur(b8, (0, 0), sigma), 35, 100) > 0
     total = int(eo.sum() + en.sum())
-    if total < 100:
+    # A sparse/single-glyph crop must reach OCR. A contour displacement that
+    # is harmless for a multi-glyph re-encoded block can erase 未 -> 末 or
+    # 日 -> 曰. Do not use this shortcut without enough contour evidence.
+    if total < 1000:
         return score, False
     tolerance = max(1.0, 2.0 * dpi / 200)
     missing = (eo & (ndimage.distance_transform_edt(~en) > tolerance)) | (
