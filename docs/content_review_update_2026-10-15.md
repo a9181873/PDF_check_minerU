@@ -60,3 +60,11 @@ PDFCHECK_BACKEND_ROOT=/app python /repo/backend/scripts/benchmark_content_review
 ```
 
 在 backend 正式依賴映像內掛載唯讀 `/repo` 與可寫 `/results`；來源 PDF 需依 `benchmarks/golden/v2/manifest.json` 放置，不隨 Git 提交。部署狀態與回復點以工程歷程及部署驗證檔為準。
+
+## 收尾與接續狀態
+
+2026-10-15 依使用者「先收尾」停止擴充與切換。程式版 `f357aec` 已推送 GitHub；最終 v11 映像為 `pdf-check-backend:content-review-glyph-20261015`，image ID `sha256:89748bb624ff975f02aa273f72e4b9dc9931775639358ebba41a382d3f26f523`。
+
+OCI 目前仍執行回復的核心升級映像 `sha256:05914cea7abe91dd5194003fb720e97583b48bb9a72442fa41a46b16818f81e6`，backend 與 MinerU 均 healthy。工作目錄更新至 `f357aec` 不代表容器已更新；v11 尚未完成 OCI 最終驗收與上線。
+
+接續時先核對 `/home/ubuntu/backups/pdfcheck-content-20261015/glyph-image.tar.gz`（SHA-256：`89d89c03b853901909e8058f2c3d313cc8dcb7a442974f962359305d1d8bc3ae`）、載入映像並完成同版驗收，再決定切換。該目錄舊 `deploy-content.sh` 仍指向中間 v10，不能直接執行；既有 v10 OCI 測試結果也不能替代 v11 驗收。原 Compose、映像與一致性 SQLite 備份均保留。本機本次使用的 UI 測試容器與 Vite 伺服器已關閉。

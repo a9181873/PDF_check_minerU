@@ -32,7 +32,9 @@
 
 本機 182 項測試、production build 與獨立 Chrome 操作檢查通過。Golden v2 八組 cold／warm 各一輪：固定 18 個必抓錨點保留，11 項禁止文字、9 項禁止解讀／區域負例無命中。心動溢生 LOGO、金放心兩個同文框誤報排除。部分舊錨點仍允許待確認框命中，不代表 OCR 全文召回或母體準確率。
 
-同機差異引擎冷快取總時間 150.93 → 125.27 秒（約減少 17%）；心動溢生 21.97 → 17.83 秒，金放心 30.69 → 25.82 秒。完整範圍、限制與證據見 `docs/content_review_update_2026-10-15.md` 及 `benchmarks/results/content_review_docker_20261015.json`。部署映像與 OCI 檢查仍在進行，完成後以部署驗證檔更新本節。
+同機差異引擎冷快取總時間 150.93 → 125.27 秒（約減少 17%）；心動溢生 21.97 → 17.83 秒，金放心 30.69 → 25.82 秒。完整範圍、限制與證據見 `docs/content_review_update_2026-10-15.md` 及 `benchmarks/results/content_review_docker_20261015.json`。
+
+**收尾狀態（使用者要求「先收尾」）：程式版 `f357aec` 已推送 GitHub；OCI 尚未上線此版。** 中間 v10 切換後補查發現相似單字元降噪問題，已回復原核心升級映像 `sha256:05914cea7abe91dd5194003fb720e97583b48bb9a72442fa41a46b16818f81e6`，backend 與 MinerU 均 healthy。OCI 工作目錄雖已更新至 `f357aec`，執行中的 backend 仍是回復映像。最終 v11 映像已建置，本機相似字元候選保護檢查通過；OCI 最終驗收與切換留待後續接續，舊 v10 驗收不可視為最終版上線證據。既有資料庫與回復點保留於 `/home/ubuntu/backups/pdfcheck-content-20261015`，驗收沿用 OCI 既有 PDF，未另上傳 PDF。
 
 ## 2.0 2026-10-14 核心升級
 
