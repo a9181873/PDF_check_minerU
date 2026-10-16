@@ -70,6 +70,16 @@ def test_wrapped_sentence_continuation_is_not_a_new_paragraph():
     assert service._paragraph_start(inserted, len("其家庭成員。"))
 
 
+def test_separate_list_number_on_same_baseline_starts_paragraph():
+    from dataclasses import replace
+
+    source = glyphs(["10.符合新住民基本法第二條第一項第一款"])
+    source[3:] = [replace(g, line=(1, 1, 1)) for g in source[3:]]
+    assert service._paragraph_start(source, 3)
+    lower = source[:3] + [replace(g, box=g.box.model_copy(update={"y0":g.box.y0-16,"y1":g.box.y1-16})) for g in source[3:]]
+    assert not service._paragraph_start(lower, 3)
+
+
 def test_dark_panel_is_not_a_set_of_table_columns():
     with fitz.open() as doc:
         p = doc.new_page(width=595, height=842)

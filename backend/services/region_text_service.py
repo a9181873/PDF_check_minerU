@@ -280,7 +280,15 @@ def _paragraph_start(source, cursor):
     previous = start-1
     while previous > 0 and source[previous-1].line == source[start-1].line:
         previous -= 1
-    return bool(re.search(r"[。！？!?；;]$", _text(source[previous:start])))
+    previous_text = _text(source[previous:start])
+    # A table's list number may be a separate TSV segment on the same physical
+    # baseline. It is still a paragraph marker, not a wrapped sentence above.
+    if re.fullmatch(marker, previous_text):
+        center = (source[cursor].box.y0+source[cursor].box.y1)/2
+        marker_center = median((g.box.y0+g.box.y1)/2 for g in source[previous:start])
+        if abs(center-marker_center) < 3 and 0 <= source[cursor].box.x0-source[start-1].box.x1 < 18:
+            return True
+    return bool(re.search(r"[。！？!?；;]$", previous_text))
 
 
 def confirmed_additions(source, confirm, opposite, opposite_confirm):
