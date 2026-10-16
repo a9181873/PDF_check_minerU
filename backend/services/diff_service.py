@@ -3783,6 +3783,7 @@ def generate_diff_report(
                                                      stats=stats, warnings=engine_warnings)
                 except Exception as exc:
                     _record_engine_warning(engine_warnings, stats, "region_text_error", f"unexpected failure: {exc}")
+        merged_items.sort(key=_sort_key)
     for index, item in enumerate(merged_items, start=1):
         item.id = f"d{index:03d}"
     stats["final_diff_count"] = len(merged_items)

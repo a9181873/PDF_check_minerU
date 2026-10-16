@@ -267,6 +267,22 @@ def _appended_line_context(source, cursor, opposite, confirm):
     return False
 
 
+def _paragraph_start(source, cursor):
+    start = cursor
+    while start > 0 and source[start-1].line == source[cursor].line:
+        start -= 1
+    before = _text(source[start:cursor])
+    marker = r"(?:[（(]?\d{1,2}[.)、）]|[★☆※*]|[【\[]註[】\]])"
+    if re.fullmatch(marker, before) or re.match(marker, _text(source[cursor:cursor+5])):
+        return True
+    if before or start == 0:
+        return False
+    previous = start-1
+    while previous > 0 and source[previous-1].line == source[start-1].line:
+        previous -= 1
+    return bool(re.search(r"[。！？!?；;]$", _text(source[previous:start])))
+
+
 def confirmed_additions(source, confirm, opposite, opposite_confirm):
     """Long novel spans, agreed at two scales, between unchanged text anchors.
 
@@ -316,7 +332,9 @@ def confirmed_additions(source, confirm, opposite, opposite_confirm):
                     before = SequenceMatcher(None, a, b[:changed_start], autojunk=False).find_longest_match()
                     after = SequenceMatcher(None, a, b[changed_end:], autojunk=False).find_longest_match()
                     appended = _appended_line_context(source, cursor, opposite, opposite_confirm)
-                    if ((before.size >= 12 and after.size >= 12) or prefix >= 8 or appended) and _substantial(text[prefix:]):
+                    anchored = (before.size >= 12 and after.size >= 12) or prefix >= 8 or appended
+                    paragraph = new_reference or appended or prefix >= 8 or _paragraph_start(source, cursor)
+                    if anchored and paragraph and _substantial(text[prefix:]):
                         runs.append((text, _union(source[cursor:stop]), text[:prefix] or None))
             cursor = stop
     return runs

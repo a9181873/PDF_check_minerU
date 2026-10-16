@@ -21,7 +21,7 @@ def test_reflowed_identical_paragraph_is_not_an_addition():
 
 
 def test_new_clause_needs_both_reads_and_unchanged_context():
-    before, after = "被保險人於本契約有效期間內因疾病住院", "保險公司依約給付住院日額保險金"
+    before, after = "被保險人於本契約有效期間內因疾病住院。", "保險公司依約給付住院日額保險金"
     clause = "給付時須扣除已領取之各項保險金總額"
     old, new = glyphs([before, after]), glyphs([before, clause, after])
     result = service.confirmed_additions(new, new, old, old)
@@ -61,6 +61,13 @@ def test_tsv_line_spanning_two_columns_is_split_at_word_gap():
     assert result[0].line != result[-1].line
     assert service._mixed_list_items("(2)依法成立之合法合作社、協會、職業。(6)直轄市政府、")
     assert not service._mixed_list_items("10.符合新住民基本法第二條第一項第一款")
+
+
+def test_wrapped_sentence_continuation_is_not_a_new_paragraph():
+    continuation = glyphs(["具有合法立案之漁民團體或取得我國永久居留證之外", "籍漁業從業人,或各該對象之家庭成員。"])
+    assert not service._paragraph_start(continuation, len("具有合法立案之漁民團體或取得我國永久居留證之外"))
+    inserted = glyphs(["其家庭成員。", "符合新住民基本法第二條第一項第一款"])
+    assert service._paragraph_start(inserted, len("其家庭成員。"))
 
 
 def test_dark_panel_is_not_a_set_of_table_columns():

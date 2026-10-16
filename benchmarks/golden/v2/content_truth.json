@@ -54,6 +54,11 @@
       "note": "故不受存款保險之保障與累計投保金額說明兩版都存在，只有位置不同。"
     },
     {
+      "case": "xinfuaiai", "id": "p3_wrapped_fishing_family_clause_is_unchanged", "kind": "no_content_claim", "page": 3,
+      "bbox": {"page": 3, "x0": 110, "y0": 322, "x1": 276, "y1": 332}, "min_region_coverage": 0.5,
+      "note": "兩版皆有外籍漁業從業人或各該對象之家庭成員說明；不得把續行片段當新增。"
+    },
+    {
       "case": "meibaofa", "id": "p4_footer_not_duplicated", "kind": "max_content_items", "page": 4,
       "bbox": {"page": 4, "x0": 490, "y0": 18, "x1": 545, "y1": 27}, "min_region_coverage": 0.3,
       "max_items": 1, "note": "完整與殘缺 Control No 應只列一次；O/0 錯讀不能製造第二筆。"
