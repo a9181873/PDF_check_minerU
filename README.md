@@ -6,19 +6,19 @@ PDF Check MinerU 是一套用來比對「舊版 PDF」與「新版 PDF」差異�
 
 主要審核清單以**文字、數字及表格內容的實際修改**為準。相同內容重排、LOGO 畫質及壓縮雜訊不算內容修改；尚無可靠文字／數字解釋的影像候選另列「辨識待確認」，可展開檢查，未計入主要內容差異數。
 
-2026-10-15 內容優先修正：182 項測試與八組 PDF 固定錨點驗收通過；同機單輪冷快取差異引擎總耗時約減少 17%。範圍、個別案例數據與仍待解決的 OCR 限制見 [`docs/content_review_update_2026-10-15.md`](docs/content_review_update_2026-10-15.md)。
+2026-10-16 內容驗收修正：原 9 項失敗已修正；198 項後端測試、19 項精確內容檢查與八組 PDF 冷熱／反向／自比驗收通過。新增確認使首輪引擎合計 165.43 秒，這版不能沿用前版「快 17%」宣稱；OCI 尚未切換。範圍、數據與 OCR 限制見 [`docs/content_fix_validation_2026-10-16.md`](docs/content_fix_validation_2026-10-16.md)。
 
-## 目前技術狀態（2026-07-19）
+## 目前技術狀態（2026-10-16）
 
 | 項目 | 正式使用狀況 |
 |------|--------------|
 | 部署 | 維持 Docker Compose；本機與 OCI 均使用 Linux containers |
 | 後端 | FastAPI + 有限比對佇列 + 流程協調器；同步 SQLite I/O 交由 FastAPI threadpool，避免阻塞 event loop |
-| 解析 | PyMuPDF 輕量快篩 → Docling 表格解析 → MinerU fallback；影像型 PDF 預設保留視覺差異，MinerU OCR 召回需明確開啟 |
+| 解析 | PyMuPDF 輕量快篩 → Docling 表格解析 → MinerU fallback；影像型 PDF 使用像素候選與區塊文字核對，MinerU 全文 OCR 召回需明確開啟 |
 | 資源控制 | 重型 parser 與比對任務預設各只同時執行 1 個，並限制等待佇列，適合 CPU-only 主機 |
 | 快取 | PDF SHA-256 解析快取、single-flight、像素/NCC/OCR 配對快取與跨重啟磁碟快取均已啟用 |
 | 前端 | React 19 + TypeScript 6 + Vite 8；支援 WebSocket 進度、輪詢取消、虛擬列表與對話框鍵盤操作 |
-| 正式驗證 | `a56a247` 後端 153 項測試、`git diff --check`、frontend production build 與 backend image build 通過；`pixel-v9` Golden v1 必抓 16／16、必禁 11／11、語意負例 6／6 |
+| 本機驗證 | `c9815b5` 後端 198 項測試、19 項內容檢查通過；最終 Docker 映像完成八組冷熱／反向、自比與啟動檢查。屬固定樣本，不代表所有文字與表格均已完整辨識 |
 | OCI | 2026-10-14 已部署 MinerU `4.0.12`（basic／ONNX CPU）與 Docling `2.138.0`；兩容器 healthy、正式 HTTPS 與原生／掃描 PDF smoke 通過，六組 cold／warm Golden 守門值全過。部署紀錄見 `docs/project-history.md` 與 `benchmarks/results/core_upgrade_deployment_20261014.json` |
 
 完整修改脈絡、現行／已取代決策、準度與效能證據統一收錄於 [`docs/project-history.md`](docs/project-history.md)。現行模組與部署架構另見 `docs/technical-architecture.md`。
