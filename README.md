@@ -6,7 +6,7 @@ PDF Check MinerU 是一套用來比對「舊版 PDF」與「新版 PDF」差異�
 
 主要審核清單以**文字、數字及表格內容的實際修改**為準。相同內容重排、LOGO 畫質及壓縮雜訊不算內容修改；尚無可靠文字／數字解釋的影像候選另列「辨識待確認」，可展開檢查，未計入主要內容差異數。
 
-2026-10-16 內容驗收修正：原 9 項失敗已修正；198 項後端測試、19 項精確內容檢查與八組 PDF 冷熱／反向／自比驗收通過。新增確認使首輪引擎合計 165.43 秒，這版不能沿用前版「快 17%」宣稱；OCI 尚未切換。範圍、數據與 OCR 限制見 [`docs/content_fix_validation_2026-10-16.md`](docs/content_fix_validation_2026-10-16.md)。
+2026-10-16 內容驗收修正已部署 OCI：原 9 項失敗已修正；198 項後端測試、19 項精確內容檢查與八組 PDF 冷熱／反向／自比驗收通過，OCI 同版映像也全數通過。新增確認使本機首輪引擎合計 165.43 秒，這版不能沿用前版「快 17%」宣稱。範圍、部署證據與 OCR 限制見 [`docs/content_fix_validation_2026-10-16.md`](docs/content_fix_validation_2026-10-16.md)。
 
 ## 目前技術狀態（2026-10-16）
 
@@ -19,7 +19,7 @@ PDF Check MinerU 是一套用來比對「舊版 PDF」與「新版 PDF」差異�
 | 快取 | PDF SHA-256 解析快取、single-flight、像素/NCC/OCR 配對快取與跨重啟磁碟快取均已啟用 |
 | 前端 | React 19 + TypeScript 6 + Vite 8；支援 WebSocket 進度、輪詢取消、虛擬列表與對話框鍵盤操作 |
 | 本機驗證 | `c9815b5` 後端 198 項測試、19 項內容檢查通過；最終 Docker 映像完成八組冷熱／反向、自比與啟動檢查。屬固定樣本，不代表所有文字與表格均已完整辨識 |
-| OCI | 2026-10-14 已部署 MinerU `4.0.12`（basic／ONNX CPU）與 Docling `2.138.0`；兩容器 healthy、正式 HTTPS 與原生／掃描 PDF smoke 通過，六組 cold／warm Golden 守門值全過。部署紀錄見 `docs/project-history.md` 與 `benchmarks/results/core_upgrade_deployment_20261014.json` |
+| OCI | 2026-10-16 已部署內容修正版 `c9815b5`，映像與本機驗收相同；MinerU `4.0.12`（basic／ONNX CPU）與 Docling `2.138.0` 維持原版。兩容器 healthy、正式 HTTPS 200；八組冷熱／反向、16 份自比及 19 項內容檢查全過，既有 33 筆比對及 15 筆審核紀錄雜湊一致。見 `benchmarks/results/content_fix_deployment_20261016.json` |
 
 完整修改脈絡、現行／已取代決策、準度與效能證據統一收錄於 [`docs/project-history.md`](docs/project-history.md)。現行模組與部署架構另見 `docs/technical-architecture.md`。
 

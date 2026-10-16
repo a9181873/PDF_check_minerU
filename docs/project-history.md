@@ -1,6 +1,6 @@
 # PDF Check MinerU 工程歷程與決策紀錄
 
-> 最後整理：2026-10-15
+> 最後整理：2026-10-16
 > 本文件是 PDF／OCR／MinerU／OCI／準度與效能修改歷程的唯一敘事入口。其他日期型文件與 benchmark 原始檔仍保留作為證據，但若對「目前狀態」說法不同，以本文件、實際執行中的部署稽核與對應 commit 為準。
 
 ## 1. 閱讀方式
@@ -32,7 +32,11 @@
 
 新增確認使首輪引擎合計 165.43 秒，前版歷史單輪為 125.27 秒；這次尚未達成首輪加速，不能沿用前版快 17% 宣稱。熱快取合計 0.262 秒只代表引擎結果重用，不含上傳、解析或畫面產物。
 
-**部署狀態：最終映像已在本機建置並啟動檢查，OCI 尚未切換此修正版。** tag `pdf-check-backend:content-verified-20261016`，image ID `sha256:1c6d9ef5895c87d7f9ddf883dd4e2224b244734024916d4ffb1a8f051f2aed64`；測試容器均已關閉，正式資料與審核紀錄未改寫。詳見 [`content_fix_validation_2026-10-16.md`](content_fix_validation_2026-10-16.md) 及 `benchmarks/results/content_fix_validation_20261016.json`。下節保留修正前失敗證據。
+**部署狀態：已部署 OCI，執行中映像與驗收映像一致。** tag `pdf-check-backend:content-verified-20261016`，image ID `sha256:1c6d9ef5895c87d7f9ddf883dd4e2224b244734024916d4ffb1a8f051f2aed64`。OCI 使用既有 16 份 PDF（SHA-256 與本機一致，無另傳 PDF），完成八組冷熱、19／19 精確內容、16／16 自比、8／8 快取及反向一致性驗收後才切換。兩服務 healthy、正式 HTTPS 200；僅重建後端，MinerU 及 OCI Compose 覆寫保留。OCI 八組冷／熱引擎分別合計 362.46／0.471 秒，不含解析與畫面產物，不作舊新版同機加速宣稱。
+
+切換前一致性備份、切換後 SQLite integrity check 通過；既有 33 筆比對、15 筆審核紀錄、40 個專案與 5 個驗證工作階段逐筆雜湊一致。第一次因內建管理員每次啟動重產密碼鹽值及時間而觸發整列守門，自動回復後確認憑證等價、其餘欄位不變，才限縮允許該預期變動並再次切換；其他帳號與審核／報告仍嚴格比對。備份及先前映像保留，原有歷史 `diffing` 1 筆未改寫。舊報告須重新比對才會套用修正。
+
+詳見 [`content_fix_validation_2026-10-16.md`](content_fix_validation_2026-10-16.md)、本機 `benchmarks/results/content_fix_validation_20261016.json` 與正式 `benchmarks/results/content_fix_deployment_20261016.json`。下節保留修正前失敗證據。
 
 ## 2.2 2026-10-16 商品 DM 接續驗收
 
