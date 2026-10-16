@@ -1,0 +1,1891 @@
+{
+  "runtime": {
+    "python": "3.12.8",
+    "platform": "arm64",
+    "ocr_langs": "chi_tra+chi_sim+eng",
+    "mineru": "4.0.12",
+    "mineru_api_version": "v1",
+    "pymupdf": "1.27.2.3",
+    "docling": "2.138.0",
+    "docling-core": "2.101.1",
+    "docling-parse": "7.22.3",
+    "docling-ibm-models": "4.0.3",
+    "tesseract": "tesseract 5.5.1",
+    "poppler": "pdftoppm version 26.03.0",
+    "pixel_ocr_model_langs": "chi_sim+chi_tra+eng",
+    "tessdata_sha256": "chi_sim:a5fcb6f0db1e1d6d,chi_tra:529c5b5797d64b12,eng:7d4322bd2a774972"
+  },
+  "source_sha256": {
+    "services/visual_match_service.py": "6f8a55ee58ce2139b96fd523ea41df4132f2c9ca7f955da4e2d9eb405f83a290",
+    "services/recall_hybrid_service.py": "c1c26dd2be8ff7bf7fc44cc75694da05a83c7b8330345f737a9f85b5ef6c9bb8",
+    "services/align_service.py": "e5828069810702f4bc4b52a2936abe8c2454762a786c67082a587be52568c65e",
+    "services/compare_orchestrator.py": "8023a6dd0e829171e3498d833f1915ecdc41e83a7f6df50edc501c501b3db213",
+    "services/compare_job_runner.py": "44f806b3300345a37f99994d76768f695f17560ed7eb9671ab3b50222d5732c2",
+    "services/diff_service.py": "3be3475c784d94a2a9865eed03f02882e51ae7db5d060123d164b305aeb05d22",
+    "services/persistent_cache.py": "3ac9e7f21ac80be366d616489c264a5cdd66964317364d0458bc16cbb91056bd",
+    "services/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "services/parser_service.py": "a4f6b3e39f454a5527ff5cc9c8a1a6d78381fad13b2a65bf06e6ca219fe72cc2",
+    "services/snapshot_service.py": "f870d05e9fef0607eea9d3cf24fb507d9ff13f451fc6a61ca694ad856089f7c1",
+    "services/export_service.py": "13a59f9261e95f108295ae59d2df06a8d6c5dc03db170e5c599814249ee75be2",
+    "services/table_artifact_service.py": "a863f0ca5f5ae09f8fa678f223bd314157e91a492e357f832e518e17096c7054",
+    "services/resource_monitor.py": "765bc73fd72bce9c2f417bbaad18a5e1593816fde8fa4c3f676ce9756c1eaa39",
+    "services/paddle_ocr_adapter.py": "7de51314ac3d31015dc58b7d9c65d2d9d99920f3d9d37870b0ebc5b51bed8009",
+    "services/archive_service.py": "30fa5f06a0e9262f48c2d1b4524e0eb82a8b84dc601559feec80164b90c51c19",
+    "services/checklist_service.py": "6b3c2bdcf70d7e0582628b57063ea579f90085ed61718dd2d97a34609b415d5d",
+    "services/coord_transformer.py": "7b0bffd4efbfbe8a4f4e861a9c15440bc98ad9d7b75571b1e1b265d33697b07a",
+    "services/pymupdf_guard.py": "86ae1cf099bc2d07d9b3942310cf64da7d76947ce0985a588401c3011d19b472",
+    "services/evidence_service.py": "cece58dc4b413f2f19f012b703f4c895a0bd0a179d0aab126687dc139ff07642"
+  },
+  "revision": "c1d76c6f98e3479673bc8f9550f8551af07df2d3",
+  "scope": "local real-PDF regression; anchor coverage is distinct from OCR correctness",
+  "inventory": [
+    {
+      "case": "fengshouai",
+      "side": "old",
+      "path": "商品DM/台灣人壽鳳守愛防癌定期健康保險_商品DM_20260213適用.pdf",
+      "sha256": "cccf422e61c04f9cec2d6606f6236843ed670481fe301844b46f005f1d7d0c97",
+      "pages": 6,
+      "text_characters": 0
+    },
+    {
+      "case": "fengshouai",
+      "side": "new",
+      "path": "商品DM/台灣人壽鳳守愛防癌定期健康保險_商品DM_20260506適用.pdf",
+      "sha256": "a683839193ab13e7ba1f70b93964580650c3c2107bfec9dc11e974ca723ba464",
+      "pages": 6,
+      "text_characters": 0
+    },
+    {
+      "case": "ciai_micro",
+      "side": "old",
+      "path": "商品DM/慈愛微型/台灣人壽慈愛微型一年定期傷害保險-DM(公版)-FINAL(製作人員-陳芸平)-1140825.pdf",
+      "sha256": "6e1d8d0aa59d1ae9ce8a7e118d2fa8d2a62fffb9e2e6ffa9ce7342f5e639185c",
+      "pages": 4,
+      "text_characters": 0
+    },
+    {
+      "case": "ciai_micro",
+      "side": "new",
+      "path": "商品DM/慈愛微型/台灣人壽慈愛微型一年定期傷害保險-DM(公版)-FINAL(製作人員-陳柏婷)-1141003.pdf",
+      "sha256": "b19eb5bf49fa83d2f044218910b64368ef0098550825866ff7c7413eec99a6c3",
+      "pages": 4,
+      "text_characters": 0
+    },
+    {
+      "case": "xinfuaiai",
+      "side": "old",
+      "path": "商品DM/新扶愛/台灣人壽新扶愛微型傷害保險_DM (公版)-FINAL(製作人員-林元華)-1131001.pdf",
+      "sha256": "2873d4ed67b1318c14e4bf7c8d201116b88935a61b0ee4c5acd05f0b6565f608",
+      "pages": 4,
+      "text_characters": 0
+    },
+    {
+      "case": "xinfuaiai",
+      "side": "new",
+      "path": "商品DM/新扶愛/台灣人壽新扶愛微型傷害保險_商品DM_20251020適用.pdf",
+      "sha256": "84bec66b170e10eb5bc9a5e7e0f8befb57eb4e7028ffd3d74d6727632407c6fc",
+      "pages": 4,
+      "text_characters": 0
+    },
+    {
+      "case": "meibaofa",
+      "side": "old",
+      "path": "商品DM/美保發/台灣人壽美保發美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130101.pdf",
+      "sha256": "5dc00de3769239667096ba944ec00698055a6e75370307db2fcbc5e0ad510e58",
+      "pages": 4,
+      "text_characters": 0
+    },
+    {
+      "case": "meibaofa",
+      "side": "new",
+      "path": "商品DM/美保發/台灣人壽美保發美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130418.pdf",
+      "sha256": "befb3e454e7651479cea85051891e7ee2a1d3955724980a3081f0d63a5a0f2cd",
+      "pages": 4,
+      "text_characters": 0
+    },
+    {
+      "case": "meilbao",
+      "side": "old",
+      "path": "商品DM/美利保/台灣人壽美利保美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130522.pdf",
+      "sha256": "95603efa44df43bffea19cdc6847875dadcee05f4eb99de018982e7ad6cf7c00",
+      "pages": 6,
+      "text_characters": 0
+    },
+    {
+      "case": "meilbao",
+      "side": "new",
+      "path": "商品DM/美利保/台灣人壽美利保美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130701.pdf",
+      "sha256": "b44ee382e82858a23b9507a7885c29b8ab056982147e7f66c4377455f832cc18",
+      "pages": 6,
+      "text_characters": 0
+    },
+    {
+      "case": "zhenmeili",
+      "side": "old",
+      "path": "商品DM/臻美利/台灣人壽臻美利美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130101.pdf",
+      "sha256": "2fe9eaea82dd4771b84c78d9803b1975f36953b9d2848920043f17e711d01ca7",
+      "pages": 6,
+      "text_characters": 0
+    },
+    {
+      "case": "zhenmeili",
+      "side": "new",
+      "path": "商品DM/臻美利/台灣人壽臻美利美元利率變動型終身壽險_DM (公版)-FINAL(製作人員-林元華)-1130418.pdf",
+      "sha256": "6fccac0743e9bd56242c1332da65b7308f82eea850b7c31ccc0d90dc52eff913",
+      "pages": 6,
+      "text_characters": 0
+    },
+    {
+      "case": "heart",
+      "side": "old",
+      "path": "商品DM/台灣人壽心動溢生醫療定期健康保險_DM(公版)-FINAL(製作人員-陳芸平)-1140121.pdf",
+      "sha256": "c9ef381c60b6a7e1f2ac8f163b6744dac0b0c28ea38d99ddeace304a18bb5c68",
+      "pages": 4,
+      "text_characters": 0
+    },
+    {
+      "case": "heart",
+      "side": "new",
+      "path": "商品DM/台灣人壽心動溢生醫療定期健康保險_DM(公版)-FINAL(製作人員-陳芸平)-1140815.pdf",
+      "sha256": "4e487dec086e640d4124a08dd5a76f32a03d824bcb75f649049367893ab05118",
+      "pages": 4,
+      "text_characters": 0
+    },
+    {
+      "case": "jinfang",
+      "side": "old",
+      "path": "商品DM/台灣人壽金放心85長期照顧定期健康保險_商品DM-FINAL(製作人員-林元華)-1120701.pdf",
+      "sha256": "d78292ee16e83ed85c086bebb1d400190de8cdcf5c6dfd97b8e672034ae1191c",
+      "pages": 6,
+      "text_characters": 0
+    },
+    {
+      "case": "jinfang",
+      "side": "new",
+      "path": "商品DM/台灣人壽金放心85+守護85長期照顧定期健康保險 _公版DM修改險-DM(公版)-FINAL(製作人員-陳芸平)-1140825.pdf",
+      "sha256": "957fa1e92fd7824d567923d0ab90079f8254e59ddcd81d572a9a470d39b12f4f",
+      "pages": 6,
+      "text_characters": 0
+    }
+  ],
+  "self_comparisons": [
+    {
+      "case": "fengshouai",
+      "side": "old",
+      "seconds": 0.2866,
+      "total_diffs": 0,
+      "warnings": [],
+      "passed": true
+    },
+    {
+      "case": "fengshouai",
+      "side": "new",
+      "seconds": 0.1511,
+      "total_diffs": 0,
+      "warnings": [],
+      "passed": true
+    },
+    {
+      "case": "ciai_micro",
+      "side": "old",
+      "seconds": 0.1155,
+      "total_diffs": 0,
+      "warnings": [],
+      "passed": true
+    },
+    {
+      "case": "ciai_micro",
+      "side": "new",
+      "seconds": 0.1129,
+      "total_diffs": 0,
+      "warnings": [],
+      "passed": true
+    },
+    {
+      "case": "xinfuaiai",
+      "side": "old",
+      "seconds": 0.1112,
+      "total_diffs": 0,
+      "warnings": [],
+      "passed": true
+    },
+    {
+      "case": "xinfuaiai",
+      "side": "new",
+      "seconds": 0.1085,
+      "total_diffs": 0,
+      "warnings": [],
+      "passed": true
+    },
+    {
+      "case": "meibaofa",
+      "side": "old",
+      "seconds": 0.1141,
+      "total_diffs": 0,
+      "warnings": [],
+      "passed": true
+    },
+    {
+      "case": "meibaofa",
+      "side": "new",
+      "seconds": 0.1145,
+      "total_diffs": 0,
+      "warnings": [],
+      "passed": true
+    },
+    {
+      "case": "meilbao",
+      "side": "old",
+      "seconds": 0.1771,
+      "total_diffs": 0,
+      "warnings": [],
+      "passed": true
+    },
+    {
+      "case": "meilbao",
+      "side": "new",
+      "seconds": 0.1827,
+      "total_diffs": 0,
+      "warnings": [],
+      "passed": true
+    },
+    {
+      "case": "zhenmeili",
+      "side": "old",
+      "seconds": 0.1886,
+      "total_diffs": 0,
+      "warnings": [],
+      "passed": true
+    },
+    {
+      "case": "zhenmeili",
+      "side": "new",
+      "seconds": 0.1873,
+      "total_diffs": 0,
+      "warnings": [],
+      "passed": true
+    },
+    {
+      "case": "heart",
+      "side": "old",
+      "seconds": 0.1396,
+      "total_diffs": 0,
+      "warnings": [],
+      "passed": true
+    },
+    {
+      "case": "heart",
+      "side": "new",
+      "seconds": 0.1018,
+      "total_diffs": 0,
+      "warnings": [],
+      "passed": true
+    },
+    {
+      "case": "jinfang",
+      "side": "old",
+      "seconds": 0.1653,
+      "total_diffs": 0,
+      "warnings": [],
+      "passed": true
+    },
+    {
+      "case": "jinfang",
+      "side": "new",
+      "seconds": 0.171,
+      "total_diffs": 0,
+      "warnings": [],
+      "passed": true
+    }
+  ],
+  "cases": [
+    {
+      "case": "fengshouai",
+      "anchors": [
+        {
+          "id": "p2_24_to_28",
+          "status": "content_candidate",
+          "hits": [
+            "d001"
+          ]
+        },
+        {
+          "id": "p6_footer",
+          "status": "content_candidate",
+          "hits": [
+            "d002"
+          ]
+        }
+      ],
+      "cache_content_consistent": true,
+      "cache_items_consistent": true,
+      "content_candidates": 2,
+      "visual_only": 0,
+      "reverse_seconds": 2.1202,
+      "reverse_total": 2,
+      "reverse_content_mirrors_forward": true,
+      "forward_only_claims": [],
+      "reverse_only_claims": [],
+      "reverse_warnings": []
+    },
+    {
+      "case": "ciai_micro",
+      "anchors": [
+        {
+          "id": "p3_content_or_visual",
+          "status": "visual_only",
+          "hits": [
+            "d001"
+          ]
+        },
+        {
+          "id": "p4_footer",
+          "status": "content_candidate",
+          "hits": [
+            "d004"
+          ]
+        }
+      ],
+      "cache_content_consistent": true,
+      "cache_items_consistent": true,
+      "content_candidates": 2,
+      "visual_only": 2,
+      "reverse_seconds": 11.5704,
+      "reverse_total": 4,
+      "reverse_content_mirrors_forward": true,
+      "forward_only_claims": [],
+      "reverse_only_claims": [],
+      "reverse_warnings": []
+    },
+    {
+      "case": "xinfuaiai",
+      "anchors": [
+        {
+          "id": "p1_table_or_layout",
+          "status": "visual_only",
+          "hits": [
+            "d007"
+          ]
+        },
+        {
+          "id": "p2_table_or_layout",
+          "status": "visual_only",
+          "hits": [
+            "d017"
+          ]
+        },
+        {
+          "id": "p3_table_or_layout",
+          "status": "visual_only",
+          "hits": [
+            "d018"
+          ]
+        },
+        {
+          "id": "p4_table_or_layout",
+          "status": "visual_only",
+          "hits": [
+            "d019"
+          ]
+        }
+      ],
+      "cache_content_consistent": true,
+      "cache_items_consistent": true,
+      "content_candidates": 3,
+      "visual_only": 20,
+      "reverse_seconds": 14.5262,
+      "reverse_total": 23,
+      "reverse_content_mirrors_forward": true,
+      "forward_only_claims": [],
+      "reverse_only_claims": [],
+      "reverse_warnings": []
+    },
+    {
+      "case": "meibaofa",
+      "anchors": [
+        {
+          "id": "p2_content_or_visual",
+          "status": "visual_only",
+          "hits": [
+            "d001"
+          ]
+        },
+        {
+          "id": "p4_footer",
+          "status": "content_candidate",
+          "hits": [
+            "d003"
+          ]
+        }
+      ],
+      "cache_content_consistent": true,
+      "cache_items_consistent": true,
+      "content_candidates": 2,
+      "visual_only": 2,
+      "reverse_seconds": 4.7126,
+      "reverse_total": 4,
+      "reverse_content_mirrors_forward": true,
+      "forward_only_claims": [],
+      "reverse_only_claims": [],
+      "reverse_warnings": []
+    },
+    {
+      "case": "meilbao",
+      "anchors": [
+        {
+          "id": "p3_main_table",
+          "status": "visual_only",
+          "hits": [
+            "d004"
+          ]
+        },
+        {
+          "id": "p6_footer",
+          "status": "content_candidate",
+          "hits": [
+            "d006"
+          ]
+        }
+      ],
+      "cache_content_consistent": true,
+      "cache_items_consistent": true,
+      "content_candidates": 3,
+      "visual_only": 3,
+      "reverse_seconds": 18.1014,
+      "reverse_total": 6,
+      "reverse_content_mirrors_forward": true,
+      "forward_only_claims": [],
+      "reverse_only_claims": [],
+      "reverse_warnings": []
+    },
+    {
+      "case": "zhenmeili",
+      "anchors": [
+        {
+          "id": "p2_note_or_visual",
+          "status": "visual_only",
+          "hits": [
+            "d002"
+          ]
+        },
+        {
+          "id": "p3_note_or_visual",
+          "status": "visual_only",
+          "hits": [
+            "d004"
+          ]
+        },
+        {
+          "id": "p4_note_or_visual",
+          "status": "visual_only",
+          "hits": [
+            "d006"
+          ]
+        },
+        {
+          "id": "p6_footer",
+          "status": "content_candidate",
+          "hits": [
+            "d007"
+          ]
+        }
+      ],
+      "cache_content_consistent": true,
+      "cache_items_consistent": true,
+      "content_candidates": 1,
+      "visual_only": 6,
+      "reverse_seconds": 7.7471,
+      "reverse_total": 7,
+      "reverse_content_mirrors_forward": true,
+      "forward_only_claims": [],
+      "reverse_only_claims": [],
+      "reverse_warnings": []
+    },
+    {
+      "case": "heart",
+      "anchors": [
+        {
+          "id": "complete_footer",
+          "status": "content_candidate",
+          "hits": [
+            "d006"
+          ]
+        }
+      ],
+      "cache_content_consistent": true,
+      "cache_items_consistent": true,
+      "content_candidates": 1,
+      "visual_only": 5,
+      "reverse_seconds": 11.489,
+      "reverse_total": 6,
+      "reverse_content_mirrors_forward": true,
+      "forward_only_claims": [],
+      "reverse_only_claims": [],
+      "reverse_warnings": []
+    },
+    {
+      "case": "jinfang",
+      "anchors": [
+        {
+          "id": "complete_footer",
+          "status": "content_candidate",
+          "hits": [
+            "d010"
+          ]
+        }
+      ],
+      "cache_content_consistent": true,
+      "cache_items_consistent": true,
+      "content_candidates": 1,
+      "visual_only": 9,
+      "reverse_seconds": 19.0127,
+      "reverse_total": 10,
+      "reverse_content_mirrors_forward": true,
+      "forward_only_claims": [],
+      "reverse_only_claims": [],
+      "reverse_warnings": []
+    }
+  ],
+  "summary": {
+    "files": 16,
+    "pages": 80,
+    "self_passed": 16,
+    "cache_items_consistent_cases": 8,
+    "reverse_content_consistent_cases": 8,
+    "anchor_status": {
+      "content_candidate": 8,
+      "visual_only": 10
+    },
+    "content_candidates": 15,
+    "visual_only": 47
+  },
+  "content_truth": {
+    "truth_path": "benchmarks/golden/v2/content_truth.json",
+    "scope": "局部人工核對真值；不是 80 頁完整標註，不能推估母體 precision/recall。bbox 為 PDF 左下原點 pt。",
+    "truth_sha256": "fc03325b8da77de6ea7d6f9bf1585f8632073171dfc5b7782e7e70ca583f92a3",
+    "passed": false,
+    "status_counts": {
+      "passed": 9,
+      "incorrect_content": 1,
+      "visual_only": 3,
+      "false_content_claim": 4,
+      "duplicate_content": 1
+    },
+    "checks": [
+      {
+        "case": "fengshouai",
+        "id": "p2_24_to_28_exact",
+        "kind": "content",
+        "status": "passed",
+        "passed": true,
+        "note": null,
+        "matched_ids": [
+          "d001"
+        ],
+        "located_content": [
+          {
+            "id": "d001",
+            "type": "number_modified",
+            "old": "24",
+            "new": "28"
+          }
+        ],
+        "visual_ids": []
+      },
+      {
+        "case": "fengshouai",
+        "id": "complete_footer_exact",
+        "kind": "content",
+        "status": "passed",
+        "passed": true,
+        "note": null,
+        "matched_ids": [
+          "d002"
+        ],
+        "located_content": [
+          {
+            "id": "d002",
+            "type": "number_modified",
+            "old": "Version: 2026.02; Control No: OP-2602-0081",
+            "new": "Version: 2026.05; Control No: 2605-OP-0029"
+          }
+        ],
+        "visual_ids": []
+      },
+      {
+        "case": "ciai_micro",
+        "id": "complete_footer_exact",
+        "kind": "content",
+        "status": "passed",
+        "passed": true,
+        "note": null,
+        "matched_ids": [
+          "d004"
+        ],
+        "located_content": [
+          {
+            "id": "d004",
+            "type": "number_modified",
+            "old": "Version: 2025.09; Control No: 2508-OP-0067",
+            "new": "Version: 2025.10; Control No: 2509-OP-0077"
+          }
+        ],
+        "visual_ids": []
+      },
+      {
+        "case": "xinfuaiai",
+        "id": "complete_footer_exact",
+        "kind": "content",
+        "status": "passed",
+        "passed": true,
+        "note": null,
+        "matched_ids": [
+          "d023"
+        ],
+        "located_content": [
+          {
+            "id": "d021",
+            "type": "number_modified",
+            "old": "3.本商品為保險商品受『財團法人保險安定基金』之『人身保險安定基金專戶』",
+            "new": "1. 消費者投保前應審慎瞭解本商品之承保範圍、除外不保事項及商品風險。"
+          },
+          {
+            "id": "d022",
+            "type": "text_modified",
+            "old": "故不受存款保險之保障。",
+            "new": "被保險人累計投保微型傷害保險之保險金額"
+          },
+          {
+            "id": "d023",
+            "type": "number_modified",
+            "old": "Version: 2024.10; Control No: 2409-2609-OP-0086",
+            "new": "Version: 2025.10; Control No: 2509-OP-0078"
+          }
+        ],
+        "visual_ids": [
+          "d019",
+          "d020"
+        ]
+      },
+      {
+        "case": "meibaofa",
+        "id": "complete_footer_exact",
+        "kind": "content",
+        "status": "passed",
+        "passed": true,
+        "note": null,
+        "matched_ids": [
+          "d003"
+        ],
+        "located_content": [
+          {
+            "id": "d003",
+            "type": "number_modified",
+            "old": "Version: 2024.01; Control No: 2312-2512-OP2-0300",
+            "new": "Version: 2024.04; Control No: OP-2404-2604-0238"
+          },
+          {
+            "id": "d004",
+            "type": "number_modified",
+            "old": "Control No: 2312-2512-0P2",
+            "new": "Control No: OP-2404-2604"
+          }
+        ],
+        "visual_ids": []
+      },
+      {
+        "case": "meilbao",
+        "id": "complete_footer_exact",
+        "kind": "content",
+        "status": "passed",
+        "passed": true,
+        "note": null,
+        "matched_ids": [
+          "d006"
+        ],
+        "located_content": [
+          {
+            "id": "d006",
+            "type": "number_modified",
+            "old": "Version: 2024.05; Control No: OP-2405-2605-0342",
+            "new": "Version: 2024.07; Control No: 2406-2606-OP-0046"
+          }
+        ],
+        "visual_ids": []
+      },
+      {
+        "case": "zhenmeili",
+        "id": "complete_footer_exact",
+        "kind": "content",
+        "status": "passed",
+        "passed": true,
+        "note": null,
+        "matched_ids": [
+          "d007"
+        ],
+        "located_content": [
+          {
+            "id": "d007",
+            "type": "number_modified",
+            "old": "Version: 2024.01; Control No: 2312-2512-OP2-0274",
+            "new": "Version: 2024.04; Control No: OP-2404-2604-0234"
+          }
+        ],
+        "visual_ids": []
+      },
+      {
+        "case": "heart",
+        "id": "complete_footer_exact",
+        "kind": "content",
+        "status": "passed",
+        "passed": true,
+        "note": null,
+        "matched_ids": [
+          "d006"
+        ],
+        "located_content": [
+          {
+            "id": "d006",
+            "type": "number_modified",
+            "old": "Version: 2025.01; Control No: OP-2501-2701-0029",
+            "new": "Version: 2025.09; Control No: OP-2508-0594"
+          }
+        ],
+        "visual_ids": []
+      },
+      {
+        "case": "jinfang",
+        "id": "complete_footer_exact",
+        "kind": "content",
+        "status": "passed",
+        "passed": true,
+        "note": null,
+        "matched_ids": [
+          "d010"
+        ],
+        "located_content": [
+          {
+            "id": "d010",
+            "type": "number_modified",
+            "old": "Version: 2023.07; Control No: 2306-2506-OP2-0189",
+            "new": "Version: 2025.09; Control No: 2508-OP-0070"
+          }
+        ],
+        "visual_ids": []
+      },
+      {
+        "case": "meilbao",
+        "id": "p3_interest_rate_keeps_decimal_and_percent",
+        "kind": "content",
+        "status": "incorrect_content",
+        "passed": false,
+        "note": "實際利率 3.95% → 4.00%；395 → 400 不合格。",
+        "matched_ids": [],
+        "located_content": [
+          {
+            "id": "d002",
+            "type": "number_modified",
+            "old": "395",
+            "new": "400"
+          }
+        ],
+        "visual_ids": []
+      },
+      {
+        "case": "heart",
+        "id": "p1_added_approval_number",
+        "kind": "content",
+        "status": "visual_only",
+        "passed": false,
+        "note": "新增 114年9月1日核備修正文號，不能只框區域。",
+        "matched_ids": [],
+        "located_content": [],
+        "visual_ids": [
+          "d001"
+        ]
+      },
+      {
+        "case": "heart",
+        "id": "p1_added_benefit_deduction",
+        "kind": "content",
+        "status": "visual_only",
+        "passed": false,
+        "note": "新增給付扣除條件。",
+        "matched_ids": [],
+        "located_content": [],
+        "visual_ids": [
+          "d001"
+        ]
+      },
+      {
+        "case": "ciai_micro",
+        "id": "p3_added_new_resident_clause",
+        "kind": "content",
+        "status": "visual_only",
+        "passed": false,
+        "note": "新增第10點資格與註解；框到整張表不代表內容辨識成功。",
+        "matched_ids": [],
+        "located_content": [],
+        "visual_ids": [
+          "d001"
+        ]
+      },
+      {
+        "case": "meilbao",
+        "id": "p4_unchanged_daily_living_text",
+        "kind": "no_content_claim",
+        "status": "false_content_claim",
+        "passed": false,
+        "note": "進食障礙、移位障礙內容相同；OCR 的障擬、輔只、肥引人等不是文件修改。",
+        "matched_ids": [],
+        "located_content": [
+          {
+            "id": "d005",
+            "type": "number_modified",
+            "old": "(1) 進食障礙 :\n須別人協助才\n輔具。\n\n(2) 移位障礙 :\n須別人協助才\n椅 ee",
+            "new": "(1) 進食障擬:\n須別人協助才\n輔只。\n\n( 移位障礙:\n肥引人公有"
+          }
+        ],
+        "visual_ids": []
+      },
+      {
+        "case": "ciai_micro",
+        "id": "p3_shifted_document_list_is_not_replacement",
+        "kind": "no_content_claim",
+        "status": "false_content_claim",
+        "passed": false,
+        "note": "所得清單與家庭成員投保適用兩版都存在，只因表格上移而落在同一舊座標；不能列為彼此替換。",
+        "matched_ids": [],
+        "located_content": [
+          {
+            "id": "d002",
+            "type": "text_modified",
+            "old": "亡被保險人所得清單",
+            "new": "(家庭成員投保適用 )"
+          }
+        ],
+        "visual_ids": [
+          "d001"
+        ]
+      },
+      {
+        "case": "xinfuaiai",
+        "id": "p4_shifted_warning_3_is_not_warning_1",
+        "kind": "no_content_claim",
+        "status": "false_content_claim",
+        "passed": false,
+        "note": "注意事項第1至第7點兩版均存在，插畫與區塊移位導致同座標配到第3與第1點，不能列為替換。",
+        "matched_ids": [],
+        "located_content": [
+          {
+            "id": "d021",
+            "type": "number_modified",
+            "old": "3.本商品為保險商品受『財團法人保險安定基金』之『人身保險安定基金專戶』",
+            "new": "1. 消費者投保前應審慎瞭解本商品之承保範圍、除外不保事項及商品風險。"
+          }
+        ],
+        "visual_ids": [
+          "d020"
+        ]
+      },
+      {
+        "case": "xinfuaiai",
+        "id": "p4_shifted_deposit_warning_is_not_coverage_limit",
+        "kind": "no_content_claim",
+        "status": "false_content_claim",
+        "passed": false,
+        "note": "故不受存款保險之保障與累計投保金額說明兩版都存在，只有位置不同。",
+        "matched_ids": [],
+        "located_content": [
+          {
+            "id": "d022",
+            "type": "text_modified",
+            "old": "故不受存款保險之保障。",
+            "new": "被保險人累計投保微型傷害保險之保險金額"
+          }
+        ],
+        "visual_ids": [
+          "d020"
+        ]
+      },
+      {
+        "case": "meibaofa",
+        "id": "p4_footer_not_duplicated",
+        "kind": "max_content_items",
+        "status": "duplicate_content",
+        "passed": false,
+        "note": "完整與殘缺 Control No 應只列一次；O/0 錯讀不能製造第二筆。",
+        "matched_ids": [],
+        "located_content": [
+          {
+            "id": "d003",
+            "type": "number_modified",
+            "old": "Version: 2024.01; Control No: 2312-2512-OP2-0300",
+            "new": "Version: 2024.04; Control No: OP-2404-2604-0238"
+          },
+          {
+            "id": "d004",
+            "type": "number_modified",
+            "old": "Control No: 2312-2512-0P2",
+            "new": "Control No: OP-2404-2604"
+          }
+        ],
+        "visual_ids": []
+      }
+    ]
+  },
+  "date": "2026-10-16",
+  "acceptance_passed": false,
+  "environment": "macOS ARM64 native Python; not Docker or OCI",
+  "forward_regression": {
+    "label": "forward",
+    "timing_scope": "diff_only_excludes_parse_and_artifacts",
+    "runtime": {
+      "python": "3.12.8",
+      "platform": "arm64",
+      "ocr_langs": "chi_tra+chi_sim+eng",
+      "mineru": "4.0.12",
+      "mineru_api_version": "v1",
+      "pymupdf": "1.27.2.3",
+      "docling": "2.138.0",
+      "docling-core": "2.101.1",
+      "docling-parse": "7.22.3",
+      "docling-ibm-models": "4.0.3",
+      "tesseract": "tesseract 5.5.1",
+      "poppler": "pdftoppm version 26.03.0",
+      "pixel_ocr_model_langs": "chi_sim+chi_tra+eng",
+      "tessdata_sha256": "chi_sim:a5fcb6f0db1e1d6d,chi_tra:529c5b5797d64b12,eng:7d4322bd2a774972"
+    },
+    "runs": [
+      {
+        "case": "fengshouai",
+        "mode": "cold",
+        "preliminary_seconds": 1.1458,
+        "complete_seconds": 3.0706,
+        "total": 2,
+        "content": 2,
+        "uncertain": 0,
+        "ocr_process_calls": 16,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_24_to_28",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d002",
+              "hits": [
+                "d002"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 0
+        },
+        "warnings": []
+      },
+      {
+        "case": "fengshouai",
+        "mode": "warm",
+        "preliminary_seconds": 0.0029,
+        "complete_seconds": 0.0105,
+        "total": 2,
+        "content": 2,
+        "uncertain": 0,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_24_to_28",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d002",
+              "hits": [
+                "d002"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 0
+        },
+        "warnings": []
+      },
+      {
+        "case": "ciai_micro",
+        "mode": "cold",
+        "preliminary_seconds": 3.2305,
+        "complete_seconds": 14.4503,
+        "total": 4,
+        "content": 2,
+        "uncertain": 2,
+        "ocr_process_calls": 129,
+        "ocr_cache_hits": 1,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p3_content_or_visual",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p4_footer",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "(?:^|\\D)(?:2\\s*(?:->|→)\\s*3|3\\s*(?:->|→)\\s*5|9\\s*(?:->|→)\\s*1)(?:\\D|$)",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p1_4_to_24",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p2_35_to_5",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 2
+        },
+        "warnings": []
+      },
+      {
+        "case": "ciai_micro",
+        "mode": "warm",
+        "preliminary_seconds": 0.0079,
+        "complete_seconds": 0.0187,
+        "total": 4,
+        "content": 2,
+        "uncertain": 2,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 1,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p3_content_or_visual",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p4_footer",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "(?:^|\\D)(?:2\\s*(?:->|→)\\s*3|3\\s*(?:->|→)\\s*5|9\\s*(?:->|→)\\s*1)(?:\\D|$)",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p1_4_to_24",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p2_35_to_5",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 2
+        },
+        "warnings": []
+      },
+      {
+        "case": "xinfuaiai",
+        "mode": "cold",
+        "preliminary_seconds": 3.0555,
+        "complete_seconds": 17.4076,
+        "total": 23,
+        "content": 3,
+        "uncertain": 20,
+        "ocr_process_calls": 150,
+        "ocr_cache_hits": 2,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p1_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d007",
+              "hits": [
+                "d007"
+              ]
+            },
+            {
+              "id": "p2_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d017",
+              "hits": [
+                "d017"
+              ]
+            },
+            {
+              "id": "p3_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d018",
+              "hits": [
+                "d018"
+              ]
+            },
+            {
+              "id": "p4_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d019",
+              "hits": [
+                "d019"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "0800.*(?:->|→).*0800",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "40歲.*(?:->|→).*40歲",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "310元.*(?:->|→).*310元",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 4,
+          "must_detect_total": 4,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 20
+        },
+        "warnings": []
+      },
+      {
+        "case": "xinfuaiai",
+        "mode": "warm",
+        "preliminary_seconds": 0.0042,
+        "complete_seconds": 0.0148,
+        "total": 23,
+        "content": 3,
+        "uncertain": 20,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 2,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p1_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d007",
+              "hits": [
+                "d007"
+              ]
+            },
+            {
+              "id": "p2_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d017",
+              "hits": [
+                "d017"
+              ]
+            },
+            {
+              "id": "p3_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d018",
+              "hits": [
+                "d018"
+              ]
+            },
+            {
+              "id": "p4_table_or_layout",
+              "passed": true,
+              "matched_item_id": "d019",
+              "hits": [
+                "d019"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "0800.*(?:->|→).*0800",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "40歲.*(?:->|→).*40歲",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "310元.*(?:->|→).*310元",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 4,
+          "must_detect_total": 4,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 20
+        },
+        "warnings": []
+      },
+      {
+        "case": "meibaofa",
+        "mode": "cold",
+        "preliminary_seconds": 1.508,
+        "complete_seconds": 6.1684,
+        "total": 4,
+        "content": 2,
+        "uncertain": 2,
+        "ocr_process_calls": 46,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_content_or_visual",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p4_footer",
+              "passed": true,
+              "matched_item_id": "d003",
+              "hits": [
+                "d003"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 2
+        },
+        "warnings": []
+      },
+      {
+        "case": "meibaofa",
+        "mode": "warm",
+        "preliminary_seconds": 0.0032,
+        "complete_seconds": 0.0104,
+        "total": 4,
+        "content": 2,
+        "uncertain": 2,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_content_or_visual",
+              "passed": true,
+              "matched_item_id": "d001",
+              "hits": [
+                "d001"
+              ]
+            },
+            {
+              "id": "p4_footer",
+              "passed": true,
+              "matched_item_id": "d003",
+              "hits": [
+                "d003"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 2
+        },
+        "warnings": []
+      },
+      {
+        "case": "meilbao",
+        "mode": "cold",
+        "preliminary_seconds": 3.9991,
+        "complete_seconds": 21.8933,
+        "total": 6,
+        "content": 3,
+        "uncertain": 3,
+        "ocr_process_calls": 182,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p3_main_table",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d006",
+              "hits": [
+                "d006"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "447,6[iIl]12",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p3_95_to_00",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p4_64_to_06",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 3
+        },
+        "warnings": []
+      },
+      {
+        "case": "meilbao",
+        "mode": "warm",
+        "preliminary_seconds": 0.013,
+        "complete_seconds": 0.0286,
+        "total": 6,
+        "content": 3,
+        "uncertain": 3,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p3_main_table",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d006",
+              "hits": [
+                "d006"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "447,6[iIl]12",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 2,
+          "must_detect_total": 2,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p3_95_to_00",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p4_64_to_06",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 3
+        },
+        "warnings": []
+      },
+      {
+        "case": "zhenmeili",
+        "mode": "cold",
+        "preliminary_seconds": 3.2206,
+        "complete_seconds": 10.9261,
+        "total": 7,
+        "content": 1,
+        "uncertain": 6,
+        "ocr_process_calls": 48,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d002",
+              "hits": [
+                "d002"
+              ]
+            },
+            {
+              "id": "p3_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            },
+            {
+              "id": "p4_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d006",
+              "hits": [
+                "d006"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d007",
+              "hits": [
+                "d007"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 4,
+          "must_detect_total": 4,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p3_71_to_7",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p4_71_to_7",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 6
+        },
+        "warnings": []
+      },
+      {
+        "case": "zhenmeili",
+        "mode": "warm",
+        "preliminary_seconds": 0.005,
+        "complete_seconds": 0.0202,
+        "total": 7,
+        "content": 1,
+        "uncertain": 6,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "p2_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d002",
+              "hits": [
+                "d002"
+              ]
+            },
+            {
+              "id": "p3_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d004",
+              "hits": [
+                "d004"
+              ]
+            },
+            {
+              "id": "p4_note_or_visual",
+              "passed": true,
+              "matched_item_id": "d006",
+              "hits": [
+                "d006"
+              ]
+            },
+            {
+              "id": "p6_footer",
+              "passed": true,
+              "matched_item_id": "d007",
+              "hits": [
+                "d007"
+              ]
+            }
+          ],
+          "must_not_detect": [
+            {
+              "pattern": "Version:\\s*975\\.18",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "pattern": "\\[PAYV",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "must_detect_passed": 4,
+          "must_detect_total": 4,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "partial_p3_71_to_7",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "partial_p4_71_to_7",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 6
+        },
+        "warnings": []
+      },
+      {
+        "case": "heart",
+        "mode": "cold",
+        "preliminary_seconds": 3.93,
+        "complete_seconds": 15.6986,
+        "total": 6,
+        "content": 1,
+        "uncertain": 5,
+        "ocr_process_calls": 118,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "complete_footer",
+              "passed": true,
+              "matched_item_id": "d006",
+              "hits": [
+                "d006"
+              ]
+            }
+          ],
+          "must_not_detect": [],
+          "must_detect_passed": 1,
+          "must_detect_total": 1,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "unchanged_logo",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 5
+        },
+        "warnings": []
+      },
+      {
+        "case": "heart",
+        "mode": "warm",
+        "preliminary_seconds": 0.0075,
+        "complete_seconds": 0.0165,
+        "total": 6,
+        "content": 1,
+        "uncertain": 5,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 0,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "complete_footer",
+              "passed": true,
+              "matched_item_id": "d006",
+              "hits": [
+                "d006"
+              ]
+            }
+          ],
+          "must_not_detect": [],
+          "must_detect_passed": 1,
+          "must_detect_total": 1,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "unchanged_logo",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 5
+        },
+        "warnings": []
+      },
+      {
+        "case": "jinfang",
+        "mode": "cold",
+        "preliminary_seconds": 4.4437,
+        "complete_seconds": 25.5589,
+        "total": 10,
+        "content": 1,
+        "uncertain": 9,
+        "ocr_process_calls": 203,
+        "ocr_cache_hits": 3,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "complete_footer",
+              "passed": true,
+              "matched_item_id": "d010",
+              "hits": [
+                "d010"
+              ]
+            }
+          ],
+          "must_not_detect": [],
+          "must_detect_passed": 1,
+          "must_detect_total": 1,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "same_approval_text",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "same_annual_premium_label",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 9
+        },
+        "warnings": []
+      },
+      {
+        "case": "jinfang",
+        "mode": "warm",
+        "preliminary_seconds": 0.0123,
+        "complete_seconds": 0.0376,
+        "total": 10,
+        "content": 1,
+        "uncertain": 9,
+        "ocr_process_calls": 0,
+        "ocr_cache_hits": 3,
+        "evaluation": {
+          "must_detect": [
+            {
+              "id": "complete_footer",
+              "passed": true,
+              "matched_item_id": "d010",
+              "hits": [
+                "d010"
+              ]
+            }
+          ],
+          "must_not_detect": [],
+          "must_detect_passed": 1,
+          "must_detect_total": 1,
+          "must_detect_recall": 1.0,
+          "prohibited_false_positives": 0,
+          "prohibited_interpretations": [
+            {
+              "id": "same_approval_text",
+              "passed": true,
+              "hits": []
+            },
+            {
+              "id": "same_annual_premium_label",
+              "passed": true,
+              "hits": []
+            }
+          ],
+          "numeric_interpretation_false_positives": 0,
+          "material_visual_suppressed": 0,
+          "unresolved_region_count": 9
+        },
+        "warnings": []
+      }
+    ],
+    "source_sha256": {
+      "services/diff_service.py": "3be3475c784d94a2a9865eed03f02882e51ae7db5d060123d164b305aeb05d22",
+      "services/evidence_service.py": "cece58dc4b413f2f19f012b703f4c895a0bd0a179d0aab126687dc139ff07642"
+    }
+  },
+  "known_numeric_bug": {
+    "call": "_compact_numeric_ocr_pair(\"3.95%\", \"4.00%\")",
+    "result": [
+      "395",
+      "400"
+    ]
+  },
+  "limitations": [
+    "18項內容檢查是局部人工核對真值，不是80頁完整標註。",
+    "正反向或快取一致不證明判讀正確。",
+    "未改動正式差異引擎；本輪未部署或改動OCI。",
+    "本機Tesseract 5.5.1／Python 3.12.8，不能與昨日Docker 5.5.0／Python 3.11.15直接比較效能。"
+  ],
+  "local_evidence_directory": "tmp/dm-acceptance-20261016",
+  "raw_reports_committed": false
+}

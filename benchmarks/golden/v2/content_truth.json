@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "scope": "局部人工核對真值；不是 80 頁完整標註，不能推估母體 precision/recall。bbox 為 PDF 左下原點 pt。",
+  "reviewed_on": "2026-10-16",
+  "checks": [
+    {"case": "fengshouai", "id": "p2_24_to_28_exact", "kind": "content", "page": 2, "old_regex": "^24$", "new_regex": "^28$"},
+    {"case": "fengshouai", "id": "complete_footer_exact", "kind": "content", "page": 6, "old_regex": "2026\\.02.*OP-2602-0081", "new_regex": "2026\\.05.*2605-OP-0029"},
+    {"case": "ciai_micro", "id": "complete_footer_exact", "kind": "content", "page": 4, "old_regex": "2025\\.09.*2508-OP-0067", "new_regex": "2025\\.10.*2509-OP-0077"},
+    {"case": "xinfuaiai", "id": "complete_footer_exact", "kind": "content", "page": 4, "old_regex": "2024\\.10.*2409-2609-OP-0086", "new_regex": "2025\\.10.*2509-OP-0078"},
+    {"case": "meibaofa", "id": "complete_footer_exact", "kind": "content", "page": 4, "old_regex": "2024\\.01.*2312-2512-OP2-0300", "new_regex": "2024\\.04.*OP-2404-2604-0238"},
+    {"case": "meilbao", "id": "complete_footer_exact", "kind": "content", "page": 6, "old_regex": "2024\\.05.*OP-2405-2605-0342", "new_regex": "2024\\.07.*2406-2606-OP-0046"},
+    {"case": "zhenmeili", "id": "complete_footer_exact", "kind": "content", "page": 6, "old_regex": "2024\\.01.*2312-2512-OP2-0274", "new_regex": "2024\\.04.*OP-2404-2604-0234"},
+    {"case": "heart", "id": "complete_footer_exact", "kind": "content", "page": 4, "old_regex": "2025\\.01.*OP-2501-2701-0029", "new_regex": "2025\\.09.*OP-2508-0594"},
+    {"case": "jinfang", "id": "complete_footer_exact", "kind": "content", "page": 6, "old_regex": "2023\\.07.*2306-2506-OP2-0189", "new_regex": "2025\\.09.*2508-OP-0070"},
+    {
+      "case": "meilbao", "id": "p3_interest_rate_keeps_decimal_and_percent", "kind": "content", "page": 3,
+      "bbox": {"page": 3, "x0": 295, "y0": 646, "x1": 333, "y1": 662}, "min_region_coverage": 0.3,
+      "old_regex": "(?<![0-9])3\\.95\\s*%", "new_regex": "(?<![0-9])4\\.00\\s*%",
+      "note": "實際利率 3.95% → 4.00%；395 → 400 不合格。"
+    },
+    {
+      "case": "heart", "id": "p1_added_approval_number", "kind": "content", "page": 1,
+      "bbox": {"page": 1, "x0": 122, "y0": 613, "x1": 360, "y1": 633}, "min_region_coverage": 0.3,
+      "new_regex": "1142320096", "note": "新增 114年9月1日核備修正文號，不能只框區域。"
+    },
+    {
+      "case": "heart", "id": "p1_added_benefit_deduction", "kind": "content", "page": 1,
+      "bbox": {"page": 1, "x0": 228, "y0": 564, "x1": 386, "y1": 584}, "min_region_coverage": 0.3,
+      "new_regex": "須扣除已領取之各項保險金總額", "note": "新增給付扣除條件。"
+    },
+    {
+      "case": "ciai_micro", "id": "p3_added_new_resident_clause", "kind": "content", "page": 3,
+      "bbox": {"page": 3, "x0": 129, "y0": 128, "x1": 376, "y1": 196}, "min_region_coverage": 0.3,
+      "new_regex": "新住民基本法第三條第一項第一款", "note": "新增第10點資格與註解；框到整張表不代表內容辨識成功。"
+    },
+    {
+      "case": "meilbao", "id": "p4_unchanged_daily_living_text", "kind": "no_content_claim", "page": 4,
+      "bbox": {"page": 4, "x0": 398.88, "y0": 186.24, "x1": 460.44, "y1": 247.44}, "min_region_coverage": 0.8,
+      "note": "進食障礙、移位障礙內容相同；OCR 的障擬、輔只、肥引人等不是文件修改。"
+    },
+    {
+      "case": "ciai_micro", "id": "p3_shifted_document_list_is_not_replacement", "kind": "no_content_claim", "page": 3,
+      "bbox": {"page": 3, "x0": 394.2, "y0": 521.04, "x1": 487.8, "y1": 533.28}, "min_region_coverage": 0.8,
+      "note": "所得清單與家庭成員投保適用兩版都存在，只因表格上移而落在同一舊座標；不能列為彼此替換。"
+    },
+    {
+      "case": "xinfuaiai", "id": "p4_shifted_warning_3_is_not_warning_1", "kind": "no_content_claim", "page": 4,
+      "bbox": {"page": 4, "x0": 64.08, "y0": 518.64, "x1": 426.24, "y1": 532.68}, "min_region_coverage": 0.8,
+      "note": "注意事項第1至第7點兩版均存在，插畫與區塊移位導致同座標配到第3與第1點，不能列為替換。"
+    },
+    {
+      "case": "xinfuaiai", "id": "p4_shifted_deposit_warning_is_not_coverage_limit", "kind": "no_content_claim", "page": 4,
+      "bbox": {"page": 4, "x0": 75.6, "y0": 502.44, "x1": 272.16, "y1": 515.76}, "min_region_coverage": 0.8,
+      "note": "故不受存款保險之保障與累計投保金額說明兩版都存在，只有位置不同。"
+    },
+    {
+      "case": "meibaofa", "id": "p4_footer_not_duplicated", "kind": "max_content_items", "page": 4,
+      "bbox": {"page": 4, "x0": 490, "y0": 18, "x1": 545, "y1": 27}, "min_region_coverage": 0.3,
+      "max_items": 1, "note": "完整與殘缺 Control No 應只列一次；O/0 錯讀不能製造第二筆。"
+    }
+  ]
+}
