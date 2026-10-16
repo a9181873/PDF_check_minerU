@@ -36,7 +36,9 @@ def main():
               "runtime": runtime_model_manifest(), "runs": []}
     result["source_sha256"] = {
         name: hashlib.sha256((BACKEND / name).read_bytes()).hexdigest()
-        for name in ("services/diff_service.py", "services/evidence_service.py")
+        for name in ("services/diff_service.py", "services/evidence_service.py",
+                     "services/visual_match_service.py", "services/region_text_service.py")
+        if (BACKEND / name).is_file()
     }
     for case in manifest["cases"]:
         clear_parse_cache()

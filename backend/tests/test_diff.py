@@ -1164,7 +1164,8 @@ def test_image_pdf_text_gate_keeps_number_diff_with_strong_numeric_change():
 
 
 def test_compact_numeric_ocr_pair_recovers_small_graphic_number_change():
-    assert _compact_numeric_ocr_pair("24", "28%") == ("24", "28")
+    assert _compact_numeric_ocr_pair("24", "28") == ("24", "28")
+    assert _compact_numeric_ocr_pair("24", "28%") is None
     assert _compact_numeric_ocr_pair("24", "281") is None
     assert _compact_numeric_ocr_pair("244", "284") == ("244", "284")
     assert _compact_numeric_ocr_pair("2", "3") is None

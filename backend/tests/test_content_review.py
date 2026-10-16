@@ -103,6 +103,16 @@ def test_wording_change_with_unchanged_numbers_is_not_numeric_change():
     assert diff_service._guess_diff_type("20歲投保30年", "30歲投保20年") == DiffType.NUMBER_MODIFIED
 
 
+@pytest.mark.parametrize("old,new", [("3.95%", "4.00%"), ("-3.95%", "+4.00%"), ("3.95", "4.00")])
+def test_compact_field_preserves_scale_unit_and_sign(old, new):
+    assert diff_service._compact_numeric_ocr_pair(old, new) == (old, new)
+
+
+def test_sign_only_numeric_change_and_control_code_separators():
+    assert diff_service._guess_diff_type("-3.95%", "+3.95%") == DiffType.NUMBER_MODIFIED
+    assert diff_service._extract_numbers("OP-2404-2604-0238") == ["2404", "2604", "0238"]
+
+
 def test_complete_priority_field_deduplicates_local_partial_reads():
     complete = DiffItem(id="", diff_type=DiffType.NUMBER_MODIFIED,
         old_value="Version: 2025.01; Control No: OP-2501-0029", new_value="Version: 2025.09; Control No: OP-2508-0594",
@@ -112,6 +122,20 @@ def test_complete_priority_field_deduplicates_local_partial_reads():
     result = diff_service.merge_diff_results([], [], [complete, partial], content_first=True)
     assert len(result) == 1
     assert result[0].new_value == complete.new_value
+
+
+def test_contained_control_fragment_with_o_zero_error_is_not_a_second_change():
+    complete = DiffItem(id="", diff_type=DiffType.NUMBER_MODIFIED,
+        old_value="Version: 2024.01; Control No: 2312-2512-OP2-0300",
+        new_value="Version: 2024.04; Control No: OP-2404-2604-0238",
+        new_bbox=BBox(page=4, x0=400, y0=10, x1=580, y1=45),
+        context="Page 4 footer control/version", confidence=.98)
+    partial = DiffItem(id="", diff_type=DiffType.NUMBER_MODIFIED,
+        old_value="Control No: 2312-2512-0P2", new_value="Control No: OP-2404-2604",
+        new_bbox=BBox(page=4, x0=410, y0=20, x1=550, y1=30), context="Page 4 內容變更", confidence=.95)
+    assert len(diff_service.merge_diff_results([], [], [complete, partial], content_first=True)) == 1
+    partial.new_value = "Control No: OP-2404-2704"
+    assert len(diff_service.merge_diff_results([], [], [complete, partial], content_first=True)) == 2
 
 
 def test_new_embedded_image_is_not_a_text_addition(tmp_path):

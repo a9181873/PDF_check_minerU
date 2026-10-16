@@ -119,7 +119,16 @@ def _contains_number(text: str | None) -> bool:
 def _extract_numbers(text: str | None) -> list[str]:
     if not text:
         return []
-    return NUMBER_PATTERN.findall(_deep_normalize(text))
+    clean = _deep_normalize(text)
+    numbers = []
+    for match in NUMBER_PATTERN.finditer(clean):
+        start = match.start()
+        if start and clean[start-1] in "+-" and (
+            start < 2 or not (clean[start-2].isascii() and clean[start-2].isalnum())
+        ):
+            start -= 1
+        numbers.append(clean[start:match.end()])
+    return numbers
 
 
 def _numeric_ocr_confusion_count(text: str | None) -> int:
@@ -374,6 +383,8 @@ def _compact_numeric_ocr_pair(old_text: str | None, new_text: str | None) -> tup
     new_numbers = _extract_numbers(new_text)
     if len(old_numbers) != 1 or len(new_numbers) != 1:
         return None
+    if old_numbers[0].endswith("%") != new_numbers[0].endswith("%"):
+        return None  # The field unit is not consistently recognized.
 
     old_digits = re.sub(r"\D", "", old_numbers[0])
     new_digits = re.sub(r"\D", "", new_numbers[0])
@@ -396,7 +407,9 @@ def _compact_numeric_ocr_pair(old_text: str | None, new_text: str | None) -> tup
     # the surrounding OCR retained an explicit unit/decimal/text context.
     if old_digits.startswith("0") or new_digits.startswith("0"):
         return None
-    return old_digits, new_digits
+    # The digit-only strings above are validation keys, never source values.
+    # Returning them changes 3.95% -> 4.00% into 395 -> 400.
+    return old_numbers[0], new_numbers[0]
 
 
 def _has_explicit_numeric_context(old_text: str | None, new_text: str | None) -> bool:
@@ -1453,10 +1466,10 @@ def _pixel_cache_key(
     return canonical_cache_key(
         "pixel-diff",
         {
-            # v11 protects sparse glyph candidates from contour tolerance.
+            # v12 preserves numeric scale/sign/unit in local OCR values.
             # Earlier noise decisions must not be reused; incomplete OCR is
             # still never persisted as a complete comparison.
-            "algorithm": "pixel-v11-glyph-protected",
+            "algorithm": "pixel-v12-formatted-fields",
             "old_sha256": _pixel_cache_file_hash(old_pdf_path),
             "new_sha256": _pixel_cache_file_hash(new_pdf_path),
             "threshold": threshold,
@@ -1487,6 +1500,8 @@ def clear_pixel_diff_cache(*, include_disk: bool = False) -> None:
         from services.persistent_cache import clear_namespace
 
         clear_namespace("pixel_diff")
+        clear_namespace("region_text")
+        clear_namespace("region_reconciliation")
 
 
 def _restore_pixel_metadata(
@@ -3288,6 +3303,28 @@ def merge_diff_results(
     def _area(b: BBox) -> float:
         return max(0, b.x1 - b.x0) * max(0, b.y1 - b.y0)
 
+    def _priority_fragment_explained(complete: DiffItem, fragment: DiffItem) -> bool:
+        if "control/version" not in complete.context:
+            return False
+        for full_text, partial_text in ((complete.old_value, fragment.old_value),
+                                        (complete.new_value, fragment.new_value)):
+            full = _extract_priority_ocr_text(full_text)
+            partial = _extract_priority_ocr_text(partial_text)
+            if not full or not partial or "Version:" not in full or "Control No:" not in full:
+                return False
+            # O/0 equivalence is scoped to a contained control-field fragment.
+            # It must never normalize document text or distinct complete codes.
+            for field in partial.split("; "):
+                if field.startswith("Control No:"):
+                    code = field.split(":", 1)[1].strip().replace("O", "0")
+                    full_code = full.split("Control No:", 1)[1].strip().replace("O", "0")
+                    if len(code) >= len(full_code) or not full_code.startswith(code):
+                        if field not in full:
+                            return False
+                elif field not in full:
+                    return False
+        return True
+
     if len(merged) > 1:
         to_remove: set[int] = set()
         for i in range(len(merged)):
@@ -3311,8 +3348,9 @@ def merge_diff_results(
                             and _extract_priority_ocr_text(merged[i].old_value)
                             and _extract_priority_ocr_text(merged[i].new_value)
                             and merged[j].old_value and merged[j].new_value
-                            and merged[j].old_value in (merged[i].old_value or "")
-                            and merged[j].new_value in (merged[i].new_value or "")
+                            and ((merged[j].old_value in (merged[i].old_value or "")
+                                  and merged[j].new_value in (merged[i].new_value or ""))
+                                 or _priority_fragment_explained(merged[i], merged[j]))
                             and _contains(bi, bj)):
                         to_remove.add(j)
                         continue
@@ -3736,6 +3774,15 @@ def generate_diff_report(
     )
     if use_pixel_only:
         merged_items = _coalesce_reviewable_visual_items(merged_items, stats=stats)
+        if include_enrichment:
+            from pathlib import Path
+            if Path(old_pdf_path).is_file() and Path(new_pdf_path).is_file():
+                try:
+                    from services.region_text_service import reconcile_regions
+                    merged_items = reconcile_regions(merged_items, old_pdf_path, new_pdf_path,
+                                                     stats=stats, warnings=engine_warnings)
+                except Exception as exc:
+                    _record_engine_warning(engine_warnings, stats, "region_text_error", f"unexpected failure: {exc}")
     for index, item in enumerate(merged_items, start=1):
         item.id = f"d{index:03d}"
     stats["final_diff_count"] = len(merged_items)

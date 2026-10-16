@@ -30,8 +30,8 @@
     },
     {
       "case": "ciai_micro", "id": "p3_added_new_resident_clause", "kind": "content", "page": 3,
-      "bbox": {"page": 3, "x0": 129, "y0": 128, "x1": 376, "y1": 196}, "min_region_coverage": 0.3,
-      "new_regex": "新住民基本法第三條第一項第一款", "note": "新增第10點資格與註解；框到整張表不代表內容辨識成功。"
+      "bbox": {"page": 3, "x0": 142, "y0": 173, "x1": 316, "y1": 185}, "min_region_coverage": 0.5,
+      "new_regex": "新住民基本法第二條第一項第一款", "note": "只檢查新增第10點法條引用；註解完整辨識另需驗收。2026-10-16 以6倍裁切複核，原人工條件誤寫第三條，應為第二條；bbox 改為此引用實際字框，避免要求精確文字框覆蓋整段含註解的區域。"
     },
     {
       "case": "meilbao", "id": "p4_unchanged_daily_living_text", "kind": "no_content_claim", "page": 4,

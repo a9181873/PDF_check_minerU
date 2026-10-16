@@ -48,6 +48,15 @@ def describe_signatures(signatures):
             for key, count in signatures.items()]
 
 
+def source_revision(root):
+    if revision := os.environ.get("PDFCHECK_SOURCE_REVISION"):
+        return revision
+    try:
+        return subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+    except (OSError, subprocess.SubprocessError):
+        return "unavailable; use source_sha256"
+
+
 def evaluate_content_truth(root, output, label, truth_path):
     truth = json.loads((root / truth_path).read_text())
     checks = []
@@ -112,7 +121,7 @@ def main():
         "runtime": runtime_model_manifest(),
         "source_sha256": {str(path.relative_to(BACKEND)): hashlib.sha256(path.read_bytes()).hexdigest()
                           for path in (BACKEND / 'services').glob('*.py')},
-        "revision": subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip(),
+        "revision": source_revision(root),
         "scope": "local real-PDF regression; anchor coverage is distinct from OCR correctness",
         "inventory": [], "self_comparisons": [], "cases": [],
     }
